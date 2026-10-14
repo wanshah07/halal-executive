@@ -292,7 +292,7 @@ function doPost(e) {
     var lock = LockService.getScriptLock(); lock.waitLock(30000);
     try {
       if (a === 'admins_set')    { needAdmin(); return json(setAdminEmails(body.emails || [])); }
-      if (a === 'manual_upload') { needAdmin(); var mu = manualUpload(body, sessEmail || 'token'); mu.run = autoRun('process_whatsapp'); return json(mu); }
+      if (a === 'manual_upload') { needAdmin(); var mu = manualUpload(body, sessEmail || 'token'); mu.run = autoRun(mu.chat ? 'process_whatsapp' : 'uploads'); return json(mu); }
       if (a === 'review_set')    { needAdmin(); return json(reviewSet(body.tab, body.id, body.status)); }
       if (a === 'settings')      { needAdmin(); return json(writeSettings(body.settings || {})); }
       if (a === 'ref_upload')    { needAdmin(); var ru = refUpload(body, sessEmail || 'token'); ru.run = autoRun('references'); return json(ru); }
@@ -396,7 +396,7 @@ function sessionEmail(session) {
 // Property GITHUB_TOKEN (never in the page).
 var GH_REPO = 'wanshah07/halal-executive';
 function runNow(b) {
-  var job = ['process_whatsapp', 'references', 'news', 'organise', 'sahkan', 'process_facebook'].indexOf(b.job) >= 0 ? b.job : 'process_whatsapp';
+  var job = ['process_whatsapp', 'uploads', 'references', 'news', 'organise', 'sahkan', 'process_facebook'].indexOf(b.job) >= 0 ? b.job : 'process_whatsapp';
   var token = props().getProperty('GITHUB_TOKEN');
   if (!token) throw new Error('Run now is not set up yet: add a GitHub token as the Script Property GITHUB_TOKEN (see SETUP.md).');
   if (!rate('run_now', 1, 120)) throw new Error('A run was started less than 2 minutes ago. It is on its way.');
@@ -567,6 +567,8 @@ function tickPipeline() {
   try { purgePastEvents(); } catch (e) { console.error('purge: ' + e); }
   try { rawTriage(); } catch (e) { console.error('triage: ' + e); }
   dispatchRun('process_whatsapp');
+  // Files lane: certificates and documents from the group and from Admin.
+  try { dispatchRun('uploads'); } catch (e) { console.error('uploads: ' + e); }
 }
 function tickNews() { dispatchRun('news'); }
 function tickOrganise() { dispatchRun('organise'); }

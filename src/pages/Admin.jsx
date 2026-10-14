@@ -125,7 +125,7 @@ function UploadBox({ lang }) {
 // Drafts from the pipeline. Nothing the AI writes with less than high
 // confidence reaches the public page until an admin publishes it here.
 // Start the pipeline now instead of waiting for the next :10 / :40 slot.
-const RUN_JOBS = ['process_whatsapp', 'references', 'sahkan', 'news', 'organise', 'process_facebook']
+const RUN_JOBS = ['process_whatsapp', 'uploads', 'references', 'sahkan', 'news', 'organise', 'process_facebook']
 function RunNow({ lang, runs, stats }) {
   const [job, setJob] = useState('process_whatsapp')
   const [msg, setMsg] = useState('')
