@@ -10,16 +10,20 @@
  * Web app, Execute as: Me, Who has access: Anyone. Copy the /exec URL into
  * VITE_API_URL (page) and HE_API_URL (pipeline, collectors).
  *
- * Script Properties (Project Settings → Script properties):
- *   ADMIN_TOKEN        long random string; Admin panel
- *   INGEST_TOKEN       long random string; collectors + pipeline
+ * Script Properties (Project Settings → Script properties). You type TWO:
  *   MIRELD_API_KEY     Bearer key for https://api.mireld.my/v1
- *   MIRELD_MODEL       model id on Mireld (run listModels() to see them)
  *   AFIQ_API_KEY       Bearer key for https://rootsys.cloud/v1
- *   AFIQ_MODEL         e.g. glm-5.3
- *   DRIVE_ROOT_ID      folder id of "/Halal Executive" in Drive
+ * setup() creates the rest if they are missing and prints them in the log:
+ *   ADMIN_TOKEN        random; paste into the Admin panel once
+ *   INGEST_TOKEN       random; GitHub secret HE_INGEST_TOKEN + collectors
+ *   DRIVE_ROOT_ID      id of the "Halal Executive" Drive folder it creates
+ * Optional:
+ *   MIRELD_MODEL / AFIQ_MODEL   leave empty or "auto" and the model is picked
+ *                      from the gateway's own /models list and re-picked by
+ *                      itself if that model is withdrawn; or set an exact id
+ *                      (or a comma list, first one available wins).
  *
- * Run setup() once to create the tabs and headers.
+ * Run setup() once. Run showSecrets() any time to print the tokens again.
  */
 
 var TABS = {
@@ -51,7 +55,32 @@ function setup() {
   var defaults = { hero_title: 'Halal Executive', hero_subtitle: 'Answers, guidelines and documents for halal executives, in one place.', hero_cta: 'Open the FAQ', hero_cta_url: '#faq', notice_enabled: 'false', notice_level: 'info', posters: '[]', llm_turn: '0' };
   var cur = readSettings();
   Object.keys(defaults).forEach(function (k) { if (cur[k] === undefined) sheet('Settings').appendRow([k, defaults[k]]); });
+  var P = props();
+  if (!P.getProperty('ADMIN_TOKEN')) P.setProperty('ADMIN_TOKEN', newToken());
+  if (!P.getProperty('INGEST_TOKEN')) P.setProperty('INGEST_TOKEN', newToken());
+  if (!P.getProperty('DRIVE_ROOT_ID')) {
+    var it = DriveApp.getFoldersByName('Halal Executive');
+    var f = it.hasNext() ? it.next() : DriveApp.createFolder('Halal Executive');
+    P.setProperty('DRIVE_ROOT_ID', f.getId());
+  }
+  showSecrets();
 }
+
+function newToken() { return Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, ''); }
+
+// Prints the generated values to the execution log (View → Logs). Only the
+// script owner can run this or read the log.
+function showSecrets() {
+  var P = props(), f = DriveApp.getFolderById(P.getProperty('DRIVE_ROOT_ID'));
+  Logger.log('ADMIN_TOKEN   = ' + P.getProperty('ADMIN_TOKEN'));
+  Logger.log('INGEST_TOKEN  = ' + P.getProperty('INGEST_TOKEN'));
+  Logger.log('DRIVE_ROOT_ID = ' + f.getId() + '   (' + f.getUrl() + ')');
+  Logger.log('MIRELD key ' + (P.getProperty('MIRELD_API_KEY') ? 'set' : 'MISSING') + ', model ' + (P.getProperty('MIRELD_MODEL') || 'auto'));
+  Logger.log('AFIQ key   ' + (P.getProperty('AFIQ_API_KEY') ? 'set' : 'MISSING') + ', model ' + (P.getProperty('AFIQ_MODEL') || 'auto'));
+}
+
+// Rotate a token: run, then update the GitHub secret / Admin panel.
+function rotateTokens() { props().setProperty('ADMIN_TOKEN', newToken()); props().setProperty('INGEST_TOKEN', newToken()); showSecrets(); }
 
 function sheet(name) { var sh = ss().getSheetByName(name); if (!sh) throw new Error('Missing tab ' + name); return sh; }
 
@@ -242,13 +271,50 @@ function nextProvider() {
   return turn % 2 === 0 ? 'MIRELD' : 'AFIQ';
 }
 
-function callProvider(name, messages, opts) {
-  var p = PROVIDERS[name], P = props(), key = P.getProperty(p.keyProp), model = (opts && opts.model) || P.getProperty(p.modelProp);
-  if (!key) throw new Error(name + ' key not set');
-  if (!model) throw new Error(name + ' model not set');
+// Chat models in preference order when the model is "auto". Anything not
+// listed is still usable: the first chat-looking id from /models wins.
+var PREFER = ['glm-5.3', 'kimi-k3', 'deepseek-v4-pro', 'glm-5.2', 'gpt-6-astra', 'claude', 'gpt-5', 'gpt-4.1', 'gpt-4o', 'deepseek', 'qwen', 'llama'];
+var NOT_CHAT = /(embed|image|dall|tts|whisper|audio|moderation|rerank|vision-only)/i;
+
+function listIds(name) {
+  var p = PROVIDERS[name], key = props().getProperty(p.keyProp);
+  var r = UrlFetchApp.fetch(p.base + '/models', { headers: { Authorization: 'Bearer ' + key }, muteHttpExceptions: true });
+  if (r.getResponseCode() >= 300) throw new Error(name + ' /models HTTP ' + r.getResponseCode());
+  return (JSON.parse(r.getContentText()).data || []).map(function (m) { return m.id; });
+}
+
+// Model for one provider: an exact id, a comma list, or auto. The answer is
+// cached for 6 h and dropped the moment the gateway says the model is gone.
+function resolveModel(name, fresh) {
+  var p = PROVIDERS[name], want = (props().getProperty(p.modelProp) || 'auto').trim(), cache = CacheService.getScriptCache(), ck = 'model_' + name;
+  if (!fresh) { var hit = cache.get(ck); if (hit) return hit; }
+  var wants = want.toLowerCase() === 'auto' ? [] : want.split(',').map(function (x) { return x.trim(); }).filter(String);
+  if (wants.length === 1 && !fresh) { cache.put(ck, wants[0], 21600); return wants[0]; }
+  var ids = listIds(name), chat = ids.filter(function (i) { return !NOT_CHAT.test(i); }), pick = null;
+  wants.some(function (w) { if (ids.indexOf(w) >= 0) { pick = w; return true; } });
+  if (!pick) PREFER.some(function (pre) { pick = chat.filter(function (i) { return i.toLowerCase().indexOf(pre) === 0; })[0] || null; return !!pick; });
+  if (!pick) pick = chat[0] || ids[0];
+  if (!pick) throw new Error(name + ': no models listed');
+  cache.put(ck, pick, 21600);
+  return pick;
+}
+
+function postChat(p, key, model, messages, opts) {
   var payload = { model: model, messages: messages, temperature: (opts && opts.temperature) || 0.2, max_tokens: (opts && opts.max_tokens) || 1200 };
   if (opts && opts.json) payload.response_format = { type: 'json_object' };
-  var r = UrlFetchApp.fetch(p.base + '/chat/completions', { method: 'post', contentType: 'application/json', headers: { Authorization: 'Bearer ' + key }, payload: JSON.stringify(payload), muteHttpExceptions: true, followRedirects: true });
+  return UrlFetchApp.fetch(p.base + '/chat/completions', { method: 'post', contentType: 'application/json', headers: { Authorization: 'Bearer ' + key }, payload: JSON.stringify(payload), muteHttpExceptions: true, followRedirects: true });
+}
+
+function callProvider(name, messages, opts) {
+  var p = PROVIDERS[name], key = props().getProperty(p.keyProp);
+  if (!key) throw new Error(name + ' key not set');
+  var model = (opts && opts.model) || resolveModel(name, false);
+  var r = postChat(p, key, model, messages, opts);
+  // Model withdrawn or renamed: re-read /models once and retry with the new pick.
+  if ((r.getResponseCode() === 400 || r.getResponseCode() === 404) && /model/i.test(r.getContentText()) && !(opts && opts.model)) {
+    var again = resolveModel(name, true);
+    if (again !== model) { model = again; r = postChat(p, key, model, messages, opts); }
+  }
   if (r.getResponseCode() >= 300) throw new Error(name + ' HTTP ' + r.getResponseCode() + ': ' + r.getContentText().slice(0, 200));
   var j = JSON.parse(r.getContentText());
   var text = j.choices && j.choices[0] && j.choices[0].message && (j.choices[0].message.content || '');
@@ -277,8 +343,9 @@ function chat(b) {
   } catch (e) { return { ok: false, error: String(e.message || e) }; }
 }
 
-// Utility: list models each gateway enables for the stored keys.
+// Utility: list models each gateway enables, and which one auto picks.
 function listModels() {
+  Object.keys(PROVIDERS).forEach(function (n) { try { Logger.log(n + ' auto-picks: ' + resolveModel(n, true)); } catch (e) { Logger.log(n + ' auto-pick failed: ' + e.message); } });
   Object.keys(PROVIDERS).forEach(function (n) {
     var p = PROVIDERS[n], key = props().getProperty(p.keyProp);
     var r = UrlFetchApp.fetch(p.base + '/models', { headers: { Authorization: 'Bearer ' + key }, muteHttpExceptions: true });

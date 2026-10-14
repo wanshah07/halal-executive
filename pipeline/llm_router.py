@@ -4,6 +4,9 @@ Both are OpenAI-compatible chat gateways:
   MIRELD  https://api.mireld.my/v1   key MIRELD_API_KEY  model MIRELD_MODEL
   AFIQ    https://rootsys.cloud/v1   key AFIQ_API_KEY    model AFIQ_MODEL
 
+The model variables are optional: empty or "auto" picks from the gateway's
+/models list, and a model the gateway withdraws is re-picked on the spot.
+
 Selection is automatic. The turn counter persists in pipeline/.state/turn
 (or STATE_DIR) so consecutive runs alternate; inside one run every call
 also alternates. Any failure on the chosen provider (timeout, HTTP error,
@@ -49,18 +52,59 @@ def available():
     return [p for p in ORDER if os.environ.get(PROVIDERS[p]["key"])]
 
 
-def _call(name, messages, json_mode=False, max_tokens=2000, temperature=0.2, model=None):
+# Chat models in preference order when MIRELD_MODEL / AFIQ_MODEL is empty or
+# "auto". Same list as Code.gs. A comma list in the variable is tried in order.
+PREFER = ["glm-5.3", "kimi-k3", "deepseek-v4-pro", "glm-5.2", "gpt-6-astra", "claude", "gpt-5", "gpt-4.1", "gpt-4o", "deepseek", "qwen", "llama"]
+NOT_CHAT = re.compile(r"(embed|image|dall|tts|whisper|audio|moderation|rerank|vision-only)", re.I)
+_picked = {}
+
+
+def resolve_model(name, fresh=False):
+    """Exact id, comma list, or auto from the gateway's own /models list."""
+    if name in _picked and not fresh:
+        return _picked[name]
     p = PROVIDERS[name]
-    key = os.environ.get(p["key"])
-    model = model or os.environ.get(p["model"])
-    if not key:
-        raise LLMError(f"{name}: no key")
-    if not model:
-        raise LLMError(f"{name}: no model (set {p['model']})")
+    want = (os.environ.get(p["model"]) or "auto").strip()
+    wants = [] if want.lower() == "auto" else [w.strip() for w in want.split(",") if w.strip()]
+    if len(wants) == 1 and not fresh:
+        _picked[name] = wants[0]
+        return wants[0]
+    r = requests.get(f"{p['base']}/models", headers={"Authorization": f"Bearer {os.environ.get(p['key'])}"}, timeout=p["timeout"])
+    if r.status_code >= 300:
+        raise LLMError(f"{name} /models HTTP {r.status_code}")
+    ids = [m.get("id", "") for m in r.json().get("data", [])]
+    chat = [i for i in ids if i and not NOT_CHAT.search(i)]
+    pick = next((w for w in wants if w in ids), None)
+    if not pick:
+        pick = next((i for pre in PREFER for i in chat if i.lower().startswith(pre)), None)
+    pick = pick or (chat[0] if chat else (ids[0] if ids else None))
+    if not pick:
+        raise LLMError(f"{name}: no models listed")
+    _picked[name] = pick
+    return pick
+
+
+def _post(p, key, model, messages, json_mode, max_tokens, temperature):
     payload = {"model": model, "messages": messages, "temperature": temperature, "max_tokens": max_tokens}
     if json_mode:
         payload["response_format"] = {"type": "json_object"}
-    r = requests.post(f"{p['base']}/chat/completions", json=payload, headers={"Authorization": f"Bearer {key}"}, timeout=p["timeout"])
+    return requests.post(f"{p['base']}/chat/completions", json=payload, headers={"Authorization": f"Bearer {key}"}, timeout=p["timeout"])
+
+
+def _call(name, messages, json_mode=False, max_tokens=2000, temperature=0.2, model=None):
+    p = PROVIDERS[name]
+    key = os.environ.get(p["key"])
+    if not key:
+        raise LLMError(f"{name}: no key")
+    fixed = model is not None
+    model = model or resolve_model(name)
+    r = _post(p, key, model, messages, json_mode, max_tokens, temperature)
+    # Model withdrawn or renamed: re-read /models once and retry with the new pick.
+    if r.status_code in (400, 404) and "model" in r.text.lower() and not fixed:
+        again = resolve_model(name, fresh=True)
+        if again != model:
+            model = again
+            r = _post(p, key, model, messages, json_mode, max_tokens, temperature)
     if r.status_code >= 300:
         raise LLMError(f"{name} HTTP {r.status_code}: {r.text[:200]}")
     j = r.json()
@@ -115,5 +159,7 @@ if __name__ == "__main__":
             r = requests.get(PROVIDERS[n]["base"] + "/models", headers={"Authorization": f"Bearer {key}"} if key else {}, timeout=20)
             ids = [m["id"] for m in r.json().get("data", [])] if r.ok else []
             print(n, r.status_code, ids[:20] if ids else r.text[:120])
+            if key:
+                print("  auto-picks:", resolve_model(n, fresh=True))
         except Exception as e:  # noqa: BLE001
             print(n, "unreachable:", e)

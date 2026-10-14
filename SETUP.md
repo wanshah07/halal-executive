@@ -9,13 +9,16 @@ web app is the only door to the Sheet and Drive.
    `apps-script/appsscript.json` (Project Settings → show manifest). Enable
    the Drive advanced service (Services → Drive API v3) for OCR.
 2. Create Drive folder "Halal Executive"; copy its folder id.
-3. Script properties: `ADMIN_TOKEN`, `INGEST_TOKEN` (two long random
-   strings), `DRIVE_ROOT_ID`, `MIRELD_API_KEY`, `MIRELD_MODEL`,
-   `AFIQ_API_KEY`, `AFIQ_MODEL`. Run `listModels()` once and pick model ids
-   from the log (AFIQ listed `glm-5.3`, `kimi-k3`, `deepseek-v4-pro` and
-   others on 14 Oct 2026).
-4. Run `setup()` once (creates tabs). Deploy → New deployment → Web app →
-   Execute as **Me**, access **Anyone**. Copy the `/exec` URL.
+3. Script properties (Project Settings → Script properties): add only
+   `MIRELD_API_KEY` and `AFIQ_API_KEY`. Model properties are optional:
+   leave them out (or write `auto`) and the model is picked from each
+   gateway's own list and re-picked by itself if it is withdrawn.
+4. Run `setup()` once. It creates the nine tabs, a Drive folder called
+   "Halal Executive", and the `ADMIN_TOKEN`, `INGEST_TOKEN` and
+   `DRIVE_ROOT_ID` properties, then prints all three in the execution log.
+   `showSecrets()` prints them again; `listModels()` shows what auto picked.
+   Then Deploy → New deployment → Web app → Execute as **Me**, access
+   **Anyone**. Copy the `/exec` URL.
 5. Triggers → add `purgeExpiredNews`, time-driven, hourly.
 
 ## 2. Page
@@ -35,7 +38,8 @@ web app is the only door to the Sheet and Drive.
 
 ## 3. Pipeline
 9. Repository secrets: `HE_API_URL`, `HE_INGEST_TOKEN`, `MIRELD_API_KEY`,
-   `AFIQ_API_KEY`. Variables: `MIRELD_MODEL`, `AFIQ_MODEL`. The crons in
+   `AFIQ_API_KEY`. Variables `MIRELD_MODEL` and `AFIQ_MODEL` are optional
+   (empty = auto). The crons in
    `pipeline.yml` start on their own; run "Pipeline" by hand first with job
    `news` to see a green run and a row in the Runs tab.
 

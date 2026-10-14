@@ -5,7 +5,7 @@ name: Pipeline
 # Facebook pass at 18:40 UTC (02:40 MYT).
 #
 # Repository secrets: HE_API_URL, HE_INGEST_TOKEN, MIRELD_API_KEY, AFIQ_API_KEY
-# Repository variables: MIRELD_MODEL, AFIQ_MODEL (optional NEWS_FEEDS)
+# Repository variables (all optional): MIRELD_MODEL, AFIQ_MODEL (empty = auto), NEWS_FEEDS
 on:
   schedule:
     - cron: '10 */3 * * *'    # whatsapp + telegram, every 3 h
