@@ -44,10 +44,12 @@ web app is the only door to the Sheet and Drive.
    `news` to see a green run and a row in the Runs tab.
 
 ## 4. Collectors (WhatsApp first)
-10. On the machine that will stay on: `cd collectors/whatsapp && npm install`,
-    export `HE_API_URL`, `HE_INGEST_TOKEN`, `HE_GROUP_NAME="Halal Executive"`,
-    then `npm run backfill` (scan the QR with WhatsApp → Linked devices),
-    then `npm start` under pm2 or a scheduled task so it restarts.
+10. On the machine that will stay on: `cd collectors/whatsapp && npm install`.
+    Copy `collectors/.env.example` to `collectors/.env` and fill in
+    `HE_API_URL`, `HE_INGEST_TOKEN` (from `showSecrets()`) and
+    `HE_GROUP_NAME`. Run `npm run groups` (scan the QR with WhatsApp → Linked
+    devices) to print the exact group names, fix `HE_GROUP_NAME` if needed,
+    then `npm run backfill`, then keep `npm start` running under pm2.
 11. Telegram: BotFather → new bot → `/setprivacy` Disable → add the bot to
     the group → `cd collectors/telegram && npm install && TELEGRAM_BOT_TOKEN=… npm start`.
 12. Facebook: read `collectors/README.md` first. `cd collectors/facebook &&

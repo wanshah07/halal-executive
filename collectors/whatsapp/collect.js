@@ -4,6 +4,9 @@
 //
 //   npm install && npm run backfill     (first time)
 //   npm start                           (then keep it running)
+//   npm run groups                      (print the exact names of your groups)
+//
+// Settings come from collectors/.env: HE_API_URL, HE_INGEST_TOKEN, HE_GROUP_NAME.
 //
 // Attachments ride along as base64 so Apps Script can drop them into Drive
 // "00 Inbox/whatsapp". Big videos are skipped (> MAX_MB).
@@ -11,19 +14,23 @@ import pkg from 'whatsapp-web.js'
 import qrcode from 'qrcode-terminal'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
-import { ingest } from '../lib.js'
+import { ingest, browserPath } from '../lib.js'
 
 const { Client, LocalAuth } = pkg
 const GROUP = process.env.HE_GROUP_NAME || 'Halal Executive'
 const SALT = process.env.HE_SALT || 'halal-executive'
 const MAX_MB = Number(process.env.HE_MAX_MB || 15)
 const BACKFILL = process.argv.includes('--backfill')
+const LIST = process.argv.includes('--list-groups')
 const STATE = new URL('./state.json', import.meta.url)
 const state = fs.existsSync(STATE) ? JSON.parse(fs.readFileSync(STATE, 'utf8')) : { lastTs: 0 }
 const save = () => fs.writeFileSync(STATE, JSON.stringify(state))
 const hash = (s) => crypto.createHash('sha256').update(SALT + String(s)).digest('hex').slice(0, 16)
 
-const client = new Client({ authStrategy: new LocalAuth(), puppeteer: { headless: true, args: ['--no-sandbox'] } })
+const exe = browserPath()
+if (!exe) console.warn('No Chrome or Edge found. Install Google Chrome, or set HE_BROWSER in collectors/.env to a chrome.exe / msedge.exe path.')
+else console.log('Browser:', exe)
+const client = new Client({ authStrategy: new LocalAuth(), puppeteer: { headless: true, executablePath: exe, args: ['--no-sandbox'] } })
 client.on('qr', (qr) => { console.log('Scan with WhatsApp → Linked devices'); qrcode.generate(qr, { small: true }) })
 
 async function toRow(m) {
@@ -42,6 +49,7 @@ async function toRow(m) {
 client.on('ready', async () => {
   console.log('WhatsApp ready')
   const chats = await client.getChats()
+  if (LIST) { console.log('Your groups (copy one exactly into HE_GROUP_NAME):'); chats.filter((c) => c.isGroup).forEach((c) => console.log('  ' + c.name)); process.exit(0) }
   const g = chats.find((c) => c.isGroup && c.name === GROUP)
   if (!g) { console.error(`Group "${GROUP}" not found. Groups seen:`, chats.filter((c) => c.isGroup).map((c) => c.name)); process.exit(1) }
   if (BACKFILL) {

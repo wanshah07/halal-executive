@@ -12,13 +12,17 @@ Order of work, as agreed: **WhatsApp first**, then Facebook and Telegram.
 | Telegram group "Halal Executive" | Telegram Bot API, long polling | same machine, or any runner | continuous |
 | Facebook group "Halal Executive" | Playwright with Wan's own logged-in browser profile | Wan's PC only | once a day (24 h), runs until the feed is exhausted |
 
-Common env for all three:
+Settings for all three go in one file, `collectors/.env`. Copy
+`collectors/.env.example` to `collectors/.env` and fill in:
 
 ```
 HE_API_URL=https://script.google.com/macros/s/…/exec
-HE_INGEST_TOKEN=…               # Script Property INGEST_TOKEN
-HE_GROUP_NAME=Halal Executive   # exact group / chat title
+HE_INGEST_TOKEN=…               # printed by setup() / showSecrets() in Apps Script
+HE_GROUP_NAME=Halal Executive   # exact group title; `npm run groups` lists yours
 ```
+
+WhatsApp uses Chrome or Edge already installed on the machine, so npm's
+"install-scripts" warning about puppeteer can be ignored.
 
 ## Privacy
 
