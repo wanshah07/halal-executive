@@ -9,7 +9,8 @@ on:
   # No GitHub cron: on this repo it fired twice in ten hours. Apps Script's
   # time-driven triggers start every run through workflow_dispatch
   # (apps-script/Code.gs, installTriggers): process_whatsapp every 30 min,
-  # news every 6 h, facebook ~2 am and organise ~3 am MYT. CLAUDE.md rule 14.
+  # references review every 3 h, news every 6 h, facebook ~2 am and
+  # organise ~3 am MYT. CLAUDE.md rule 14.
   workflow_dispatch:
     inputs:
       job:
@@ -64,7 +65,7 @@ jobs:
             process_facebook) python process_raw.py --source facebook; a=$?; python resolve_sahkan.py; b=$?; exit $(( a || b )) ;;
             news)             python news_sweep.py ;;
             organise)         python drive_organiser.py ;;
-            references)       python index_references.py; a=$?; python resolve_sahkan.py; b=$?; exit $(( a || b )) ;;
+            references)       python index_references.py --audit; a=$?; python resolve_sahkan.py; b=$?; exit $(( a || b )) ;;
             sahkan)           python resolve_sahkan.py ;;
             *) echo "unknown job"; exit 1 ;;
           esac

@@ -39,7 +39,7 @@ jobs:
         # (Apps Script, a few seconds) loads. Same content as action=data.
         run: |
           [ -n "$VITE_API_URL" ] || exit 0
-          if curl -sfL --max-time 60 "$VITE_API_URL?action=data" -o dist/data.json && python3 -c "import json,sys; d=json.load(open('dist/data.json')); sys.exit(0 if isinstance(d.get('faq'), list) else 1)"; then
+          if curl -sfL --max-time 60 "$VITE_API_URL?action=data" -o dist/data.json && python3 .github/scrub_feed.py dist/data.json; then
             echo "snapshot: $(wc -c < dist/data.json) bytes"
           else
             rm -f dist/data.json; echo "::warning::could not snapshot the feed; the page will wait for the live feed"

@@ -35,7 +35,7 @@ export default function FAQ({ lang, data, focusId }) {
           <button className="text-left font-semibold leading-snug" onClick={() => setOpen(open === f.id ? null : f.id)}>{q(f)}</button>
           {(open === f.id) && <p className="mt-2 text-sm whitespace-pre-wrap text-ink-900">{a(f)}</p>}
           {open !== f.id && <p className="mt-2 text-sm text-ink-600 line-clamp-3">{a(f)}</p>}
-          <div className="mt-3 text-xs text-ink-400 flex justify-between"><span>{f.source_refs}</span><span>{fmtDate(f.updated_at, lang)}</span></div>
+          <div className="mt-3 text-xs text-ink-400 text-right">{fmtDate(f.updated_at, lang)}</div>
         </article>
       )} />
   )

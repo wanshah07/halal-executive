@@ -50,7 +50,17 @@ const MARK = /\s*\[SAHKAN[^\]]*\]/gi
 export function stripMarks(data) {
   for (const k of ['faq', 'guidelines', 'events', 'documents', 'certificates', 'news']) {
     if (!Array.isArray(data[k])) continue
-    data[k] = data[k].map((r) => { const o = { ...r }; for (const f in o) if (typeof o[f] === 'string' && o[f].includes('[')) o[f] = o[f].replace(MARK, '').trim(); return o })
+    data[k] = data[k].map((r) => {
+      const o = { ...r }
+      // WhatsApp message ids carry the group id, which is a phone number.
+      delete o.source_refs; delete o.source_msg_id; delete o.sender_hash
+      for (const f in o) {
+        if (typeof o[f] !== 'string') continue
+        if (o[f].includes('[')) o[f] = o[f].replace(MARK, '').trim()
+        if (/@(g|c)\.us|@lid\b/.test(o[f])) o[f] = ''
+      }
+      return o
+    })
   }
   return data
 }

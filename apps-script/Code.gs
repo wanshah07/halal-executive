@@ -171,7 +171,16 @@ function doGet(e) {
 // [SAHKAN: …] is a working note for the pipeline (pipeline/resolve_sahkan.py
 // fills it from the references library or takes it out); readers never see it.
 function noMarks(rows) {
-  return rows.map(function (r) { Object.keys(r).forEach(function (k) { if (typeof r[k] === 'string' && r[k].indexOf('[') >= 0) r[k] = r[k].replace(/\s*\[SAHKAN[^\]]*\]/gi, '').trim(); }); return r; });
+  return rows.map(function (r) {
+    // WhatsApp message ids carry the group id (a phone number): never public.
+    delete r.source_refs; delete r.source_msg_id; delete r.sender_hash;
+    Object.keys(r).forEach(function (k) {
+      if (typeof r[k] !== 'string') return;
+      if (r[k].indexOf('[') >= 0) r[k] = r[k].replace(/\s*\[SAHKAN[^\]]*\]/gi, '').trim();
+      if (/@(g|c)\.us|@lid\b/.test(r[k])) r[k] = '';
+    });
+    return r;
+  });
 }
 
 // The public feed is built from eight tabs, which took 5-7 s per visit.
@@ -223,7 +232,9 @@ function publicData() {
   return {
     settings: settings,
     // Open points to confirm are for the admin only.
-    faq: noMarks(readTab('FAQ').filter(function (r) { return r.status === 'published'; }).map(function (r) { delete r.verify_notes; return r; })),
+    // source_refs are WhatsApp message ids, which carry the group id (a phone
+    // number): admin only, like the open points to confirm.
+    faq: noMarks(readTab('FAQ').filter(function (r) { return r.status === 'published'; }).map(function (r) { delete r.verify_notes; delete r.source_refs; return r; })),
     guidelines: noMarks(readTab('Guidelines').filter(function (r) { return r.status !== 'hidden' && r.status !== 'draft'; })),
     documents: noMarks(readTab('Documents')),
     certificates: noMarks(readTab('Certificates').filter(function (r) { return r.status !== 'hidden'; })),
@@ -476,14 +487,16 @@ function tickPipeline() { try { purgePastEvents(); } catch (e) { console.error('
 function tickNews() { dispatchRun('news'); }
 function tickOrganise() { dispatchRun('organise'); }
 function tickFacebook() { dispatchRun('process_facebook'); }
+function tickReferences() { dispatchRun('references'); }
 function installTriggers() {
-  var mine = ['tickPipeline', 'tickNews', 'tickOrganise', 'tickFacebook'];
+  var mine = ['tickPipeline', 'tickNews', 'tickOrganise', 'tickFacebook', 'tickReferences'];
   ScriptApp.getProjectTriggers().forEach(function (t) { if (mine.indexOf(t.getHandlerFunction()) >= 0) ScriptApp.deleteTrigger(t); });
   ScriptApp.newTrigger('tickPipeline').timeBased().everyMinutes(30).create();   // messages, uploads, references, facts
   ScriptApp.newTrigger('tickNews').timeBased().everyHours(6).create();          // halal news
   ScriptApp.newTrigger('tickOrganise').timeBased().atHour(3).everyDays(1).create(); // Drive organiser, ~3 am MYT
   ScriptApp.newTrigger('tickFacebook').timeBased().atHour(2).everyDays(1).create(); // Facebook pass, ~2 am MYT
-  Logger.log('Triggers installed: every 30 min, every 6 h, daily 2 am and 3 am.');
+  ScriptApp.newTrigger('tickReferences').timeBased().everyHours(3).create();    // review the references until complete
+  Logger.log('Triggers installed: every 30 min, every 3 h, every 6 h, daily 2 am and 3 am.');
 }
 
 // ---------- Certificate thumbnails ----------
@@ -837,7 +850,7 @@ function callProvider(name, messages, opts) {
   var j = JSON.parse(r.getContentText());
   var text = j.choices && j.choices[0] && j.choices[0].message && (j.choices[0].message.content || '');
   if (!text) throw new Error(name + ' empty completion');
-  return { text: text, provider: name, model: model };
+  return { text: text, provider: name, model: model, finish: (j.choices[0].finish_reason || '') };
 }
 
 // Alternate on every call; if the chosen provider fails for any reason the
@@ -847,6 +860,15 @@ function complete(messages, opts) {
   for (var i = 0; i < order.length; i++) {
     try {
       var r = callProvider(order[i], messages, opts);
+      // A reply cut off by the token limit (thinking models spend part of it
+      // before answering): ask the same provider again with twice the room,
+      // and hand over to the other one if it is still cut off.
+      if (opts && opts.whole && r.finish === 'length') {
+        var more = {}; Object.keys(opts).forEach(function (k) { more[k] = opts[k]; });
+        more.max_tokens = Math.min(8000, (opts.max_tokens || 1000) * 2);
+        r = callProvider(order[i], messages, more);
+        if (r.finish === 'length') throw new Error('reply cut off');
+      }
       if (opts && opts.json) r.json = parseJson(r.text); // unreadable JSON hands over to the other provider
       if (i) { r.fallback_from = first; r.first_error = errs[0]; }
       return r;
@@ -877,10 +899,10 @@ function chat(b) {
   b.context = (b.context || []).slice(0, 8).map(function (c) { return { type: String(c.type || '').slice(0, 20), id: String(c.id || '').slice(0, 40), title: String(c.title || '').slice(0, 300), body: String(c.body || '').slice(0, 1500) }; });
   var lang = b.lang === 'bm' ? 'Bahasa Malaysia (Malaysian register: boleh, ubat, syarikat, kualiti; never Indonesian)' : 'English';
   var ctx = (b.context || []).map(function (c, i) { return '[' + (i + 1) + '] (' + c.type + ' ' + c.id + ') ' + c.title + '\n' + c.body; }).join('\n\n');
-  var sys = 'You are the Halal Executive assistant for halal executives in Malaysia. Answer ONLY from the numbered context entries. Cite entries like [1]. If the context does not answer, say so in one sentence and suggest which tab to check (FAQ, Guidelines, Documents). Keep regulatory terms original (Notifikasi Kosmetik, Garis Panduan, Borang). Never invent a limit, entry number or date; if a number is not in the context, say it is not in the site sources yet. Reply in ' + lang + '. Be brief.';
+  var sys = 'You are the Halal Executive assistant for halal executives in Malaysia. Answer ONLY from the numbered context entries. Cite entries like [1]. If the context does not answer, say so in one sentence and suggest which tab to check (FAQ, Guidelines, Documents). Keep regulatory terms original (Notifikasi Kosmetik, Garis Panduan, Borang). Never invent a limit, entry number or date; if a number is not in the context, say it is not in the site sources yet. Reply in the language of the question (Bahasa Malaysia or English; if unclear, ' + lang + '). Be brief but always finish the answer.';
   try {
-    var r = complete([{ role: 'system', content: sys }, { role: 'user', content: 'Context:\n' + (ctx || '(none)') + '\n\nQuestion: ' + b.question }], { max_tokens: 600, fast: true });
-    return { ok: true, answer: r.text, provider: r.provider, model: r.model };
+    var r = complete([{ role: 'system', content: sys }, { role: 'user', content: 'Context:\n' + (ctx || '(none)') + '\n\nQuestion: ' + b.question }], { max_tokens: 1500, fast: true, whole: true });
+    return { ok: true, answer: String(r.text).replace(/<think>[\s\S]*?<\/think>/g, '').trim(), provider: r.provider, model: r.model };
   } catch (e) { return { ok: false, error: String(e.message || e) }; }
 }
 
@@ -969,13 +991,28 @@ var STOP = { the: 1, a: 1, an: 1, of: 1, to: 1, in: 1, is: 1, are: 1, for: 1, an
   yang: 1, dan: 1, di: 1, ke: 1, dari: 1, untuk: 1, adalah: 1, ini: 1, itu: 1, apa: 1, bagaimana: 1, boleh: 1, saya: 1, kami: 1, kita: 1, perlu: 1, ada: 1, tak: 1, tidak: 1, ka: 1, ker: 1, nak: 1, macam: 1, mana: 1 };
 function toks(s) { return String(s || '').toLowerCase().normalize('NFKD').replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(function (w) { return w.length > 1 && !STOP[w]; }); }
 
+// Search words for a question in both Malay and English (the references are
+// mostly Malay; people ask in either). Cached a day per question.
+function expandQuery(q) {
+  var cache = CacheService.getScriptCache(), key = 'qx_' + sha256(Utilities.newBlob(toks(q).join(' ')).getBytes()).slice(0, 24), hit = cache.get(key);
+  if (hit) return JSON.parse(hit);
+  var out = [];
+  try {
+    var r = complete([{ role: 'system', content: 'List the search keywords for this question about Malaysian halal certification, food or cosmetics regulation, in BOTH Bahasa Malaysia (Malaysian, not Indonesian) and English, as they would appear in an official manual (e.g. pindaan, pembaharuan, permohonan, sijil, premis, jenama, amendment, renewal). Return JSON {"terms":["..."]} with 6-16 single words.' },
+      { role: 'user', content: q }], { max_tokens: 400, json: true, fast: true, temperature: 0 });
+    out = toks(((r.json && r.json.terms) || []).join(' ')).slice(0, 24);
+  } catch (e) { out = []; }
+  try { cache.put(key, JSON.stringify(out), 86400); } catch (e) { /* ignore */ }
+  return out;
+}
+
 function askReferences(b) {
   var t0 = Date.now();
   var q = String(b.question || '').trim().slice(0, 600);
   if (q.length < 3) return { ok: false, error: 'Type a question.' };
   var lang = b.lang === 'bm' ? 'bm' : (b.lang === 'en' ? 'en' : 'auto');
   var cache = CacheService.getScriptCache();
-  var key = 'ans_' + (props().getProperty('ans_v') || '0') + '_' + lang + '_' + sha256(Utilities.newBlob(toks(q).join(' ')).getBytes()).slice(0, 24);
+  var key = 'ans2_' + (props().getProperty('ans_v') || '0') + '_' + lang + '_' + sha256(Utilities.newBlob(toks(q).join(' ')).getBytes()).slice(0, 24);
   var hit = cache.get(key);
   if (hit) { var h = JSON.parse(hit); h.cached = true; h.ms = Date.now() - t0; return h; }
 
@@ -983,6 +1020,9 @@ function askReferences(b) {
   // with their Malay/English pair.
   var qt = toks(q), terms = {};
   qt.forEach(function (w) { terms[w] = 1; (SYN[w] || []).forEach(function (x) { if (!terms[x]) terms[x] = 0.7; }); });
+  // Cross-language: the references are mostly in Malay, questions come in
+  // either language. The fast model lists the search words in both.
+  expandQuery(q).forEach(function (w) { if (!terms[w]) terms[w] = 0.8; });
   var refs = {}; readTab('References').forEach(function (r) { if (r.status === 'indexed') refs[r.id] = r; });
   var rows = sheet('RefChunks').getDataRange().getValues().slice(1).filter(function (r) { return refs[r[1]]; });
   if (!rows.length) return { ok: true, layman: '', details: '', citations: [], none: true, message: 'No references have been indexed yet.', ms: Date.now() - t0 };
@@ -993,7 +1033,18 @@ function askReferences(b) {
     Object.keys(d.tf).forEach(function (w) { var idf = Math.log(1 + (N - df[w] + 0.5) / (df[w] + 0.5)); var f = d.tf[w]; sc += terms[w] * idf * (f * 2.2) / (f + 1.2 * (0.25 + 0.75 * d.len / avg)); });
     d.score = sc;
   });
-  var top = docs.filter(function (d) { return d.score > 0; }).sort(function (x, y) { return y.score - x.score; }).slice(0, 6);
+  var ranked = docs.filter(function (d) { return d.score > 0; }).sort(function (x, y) { return y.score - x.score; });
+  // Ten best passages, plus the passage right after each of the best three,
+  // so a requirement that runs over a passage break reaches the model whole.
+  var top = ranked.slice(0, 10), have = {};
+  top.forEach(function (d) { have[d.r[0]] = 1; });
+  ranked.slice(0, 3).forEach(function (d) {
+    var m = String(d.r[0]).match(/^(.*-)(\d+)$/); if (!m) return;
+    var next = m[1] + (Number(m[2]) + 1);
+    if (have[next]) return;
+    var nd = docs.filter(function (x) { return String(x.r[0]) === next; })[0];
+    if (nd) { top.push(nd); have[next] = 1; }
+  });
   if (!top.length) {
     var none = { ok: true, none: true, layman: '', details: '', citations: [], message: lang === 'bm' ? 'Tiada petikan dalam rujukan yang sepadan dengan soalan ini.' : 'Nothing in the references matches this question.', ms: Date.now() - t0 };
     return none;
@@ -1003,10 +1054,10 @@ function askReferences(b) {
   var sys = 'You answer questions from halal executives in Malaysia using ONLY the numbered passages from official references. ' +
     'Return JSON: {"layman":"2-4 short sentences anyone can follow","details":"precise answer naming the requirement, conditions and exceptions, 3-8 sentences","citations":[{"n":<passage number>,"quote":"exact words from that passage, max 25 words"}],"confidence":"high|medium|low"}. ' +
     'Write both answers in ' + langRule + '. Keep regulatory terms original (Sijil Pengesahan Halal Malaysia, MPPHM, MHMS). Cite every fact with the passage number it came from. ' +
-    'If the passages do not answer the question, say so plainly in "layman", leave "details" empty and cite nothing. Never use outside knowledge, never invent a number, clause or page.';
+    'If the passages do not answer the question, say so plainly in "layman", leave "details" empty and cite nothing. If they answer only part of it, answer that part and say which part the references do not cover. Never use outside knowledge, never invent a number, clause or page. Always finish every sentence.';
   var user = 'Passages:\n' + passages.map(function (p) { return '[' + p.n + '] ' + p.title + ', page ' + p.page + '\n' + p.text; }).join('\n\n') + '\n\nQuestion: ' + q;
   var r;
-  try { r = complete([{ role: 'system', content: sys }, { role: 'user', content: user }], { max_tokens: 900, json: true, fast: true, temperature: 0.1 }); }
+  try { r = complete([{ role: 'system', content: sys }, { role: 'user', content: user }], { max_tokens: 2500, json: true, fast: true, temperature: 0.1, whole: true }); }
   catch (e) { return { ok: false, error: 'The AI did not answer: ' + String(e.message || e).slice(0, 200) }; }
   var j = r.json || {};
   var byN = {}; passages.forEach(function (p) { byN[p.n] = p; });

@@ -141,9 +141,11 @@ def index_one(r):
     for i in range(0, len(chunks), 400):
         he_api.post("ref_chunks", ref_id=r["id"], replace=(i == 0), chunks=chunks[i:i + 400])
     pages_n = len([p for p in pages if (p[1] or "").strip()])
+    unreadable = len([p for p in pages if len((p[1] or "").strip()) < 40])
     he_api.upsert("References", [{**r, "pages": pages_n, "chunks": len(chunks), "summary_en": summ.get("summary_en", r.get("summary_en", "")),
                                   "summary_bm": summ.get("summary_bm", r.get("summary_bm", "")), "key_points": json.dumps(summ.get("key_points", []), ensure_ascii=False),
-                                  "edition": r.get("edition") or summ.get("edition", ""), "status": "indexed", "indexed_at": now(), "error": ""}])
+                                  "edition": r.get("edition") or summ.get("edition", ""), "status": "indexed", "indexed_at": now(),
+                                  "error": (f"{unreadable} pages unreadable" if unreadable else "") + (f"; {r['error']}" if str(r.get("error", "")).startswith("audit") else "")}])
     print(f"  {r['id']}: {pages_n} pages, {len(chunks)} passages")
     return provider, model
 
@@ -202,6 +204,47 @@ def sync_guidelines():
     print(f"guidelines: {len(out)} added or updated, {len(orphans)} without a reference removed")
 
 
+# ---- Review: every 3 hours (job "references"), until each reference is whole --
+MAX_TRIES = 5
+
+
+def audit():
+    try:
+        refs = [r for r in he_api.read("References") if r.get("status") == "indexed"]
+        chunks = he_api.read("RefChunks")
+    except he_api.ApiError as e:
+        print("audit skipped:", e)
+        return
+    have = {}
+    for c in chunks:
+        have[c.get("ref_id")] = have.get(c.get("ref_id"), 0) + 1
+    redo = []
+    for r in refs:
+        why = []
+        if have.get(r["id"], 0) == 0 or have.get(r["id"], 0) < int(r.get("chunks") or 0):
+            why.append(f"passages {have.get(r['id'], 0)}/{r.get('chunks')}")
+        summ = str(r.get("summary_en") or "").strip()
+        if not summ or summ[-1] not in ".!?)\"'":
+            why.append("summary missing or cut off")
+        if str(r.get("key_points") or "").strip() in ("", "[]"):
+            why.append("no key points")
+        m = re.search(r"(\d+) pages unreadable", str(r.get("error") or ""))
+        if m and int(m.group(1)) > 0:
+            why.append(f"{m.group(1)} pages unreadable")
+        if not why:
+            continue
+        t = re.search(r"try (\d+)", str(r.get("error") or ""))
+        tries = int(t.group(1)) + 1 if t else 1
+        if tries > MAX_TRIES:
+            print(f"  {r['id']}: still incomplete after {MAX_TRIES} reviews ({', '.join(why)}); left as is")
+            continue
+        redo.append({**r, "status": "pending", "error": f"audit try {tries}: {', '.join(why)}"})
+        print(f"  {r['id']}: re-reading ({', '.join(why)}), try {tries}")
+    if redo:
+        he_api.upsert("References", redo)
+    print(f"review: {len(refs)} references checked, {len(redo)} queued to read again")
+
+
 def run():
     try:
         rows = he_api.read("References")
@@ -232,4 +275,6 @@ def run():
 
 
 if __name__ == "__main__":
+    if "--audit" in sys.argv:
+        audit()
     sys.exit(run())

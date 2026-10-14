@@ -52,6 +52,8 @@
 14. **Pipeline cadence is 30 minutes for now** (Wan, 14 Oct 2026), going back
     to 2 hours once the collectors are stable. The clock is Apps Script, not
     GitHub cron (it fired twice in ten hours on this repo): `installTriggers()`
-    in Code.gs dispatches `pipeline.yml` with GITHUB_TOKEN. Change the times
+    in Code.gs dispatches `pipeline.yml` with GITHUB_TOKEN (30 min messages;
+    3 h reference review, `index_references.py --audit`, re-reads a reference
+    until it is whole, at most 5 times; 6 h news). Change the times
     there and run `installTriggers()` again; do not add a cron back to
     pipeline.yml, or runs double.
