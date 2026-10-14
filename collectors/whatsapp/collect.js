@@ -36,6 +36,14 @@ const state = fs.existsSync(STATE) ? JSON.parse(fs.readFileSync(STATE, 'utf8')) 
 const save = () => fs.writeFileSync(STATE, JSON.stringify(state))
 const hash = (s) => crypto.createHash('sha256').update(SALT + String(s)).digest('hex').slice(0, 16)
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+// Message and chat ids come back either as plain strings or as id objects,
+// depending on the WhatsApp Web build. These always give a usable string.
+const widStr = (w) => (!w ? '' : typeof w === 'string' ? w : w._serialized || (w.user && w.server ? `${w.user}@${w.server}` : ''))
+const remoteOf = (m) => widStr(m.id && m.id.remote) || (m.fromMe ? widStr(m.to) : widStr(m.from))
+const msgIdOf = (m) => {
+  const id = m.id || {}
+  return id._serialized || [id.fromMe ? 'true' : 'false', remoteOf(m), id.id, widStr(id.participant)].filter(Boolean).join('_')
+}
 const norm = (s) => String(s || '').normalize('NFKC').replace(/\s+/g, ' ').trim().toLowerCase()
 
 const exe = browserPath()
@@ -62,8 +70,28 @@ async function listGroups() {
   return []
 }
 
+// Ask WhatsApp Web for older messages until it has no more. A linked device
+// only holds what the phone has synced, and each request pulls the next
+// page from the phone, so this keeps asking (with a pause) and stops after
+// three empty answers in a row.
+async function loadHistory(id) {
+  const total = await client.pupPage.evaluate(async (id, limit) => {
+    const chat = await window.WWebJS.getChat(id, { getAsModel: false })
+    if (!chat) return -1
+    try { const Cmd = window.require('WAWebCmd').Cmd; if (Cmd && Cmd.openChatBottom) await Cmd.openChatBottom({ chat }) } catch (e) { /* older builds */ }
+    const load = window.require('WAWebChatLoadMessages').loadEarlierMsgs
+    let empty = 0
+    while (chat.msgs.getModelsArray().length < limit && empty < 3) {
+      const got = await load({ chat }).catch(() => null)
+      if (got && got.length) empty = 0; else { empty++; await new Promise((r) => setTimeout(r, 2500)) }
+    }
+    return chat.msgs.getModelsArray().length
+  }, id, BACKFILL_LIMIT).catch((e) => { console.warn('History load stopped:', e.message); return null })
+  if (total !== null) console.log(`WhatsApp Web now holds ${total} messages for this group.`)
+}
+
 async function toRow(m) {
-  const row = { source: 'whatsapp', group: GROUP, msg_id: m.id._serialized, sender_hash: hash(m.author || m.from), ts: new Date(m.timestamp * 1000).toISOString(), text: m.body || '', attachments: [] }
+  const row = { source: 'whatsapp', group: GROUP, msg_id: msgIdOf(m), sender_hash: hash(widStr(m.author) || widStr(m.from)), ts: new Date(m.timestamp * 1000).toISOString(), text: m.body || '', attachments: [] }
   if (m.hasMedia) {
     try {
       const media = await m.downloadMedia()
@@ -104,7 +132,10 @@ client.on('ready', async () => {
       // this skips the group-metadata load that crashed getChats.
       const chat = new Chat(client, { id: { _serialized: groupId }, formattedTitle: GROUP, isGroup: true })
       console.log(`Backfill: loading up to ${BACKFILL_LIMIT} messages (large groups take a few minutes)…`)
+      await loadHistory(groupId)
       const msgs = await chat.fetchMessages({ limit: BACKFILL_LIMIT })
+      const ids = new Set(msgs.map(msgIdOf))
+      if (ids.size < msgs.length) console.warn(`Warning: ${msgs.length - ids.size} messages share an id; tell Claude.`)
       console.log(`Backfill: ${msgs.length} messages, sending to the Sheet in batches of 10`)
       let added = 0, skipped = 0, failed = 0
       for (let i = 0; i < msgs.length; i += 10) {
@@ -127,7 +158,7 @@ client.on('ready', async () => {
 // (m.id.remote), so no chat lookup is needed.
 client.on('message_create', async (m) => {
   try {
-    if (!groupId || (m.id && m.id.remote) !== groupId) return
+    if (!groupId || remoteOf(m) !== groupId) return
     const r = await ingest([await toRow(m)])
     state.lastTs = Date.now(); save()
     console.log(new Date().toISOString(), 'saved', r.added ? 'new' : 'already there')
