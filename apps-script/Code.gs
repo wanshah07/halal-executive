@@ -1058,7 +1058,7 @@ function llmProxy(b) { var r = complete(b.messages || [], b.opts || {}); return 
 function chat(b) {
   b.question = String(b.question || '').slice(0, 600);
   b.context = (b.context || []).slice(0, 8).map(function (c) { return { type: String(c.type || '').slice(0, 20), id: String(c.id || '').slice(0, 40), title: String(c.title || '').slice(0, 300), body: String(c.body || '').slice(0, 1500) }; });
-  var lang = b.lang === 'bm' ? 'Bahasa Malaysia (Malaysian register: boleh, ubat, syarikat, kualiti; never Indonesian)' : 'English';
+  var lang = (qLang(b.question) || (b.lang === 'bm' ? 'bm' : 'en')) === 'bm' ? 'Bahasa Malaysia (Malaysian register: boleh, ubat, syarikat, kualiti; never Indonesian)' : 'English';
   // The page sends its own best matches (FAQ, guidelines, documents, events,
   // certificates, news); the reference passages are added here, so the
   // Assistant covers everything on the site and in the references library.
@@ -1066,7 +1066,7 @@ function chat(b) {
   try { refPass = retrievePassages(b.question, 5).passages; } catch (e) { refPass = []; }
   var all = (b.context || []).concat(refPass.map(function (p) { return { type: 'reference', id: p.title + ', page ' + p.page, title: p.title + ', page ' + p.page, body: p.text.slice(0, 1400) }; }));
   var ctx = all.map(function (c, i) { return '[' + (i + 1) + '] (' + c.type + ' ' + c.id + ') ' + c.title + '\n' + c.body; }).join('\n\n');
-  var sys = 'You are the Halal Executive assistant for halal executives in Malaysia. Answer ONLY from the numbered context entries (FAQ, guidelines, documents, events, certificates, news and passages from the official references). Cite entries like [1]; for a reference passage also name the document and page. A one-word question (e.g. "warna") means: what do the sources say about it? If the context does not answer, say so in one sentence and suggest the References tab. Keep regulatory terms original (Notifikasi Kosmetik, Garis Panduan, Borang). Never invent a limit, entry number or date; if a number is not in the context, say it is not in the site sources yet. Reply in the language of the question (Bahasa Malaysia or English; if unclear, ' + lang + '). Be brief but always finish the answer.';
+  var sys = 'You are the Halal Executive assistant for halal executives in Malaysia. Answer ONLY from the numbered context entries (FAQ, guidelines, documents, events, certificates, news and passages from the official references). Cite entries like [1]; for a reference passage also name the document and page. A one-word question (e.g. "warna") means: what do the sources say about it? If the context does not answer, say so in one sentence and suggest the References tab. Keep regulatory terms original (Notifikasi Kosmetik, Garis Panduan, Borang). Never invent a limit, entry number or date; if a number is not in the context, say it is not in the site sources yet. Reply in ' + lang + ', the language of the question. Be brief but always finish the answer.';
   try {
     var r = complete([{ role: 'system', content: sys }, { role: 'user', content: 'Context:\n' + (ctx || '(none)') + '\n\nQuestion: ' + b.question }], { max_tokens: 1500, fast: true, whole: true });
     return { ok: true, answer: String(r.text).replace(/<think>[\s\S]*?<\/think>/g, '').trim(), provider: r.provider, model: r.model };
@@ -1167,7 +1167,7 @@ var BM_WORDS = /\b(yang|dan|apa|apakah|adakah|boleh|bolehkah|bagaimana|berapa|si
 var EN_WORDS = /\b(the|what|who|how|is|are|can|does|do|must|should|which|when|where|why|of|for|to|a|an|my|our|company|certificate|valid|apply|colour|color|committee|internal|retailer|requirement|requirements|products?|premises?|renewal|fees?|ingredients?|labell?ing)\b/gi;
 function qLang(q) {
   var bm = (q.match(BM_WORDS) || []).length, en = (q.match(EN_WORDS) || []).length;
-  return en > bm ? 'en' : 'bm';
+  return en > bm ? 'en' : bm > en ? 'bm' : '';  // '' = cannot tell (e.g. one word)
 }
 
 function expandQuery(q) {
@@ -1233,7 +1233,8 @@ function askReferences(b) {
   var t0 = Date.now();
   var q = String(b.question || '').trim().slice(0, 600);
   if (q.length < 3) return { ok: false, error: 'Type a question.' };
-  var lang = b.lang === 'bm' ? 'bm' : (b.lang === 'en' ? 'en' : qLang(String(b.question || '')));
+  // Always the question's language, whatever language the page is set to (Wan: "tak kisah in english or malay").
+  var lang = qLang(String(b.question || '')) || (b.lang === 'en' ? 'en' : 'bm');
   var cache = CacheService.getScriptCache();
   var key = 'ans2_' + (props().getProperty('ans_v') || '0') + '_' + lang + '_' + sha256(Utilities.newBlob(toks(q).join(' ')).getBytes()).slice(0, 24);
   var hit = cache.get(key);
