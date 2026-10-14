@@ -144,7 +144,13 @@ def index_one(r):
 
 
 def run():
-    refs = [r for r in he_api.read("References") if r.get("status") == "pending"]
+    try:
+        rows = he_api.read("References")
+    except he_api.ApiError as e:
+        # The Sheet has not been given the new Code.gs yet (no References tab).
+        print("references not set up yet:", e)
+        return 0
+    refs = [r for r in rows if r.get("status") == "pending"]
     if not refs:
         print("no references waiting")
         return 0
