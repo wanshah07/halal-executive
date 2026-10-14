@@ -49,12 +49,26 @@ const norm = (s) => String(s || '').normalize('NFKC').replace(/\s+/g, ' ').trim(
 const exe = browserPath()
 if (!exe) console.warn('No Chrome or Edge found. Install Google Chrome, or set HE_BROWSER in collectors/.env to a chrome.exe / msedge.exe path.')
 else console.log('Browser:', exe)
-const client = new Client({ authStrategy: new LocalAuth(), puppeteer: { headless: true, executablePath: exe, args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu'] } })
+// A small cloud server (1 GB) loads WhatsApp Web slowly; give the login and
+// the first sync time instead of the library's short defaults.
+const client = new Client({
+  authStrategy: new LocalAuth(),
+  authTimeoutMs: 180000,
+  puppeteer: { headless: true, executablePath: exe, protocolTimeout: 300000, args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu'] },
+})
+// Progress after the QR is scanned, so a stall or a logout shows where it happened.
+client.on('authenticated', () => console.log('Linked. Loading chats (a small server can take a few minutes)…'))
+client.on('loading_screen', (pct, msg) => console.log(`Loading ${pct}% ${msg || ''}`))
+client.on('change_state', (st) => console.log('State:', st))
 client.on('qr', (qr) => { console.log('Scan with WhatsApp → Settings → Linked devices → Link a device'); qrcode.generate(qr, { small: true }) })
 client.on('auth_failure', (m) => { console.error('Login failed:', m, '\nDelete the .wwebjs_auth folder and run again to get a new QR.'); process.exit(1) })
 // WhatsApp logged this device out or the connection dropped: exit so pm2
 // restarts the collector, which reconnects with the saved session.
-client.on('disconnected', (reason) => { console.error('Disconnected:', reason); process.exit(1) })
+client.on('disconnected', (reason) => {
+  console.error('Disconnected:', reason)
+  if (reason === 'LOGOUT') console.error('WhatsApp ended this linked session. On the phone, check Linked devices, then run again for a new QR.')
+  process.exit(1)
+})
 process.on('unhandledRejection', (e) => console.error('Error:', e && (e.message || e)))
 
 // Groups straight from WhatsApp Web's chat collection: id + title only, no
