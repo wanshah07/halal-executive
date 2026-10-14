@@ -75,7 +75,7 @@ export default function App() {
   const [pinned, setPinnedState] = useState(() => ls('he:pin', '0') === '1')
   const setPinned = (v) => { setPinnedState(v); try { localStorage.setItem('he:pin', v ? '1' : '0') } catch { /* ignore */ } }
 
-  const setTab = (k, id) => { setTabState(k); setFocus(id || null); if (location.hash !== `#${k}`) history.replaceState(null, '', `#${k}`); window.scrollTo({ top: 0 }) }
+  const setTab = (k, id) => { setTabState(k); setFocus(id ? { id, n: Date.now() } : null); if (location.hash !== `#${k}`) history.replaceState(null, '', `#${k}`); window.scrollTo({ top: 0 }) }
   useEffect(() => { const h = () => setTabState(fromHash()); addEventListener('hashchange', h); return () => removeEventListener('hashchange', h) }, [])
   // Admin Delete / Hide: drop the row at once (lib/api.js dropLocal).
   useEffect(() => {
@@ -124,7 +124,7 @@ export default function App() {
           <PageGuard lang={lang} tab={tab}>
           <Suspense fallback={<div className="text-sm text-ink-400 p-4">{t(lang, 'loading')}</div>}>
           {tab === 'overview' && <Overview lang={lang} data={data} setTab={setTab} />}
-          {tab === 'faq' && <FAQ lang={lang} data={data} focusId={focus} />}
+          {tab === 'faq' && <FAQ lang={lang} data={data} focusId={focus && focus.id} focusKey={focus && focus.n} />}
           {tab === 'certificates' && <Certificates lang={lang} data={data} />}
           {tab === 'references' && <References lang={lang} data={data} />}
           {tab === 'guidelines' && <Guidelines lang={lang} data={data} />}

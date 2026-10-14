@@ -4,11 +4,25 @@ import CategoryFilter, { catChip } from '../components/CategoryFilter'
 import { t } from '../lib/i18n'
 import { fmtDate } from '../lib/util'
 
-export default function FAQ({ lang, data, focusId }) {
+export default function FAQ({ lang, data, focusId, focusKey }) {
   const [cat, setCat] = useState('all')
   const [mode, setMode] = useState('formal')
   const [open, setOpen] = useState(focusId || null)
-  useEffect(() => { if (focusId) { setOpen(focusId); setCat('all'); setTimeout(() => document.getElementById(`faq-${focusId}`)?.scrollIntoView({ block: 'center' }), 50) } }, [focusId])
+  // A question clicked on the Overview: open it and bring it to the middle of
+  // the screen, in card or table view, waiting for the list to render (the
+  // page loads on demand). Clicking the same question again does it again.
+  useEffect(() => {
+    if (!focusId) return
+    setOpen(focusId); setCat('all')
+    let tries = 0, timer
+    const go = () => {
+      const el = document.getElementById(`faq-${focusId}`) || document.getElementById(`row-${focusId}`)
+      if (el) { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); el.classList.add('ring-2', 'ring-brand-300'); return }
+      if (++tries < 40) timer = setTimeout(go, 75)
+    }
+    timer = setTimeout(go, 30)
+    return () => clearTimeout(timer)
+  }, [focusId, focusKey])
   const rows = (data.faq || []).filter((f) => f.status !== 'hidden' && (cat === 'all' || f.category === cat))
   const q = (f) => (lang === 'bm' ? f.question_bm || f.question_en : f.question_en || f.question_bm)
   const a = (f) => f[`answer_${mode}_${lang}`] || f[`answer_formal_${lang}`] || f.answer_formal_en

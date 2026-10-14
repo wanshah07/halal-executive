@@ -55,7 +55,7 @@ export default function Certificates({ lang, data }) {
     <ul className="mt-2 text-sm list-disc pl-5 space-y-0.5">{c._products.map((p, i) => <li key={i}>{p}</li>)}{!c._products.length && <li className="list-none text-ink-400">—</li>}</ul>
   )
   return (
-    <Segment id="certificates" lang={lang} title={t(lang, 'certificates')} rows={rows} filters={filters}
+    <Segment id="certificates" cardGrid="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5" lang={lang} title={t(lang, 'certificates')} rows={rows} filters={filters}
       columns={[
         { key: '_thumb', label: '', render: (c) => <CertThumb c={c} lang={lang} size="row" /> },
         { key: '_status', label: t(lang, 'validity'), render: badge },

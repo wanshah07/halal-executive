@@ -62,7 +62,7 @@ jobs:
         working-directory: pipeline
         shell: bash
         run: |
-          JOB="${{ steps.pick.outputs.job }}"; RC=0
+          JOB="${{ steps.pick.outputs.job }}"; RC=0; rm -f "$STATE_DIR/more_waiting"
           phase() {  # phase <minutes> <name> <command...>
             local min=$1 name=$2; shift 2
             python phase.py "$JOB" running "$name: started" || true
@@ -79,14 +79,14 @@ jobs:
               # Start the files lane first (Admin uploads, certificates): it runs
               # beside this one and is done in minutes.
               GH_TOKEN="${{ github.token }}" gh workflow run pipeline.yml --repo "${{ github.repository }}" --ref main -f job=uploads && python phase.py "$JOB" running "uploads lane started" || python phase.py "$JOB" failed "could not start the uploads lane"
-              phase 24 "Read group messages" python process_raw.py --source whatsapp,telegram --minutes 20
+              phase 24 "Read group messages" python process_raw.py --source whatsapp,telegram --attachments none --minutes 20
               phase 10 "Read new references" python index_references.py
               phase 6  "Fill SAHKAN from references" python resolve_sahkan.py ;;
             process_facebook)
               phase 24 "Read Facebook posts" python process_raw.py --source facebook --minutes 20
               phase 6  "Fill SAHKAN from references" python resolve_sahkan.py ;;
             uploads)
-              phase 8  "Read Admin uploads" python process_raw.py --source manual --minutes 6
+              phase 10 "Read Admin uploads and group files" python process_raw.py --source manual,whatsapp,telegram --attachments only --minutes 8
               phase 10 "File documents and certificates" python drive_organiser.py ;;
             news)       phase 20 "Halal news" python news_sweep.py ;;
             organise)   phase 30 "Drive organiser" python drive_organiser.py ;;
@@ -97,4 +97,10 @@ jobs:
             *) echo "unknown job"; exit 1 ;;
           esac
           python phase.py "$JOB" $([ $RC -eq 0 ] && echo done || echo failed) "run finished" || true
+          # Backlog: a run that stopped at its time limit with messages still
+          # waiting starts the next one now instead of waiting for the timer.
+          # Only when it read something, so a provider outage cannot loop.
+          if [ "$JOB" = process_whatsapp ] && [ "$(cat "$STATE_DIR/more_waiting" 2>/dev/null)" = 1 ]; then
+            GH_TOKEN="${{ github.token }}" gh workflow run pipeline.yml --repo "${{ github.repository }}" --ref main -f job=process_whatsapp && python phase.py "$JOB" running "more messages waiting: next run started" || true
+          fi
           exit $RC

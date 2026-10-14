@@ -114,8 +114,13 @@ const thumbs = new Map()
 export async function certThumb(id) {
   if (!API_URL || !id) return null
   if (thumbs.has(id)) return thumbs.get(id)
-  const p = fetch(`${API_URL}?action=thumb&id=${encodeURIComponent(id)}`, { redirect: 'follow' })
+  // A file filed minutes ago may have no Drive preview yet: ask again after
+  // 20 s and 60 s instead of remembering "no preview" for the whole visit.
+  const once = () => fetch(`${API_URL}?action=thumb&id=${encodeURIComponent(id)}`, { redirect: 'follow' })
     .then((r) => r.json()).then((j) => (j.ok ? j.data : null)).catch(() => null)
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms))
+  const p = once().then((d) => d || wait(20000).then(once)).then((d) => d || wait(40000).then(once))
+    .then((d) => { if (!d) thumbs.delete(id); return d })
   thumbs.set(id, p)
   return p
 }

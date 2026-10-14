@@ -55,7 +55,7 @@ export default function Overview({ lang, data, setTab }) {
           {recentList.map((f) => (
             <li key={f.id} className="py-2.5 flex gap-3 items-start">
               {catChip(f.category, lang)}
-              <a href="#faq" onClick={() => setTab('faq', f.id)} className="text-sm hover:underline min-w-0">{lang === 'bm' ? f.question_bm || f.question_en : f.question_en || f.question_bm}</a>
+              <a href={`#faq`} onClick={(e) => { e.preventDefault(); setTab('faq', f.id) }} className="text-sm hover:underline min-w-0">{lang === 'bm' ? f.question_bm || f.question_en : f.question_en || f.question_bm}</a>
               <span className="ml-auto shrink-0 text-xs text-ink-400 hidden sm:inline">{fmtDateTime(f.updated_at || f.created_at, lang)}</span>
             </li>
           ))}

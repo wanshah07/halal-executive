@@ -52,6 +52,25 @@ def shape(j):
 ADMIN_CERT = "Admin upload: this is a halal certificate"
 
 
+def _day(v):
+    try:
+        return dt.date.fromisoformat(str(v)[:10])
+    except ValueError:
+        return None
+
+
+def event_past(e, msg_ts):
+    """An event that has ended, or one taken from a message more than 120 days
+    old (the chat-export backlog: the model fills a missing year with the
+    current one, so an old seminar would look upcoming)."""
+    today = dt.date.today()
+    end = _day(e.get("date_end")) or _day(e.get("date_start"))
+    if end and end < today:
+        return True
+    sent = _day(msg_ts)
+    return bool(sent and (today - sent).days > 120)
+
+
 def msg_ids(it):
     x = it.get("source_msg_ids")
     return [str(v) for v in (x if isinstance(x, list) else [x] if x else [])]
@@ -139,7 +158,7 @@ def existing_faq_digest(faq):
     return [{"id": f["id"], "category": f["category"], "question_en": f["question_en"][:160]} for f in faq if f.get("status") != "hidden"][:400]
 
 
-def run(sources, max_batches, dry, minutes=20):
+def run(sources, max_batches, dry, minutes=20, attachments=None):
     """One phase: reads batches until the queue is empty or `minutes` have
     passed, then stops cleanly so the next 30-minute run carries on (the KKM
     complaints routine works the same way). Nothing is lost when it stops:
@@ -178,7 +197,9 @@ def run(sources, max_batches, dry, minutes=20):
             break
         rows = []
         for s in sources:
-            rows += he_api.raw_list(status="new", source=s, limit=BATCH)
+            rows += he_api.raw_list(status="new", source=s, limit=BATCH, attachments=None if s == "manual" else attachments)
+        if attachments is not None:  # also here, in case Apps Script is an older version that ignores the filter
+            rows = [r for r in rows if r.get("source") == "manual" or ('"name"' in str(r.get("attachments") or "")) == attachments]
         rows = rows[:BATCH]
         if not rows:
             break
@@ -256,7 +277,10 @@ def run(sources, max_batches, dry, minutes=20):
                                      "drive_file_id": a["drive_file_id"], "drive_url": a.get("drive_url", ""), "content_hash": a.get("sha256", ""), "version": "",
                                      "supersedes_id": "", "source_msg_id": m["id"], "received_at": m.get("ts") or ts,
                                      "updated_at": ts, "status": "inbox", "notes": "certificate text found; awaiting organiser"})
+            msg_ts = {str(r["id"]): str(r.get("ts") or "") for r in rows}
             for e in j["events"]:
+                if event_past(e, msg_ts.get(str(e.get("source_msg_id")), "")):
+                    continue  # over already, or announced in an old message: never a draft (Wan, 15 Oct 2026)
                 ek = (norm_title(e.get("title")), str(e.get("date_start", ""))[:10])
                 if e.get("title") and ek in seen_events:
                     continue  # same event (title words + day) already on file
@@ -303,6 +327,13 @@ def run(sources, max_batches, dry, minutes=20):
 
     if not dry:
         he_api.run_log(job, provider, model, total, not err, err)
+        try:  # the workflow starts the next run at once when this one ran out of time
+            import os, pathlib
+            d = pathlib.Path(os.environ.get("STATE_DIR", "."))
+            d.mkdir(parents=True, exist_ok=True)
+            (d / "more_waiting").write_text("1" if (stopped and total and not err) else "0")
+        except OSError:
+            pass
     note(f"finished: {total} messages in {batches} batches" + (f"; {stopped}" if stopped else "") + (f"; FAILED: {err}" if err else ""), state="failed" if err else "done")
     return 0 if not err else 1
 
@@ -313,7 +344,9 @@ if __name__ == "__main__":
     # run, not after the whole chat-export backlog.
     ap.add_argument("--source", default="manual,whatsapp,telegram")
     ap.add_argument("--minutes", type=int, default=20)
+    ap.add_argument("--attachments", choices=["only", "none", "all"], default="all",
+                    help="only = group messages with a file (files lane), none = text only (backlog lane)")
     ap.add_argument("--max-batches", type=int, default=200)
     ap.add_argument("--dry-run", action="store_true")
     a = ap.parse_args()
-    sys.exit(run([s.strip() for s in a.source.split(",") if s.strip()], a.max_batches, a.dry_run, a.minutes))
+    sys.exit(run([s.strip() for s in a.source.split(",") if s.strip()], a.max_batches, a.dry_run, a.minutes, {"only": True, "none": False}.get(a.attachments)))

@@ -274,7 +274,7 @@ function doPost(e) {
     if (a === 'review_list')  { needAdmin(); return json(reviewList()); }
     if (a === 'ref_list')     { needAdmin(); return json({ ok: true, rows: readTab('References') }); }
     if (a === 'event_list')   { needAdmin(); return json({ ok: true, rows: readTab('Events') }); }
-    if (a === 'raw_list')     return json({ ok: true, rows: rawList(body.status, body.source, Math.min(body.limit || 50, 500)) });
+    if (a === 'raw_list')     return json({ ok: true, rows: rawList(body.status, body.source, Math.min(body.limit || 50, 500), body.attachments) });
     if (a === 'read')         { if (WRITABLE.indexOf(body.tab) < 0 && body.tab !== 'Raw') throw new Error('tab not readable'); return json({ ok: true, rows: readTab(body.tab) }); }
     if (a === 'drive_get')    return json(driveGet(body));
     if (a === 'llm_next')     return json({ ok: true, provider: nextProvider() });
@@ -432,11 +432,23 @@ function autoRun(job) {
 // a day after its end (or start, when it has no end). Runs with the 30-minute
 // timer; publicData already hides them in between.
 function eventOver(e, now) {
-  var t = Date.parse(e.date_end || e.date_start);
+  var v = e.date_end || e.date_start, t = v instanceof Date ? v.getTime() : Date.parse(v);
+  if (isNaN(t)) { var m = String(v || '').match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})/); if (m) t = new Date(+m[3], +m[2] - 1, +m[1]).getTime(); } // 12/03/2024
   return !isNaN(t) && t + 24 * 3600 * 1000 < now;
 }
 function purgePastEvents() {
-  var now = Date.now(), gone = readTab('Events').filter(function (e) { return eventOver(e, now); });
+  var now = Date.now(), evs = readTab('Events'), gone = evs.filter(function (e) { return eventOver(e, now); });
+  // AI drafts taken from a message more than 120 days old (the chat-export
+  // backlog) are past events too, whatever year the model guessed (Wan, 15 Oct 2026).
+  var stale = evs.filter(function (e) { return e.status === 'draft' && e.source && e.source !== 'admin' && gone.indexOf(e) < 0; });
+  if (stale.length) {
+    var sh = sheet('Raw'), n = sh.getLastRow() - 1, C = TABS.Raw, ts = {};
+    if (n > 0) {
+      var ids = sh.getRange(2, 1, n, 1).getValues(), when = sh.getRange(2, C.indexOf('ts') + 1, n, 1).getValues();
+      for (var i = 0; i < n; i++) ts[String(ids[i][0])] = when[i][0];
+    }
+    stale.forEach(function (e) { var w = ts[String(e.source)]; var t = w instanceof Date ? w.getTime() : Date.parse(w); if (!isNaN(t) && now - t > 120 * 864e5) gone.push(e); });
+  }
   if (!gone.length) return 0;
   var posters = folder('30 Posters');
   gone.forEach(function (e) {
@@ -600,11 +612,18 @@ function certThumb(id) {
   if (!fileId) return { ok: false, error: 'no file' };
   var cache = CacheService.getScriptCache(), hit = cache.get('thumb_' + fileId);
   if (hit) return { ok: true, data: hit };
+  // A large preview is cached in 90 KB pieces (one cache value holds 100 KB).
+  var np = Number(cache.get('thumb_' + fileId + '_n') || 0);
+  if (np) {
+    var keys = []; for (var k = 0; k < np; k++) keys.push('thumb_' + fileId + '_' + k);
+    var got = cache.getAll(keys), all = keys.map(function (x) { return got[x]; });
+    if (all.every(function (x) { return x != null; })) return { ok: true, data: all.join('') };
+  }
   var data = null;
   try {
     var meta = Drive.Files.get(fileId, { fields: 'thumbnailLink,mimeType' });
     if (meta.thumbnailLink) {
-      var r = UrlFetchApp.fetch(meta.thumbnailLink.replace(/=s\d+$/, '=s480'), { headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }, muteHttpExceptions: true });
+      var r = UrlFetchApp.fetch(meta.thumbnailLink.replace(/=s\d+$/, '=s400'), { headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }, muteHttpExceptions: true });
       if (r.getResponseCode() === 200) data = 'data:' + (r.getHeaders()['Content-Type'] || 'image/png') + ';base64,' + Utilities.base64Encode(r.getContent());
     }
     if (!data && /^image\//.test(meta.mimeType)) {
@@ -613,7 +632,7 @@ function certThumb(id) {
     }
   } catch (e) { return { ok: false, error: String(e.message || e) }; }
   if (!data) return { ok: false, error: 'no preview yet' };
-  if (data.length < 95000) cache.put('thumb_' + fileId, data, 21600);
+  try { if (data.length < 100000) cache.put('thumb_' + fileId, data, 21600); else { var parts = Math.ceil(data.length / 90000), kv = { }; for (var i = 0; i < parts; i++) kv['thumb_' + fileId + '_' + i] = data.slice(i * 90000, (i + 1) * 90000); kv['thumb_' + fileId + '_n'] = String(parts); cache.putAll(kv, 21600); } } catch (e) { /* cache full */ }
   return { ok: true, data: data };
 }
 
@@ -621,7 +640,8 @@ function certThumb(id) {
 var REVIEW_TABS = ['FAQ', 'Events', 'Guidelines', 'Certificates'];
 function reviewList() {
   var out = {};
-  REVIEW_TABS.forEach(function (t) { out[t] = readTab(t).filter(function (r) { return r.status === 'draft'; }); });
+  var now = Date.now();
+  REVIEW_TABS.forEach(function (t) { out[t] = readTab(t).filter(function (r) { return r.status === 'draft' && !(t === 'Events' && eventOver(r, now)); }); });
   // Points the pipeline could not confirm from the references library: they
   // were left out of the published answer and wait here until a reference
   // that states them is uploaded.
@@ -697,12 +717,16 @@ function rawTriage() {
 
 // Rows by status/source without reading the whole tab: two columns to find
 // them, then just those rows.
-function rawList(status, source, limit) {
+function rawList(status, source, limit, attachments) {
   var sh = sheet('Raw'), n = sh.getLastRow() - 1, C = TABS.Raw, out = [];
   if (n < 1) return out;
   var st = sh.getRange(2, C.indexOf('status') + 1, n, 1).getValues(), src = sh.getRange(2, C.indexOf('source') + 1, n, 1).getValues();
+  // attachments true/false: only rows with / without a file (the files lane
+  // takes group attachments so certificates appear in minutes).
+  var at = attachments === true || attachments === false ? sh.getRange(2, C.indexOf('attachments') + 1, n, 1).getValues() : null;
   for (var i = 0; i < n && out.length < limit; i++) {
     if ((status && st[i][0] !== status) || (source && src[i][0] !== source)) continue;
+    if (at) { var has = String(at[i][0] || '').indexOf('"name"') >= 0; if (has !== attachments) continue; }
     var v = sh.getRange(i + 2, 1, 1, C.length).getValues()[0], o = {};
     C.forEach(function (k, j) { o[k] = v[j] instanceof Date ? v[j].toISOString() : v[j]; });
     out.push(o);

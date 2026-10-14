@@ -44,8 +44,9 @@ def get_data():
     return r.json()
 
 
-def raw_list(status="new", source=None, limit=50):
-    return post("raw_list", status=status, source=source, limit=limit)["rows"]
+def raw_list(status="new", source=None, limit=50, attachments=None):
+    """attachments: True = only rows with a file, False = only rows without, None = all."""
+    return post("raw_list", status=status, source=source, limit=limit, attachments=attachments)["rows"]
 
 
 def raw_update(ids, **patch):
