@@ -20,6 +20,11 @@ export const STRINGS = {
     posters: 'Event posters', add_poster: 'Add poster', save: 'Save to Sheet', saved: 'Saved', token: 'Admin token',
     sources_note: 'FAQ entries are drafted by the pipeline from the Halal Executive WhatsApp, Facebook and Telegram groups and reviewed before publishing. Anything the pipeline could not source is marked [SAHKAN].',
     hero_default_title: 'Halal Executive', hero_default_sub: 'Answers, guidelines and documents for halal executives, in one place.',
+    certificates: 'Halal Certificates', company: 'Company', cert_no: 'Certificate no.', scheme: 'Scheme', valid_from: 'Valid from', valid_to: 'Valid to', validity: 'Validity', products: 'Products', state: 'State',
+    valid: 'Valid', expiring: 'Expiring ≤ 90 days', expired: 'Expired', unfold: 'Unfold all', fold: 'Fold all', show_products: 'products', hide_products: 'Hide products',
+    export_csv: 'CSV', export_pdf: 'PDF', export_docx: 'Word', pin: 'Pin sidebar', unpin: 'Unpin sidebar', menu: 'Menu',
+    per_month: 'FAQ added per month', by_state: 'Certificates by state', map_hint: 'Marker size = certificates on file for that state; click for the count.', expiry_month: 'Certificate expiries by month',
+    developed: 'Developed by Wanshah', nothing_in_range: 'Nothing in range yet.',
   },
   bm: {
     overview: 'Ringkasan', faq: 'Soalan Lazim', guidelines: 'Garis Panduan', documents: 'Dokumen', events: 'Acara', news: 'Berita', admin: 'Pentadbir',
@@ -40,6 +45,11 @@ export const STRINGS = {
     posters: 'Poster acara', add_poster: 'Tambah poster', save: 'Simpan ke Helaian', saved: 'Disimpan', token: 'Token pentadbir',
     sources_note: 'Soalan Lazim digubal oleh saluran daripada kumpulan WhatsApp, Facebook dan Telegram Halal Executive dan disemak sebelum diterbitkan. Apa-apa yang tidak dapat disahkan ditanda [SAHKAN].',
     hero_default_title: 'Halal Executive', hero_default_sub: 'Jawapan, garis panduan dan dokumen untuk eksekutif halal, di satu tempat.',
+    certificates: 'Sijil Halal', company: 'Syarikat', cert_no: 'No. sijil', scheme: 'Skim', valid_from: 'Sah dari', valid_to: 'Sah hingga', validity: 'Tempoh sah', products: 'Produk', state: 'Negeri',
+    valid: 'Sah', expiring: 'Tamat ≤ 90 hari', expired: 'Tamat tempoh', unfold: 'Buka semua', fold: 'Lipat semua', show_products: 'produk', hide_products: 'Sembunyi produk',
+    export_csv: 'CSV', export_pdf: 'PDF', export_docx: 'Word', pin: 'Pin bar sisi', unpin: 'Nyahpin bar sisi', menu: 'Menu',
+    per_month: 'Soalan Lazim ditambah sebulan', by_state: 'Sijil mengikut negeri', map_hint: 'Saiz penanda = bilangan sijil dalam fail untuk negeri itu; klik untuk jumlah.', expiry_month: 'Tamat tempoh sijil mengikut bulan',
+    developed: 'Dibangunkan oleh Wanshah', nothing_in_range: 'Tiada data dalam julat lagi.',
   },
 }
 export const t = (lang, key) => (STRINGS[lang] && STRINGS[lang][key]) || STRINGS.en[key] || key

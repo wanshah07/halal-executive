@@ -26,8 +26,8 @@ web app is the only door to the Sheet and Drive.
    wanshah07.github.io`. Pages → Custom domain shows
    `halalexecutive.kkmhalalconsultant.com` from `public/CNAME`; tick
    Enforce HTTPS once the certificate is issued.
-8. Drop `public/brand/jakim-halal-logo.png` and `favicon.png` (see
-   `public/brand/README.md` for the Trade Descriptions Order note).
+8. Logo files are in `public/brand/` (from Wan's artwork, 14 Oct 2026). Replace
+   them there if the artwork changes; nothing else references the path.
 
 ## 3. Pipeline
 9. Repository secrets: `HE_API_URL`, `HE_INGEST_TOKEN`, `MIRELD_API_KEY`,

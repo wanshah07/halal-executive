@@ -1,7 +1,8 @@
 # Brand assets
 
-Put these two files here. They are not committed by the build session because
-the JAKIM Halal Malaysia logo is a certification mark, not a free asset.
+Files committed on 14 Oct 2026 from the artwork Wan supplied: `jakim-halal-logo.png`
+(512 px, header), `favicon.png` (64 px), `apple-touch-icon.png` (180 px) and
+`halal-executive-lockup.png` (full lock-up with the wordmark).
 
 | File | Used for | Size |
 |---|---|---|

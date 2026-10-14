@@ -7,13 +7,16 @@ in the **Halal Executive** WhatsApp, Facebook and Telegram groups.
 
 | Segment | What it holds | Where it comes from |
 |---|---|---|
-| Overview | counts, recent FAQ, category and source bars, pipeline status, event posters, popup notice | Sheet feed |
+| Overview | counts, certificate validity tiles, FAQ-per-month chart, Malaysia map of certificates by state, recent FAQ, category and source bars, pipeline status, event posters, popup notice | Sheet feed |
+| Halal Certificates | holder, certificate number, scheme, state, validity (valid / expiring ≤ 90 d / expired), product list that folds and unfolds; cards or table | Certificates tab, filled by `pipeline/drive_organiser.py` from certificate documents |
 | FAQ | questions by category (Halal, Food, Cosmetic), four answers each: formal / layman × EN / BM; cards or table | `pipeline/process_raw.py` from group messages |
 | Guidelines | instrument list with issuer, summary EN/BM, link; cards or table | Guidelines tab (pipeline + hand-typed) |
 | Documents | certificates and circulars shared in the groups, filed in Drive with date and version; current vs archived | `pipeline/drive_organiser.py` |
 | Events | upcoming talks, courses, audits; posters from the Admin panel | Events tab + Settings.posters |
 | News | halal-related headlines, each removed 72 h after fetch | `pipeline/news_sweep.py` |
 | Admin | hero text and image, popup notification, event posters | writes Settings via Apps Script |
+| Sidebar | auto-hides to an icon rail, expands on hover or focus, pin to keep it open; drawer on phones | page |
+| Export | current segment as CSV, PDF (jsPDF) or Word (.docx), from the header menu | page |
 | Search + Assistant | one search box over every segment; the assistant answers from the matched entries through MIRELD / AFIQ | page + `Code.gs` chat |
 
 ## How it fits together
@@ -39,6 +42,7 @@ Sheet ──(GET ?action=data)──► this page (Vite + React + Tailwind) ─�
   `.github/workflows/pipeline.yml` (primary) and `routines/` (Claude Routine
   alternative).
 * **Order of work.** WhatsApp first; Facebook and Telegram after it is stable.
+* **Charts.** Category colours (`src/lib/config.js` CHART) were validated with the dataviz palette validator on the light and dark surfaces; one hue per category, fixed order.
 
 ## Repository map
 

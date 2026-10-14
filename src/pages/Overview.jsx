@@ -5,6 +5,10 @@ import { CATEGORIES } from '../lib/config'
 import { t } from '../lib/i18n'
 import { count, daysAgo, fmtDateTime } from '../lib/util'
 import { catChip } from '../components/CategoryFilter'
+import MonthlyChart, { monthlySeries } from '../components/MonthlyChart'
+import MapPanel from '../components/MapPanel'
+import { guessState } from '../lib/config'
+import { certStatus } from './Certificates'
 
 export default function Overview({ lang, data, setTab }) {
   const faq = data.faq || [], docs = data.documents || [], events = data.events || [], news = data.news || [], gl = data.guidelines || []
@@ -15,6 +19,12 @@ export default function Overview({ lang, data, setTab }) {
   const lastRun = (data.runs || [])[0]
   const posters = (() => { try { return JSON.parse(data.settings.posters || '[]') } catch { return [] } })()
   const topics = Object.entries(count(faq, 'subcategory')).sort((a, b) => b[1] - a[1]).slice(0, 8)
+  const certs = data.certificates || []
+  const monthly = monthlySeries(faq, 'created_at')
+  const byState = {}
+  const src = certs.length ? certs : events
+  src.forEach((x) => { const st = x.state || guessState(x.venue || x.company); if (st) byState[st] = (byState[st] || 0) + 1 })
+  const certStat = count(certs.map((c) => ({ s: certStatus(c) })), 's')
 
   return (
     <div>
@@ -34,6 +44,17 @@ export default function Overview({ lang, data, setTab }) {
         <StatCard label={t(lang, 'archived_docs')} value={docs.filter((d) => d.status === 'archived').length} tone="grey" hint={t(lang, 'documents')} />
         <StatCard label={t(lang, 'upcoming')} value={upcoming.length} tone="amber" hint={t(lang, 'events')} />
         <StatCard label={t(lang, 'live_news')} value={news.length} tone="ink" hint="auto-expires" />
+      </div>
+
+      <div className="grid gap-4 grid-cols-3 mb-4">
+        <StatCard label={t(lang, 'certificates') + ' · ' + t(lang, 'valid')} value={certStat.valid || 0} tone="green" />
+        <StatCard label={t(lang, 'expiring')} value={certStat.expiring || 0} tone="amber" />
+        <StatCard label={t(lang, 'expired')} value={certStat.expired || 0} tone="red" />
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-[3fr_2fr] mb-4">
+        <MonthlyChart lang={lang} title={t(lang, 'per_month')} data={monthly} />
+        <MapPanel lang={lang} byState={byState} />
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4 mb-4">

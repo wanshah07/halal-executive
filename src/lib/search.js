@@ -11,6 +11,7 @@ export function buildIndex(data) {
   ;(data.guidelines || []).forEach((g) => push('guidelines', g.id, `${g.title} ${g.title_bm}`, `${g.summary_en} ${g.summary_bm} ${g.issuer} ${g.category}`, g))
   ;(data.documents || []).forEach((d) => push('documents', d.id, d.title, `${d.kind} ${d.category} ${d.notes || ''}`, d))
   ;(data.events || []).forEach((e) => push('events', e.id, `${e.title} ${e.title_bm}`, `${e.description} ${e.venue}`, e))
+  ;(data.certificates || []).forEach((c) => push('certificates', c.id, `${c.company} ${c.cert_no}`, `${c.scheme} ${c.category} ${c.state} ${c.products}`, c))
   ;(data.news || []).forEach((n) => push('news', n.id, n.title, `${n.summary_en} ${n.summary_bm} ${n.source}`, n))
   return docs
 }

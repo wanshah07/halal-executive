@@ -1,6 +1,6 @@
 # The Sheet
 
-One Google Sheet, eight tabs, created by `setup()` in `Code.gs`. Column order
+One Google Sheet, nine tabs, created by `setup()` in `Code.gs`. Column order
 is the contract between the page, the collectors and the pipeline; add
 columns at the end only.
 
@@ -10,6 +10,7 @@ columns at the end only.
 | `FAQ` | pipeline (`upsert`), Wan by hand | page | `status` = draft / published / hidden; only published shows |
 | `Guidelines` | pipeline, Wan by hand | page | same shape as the info sheet; `status` hidden removes a row |
 | `Documents` | organiser | page | one row per file version; `status` current / archived |
+| `Certificates` | organiser (from certificate documents), Wan by hand | page | holder, cert no, scheme, state, valid_from/valid_to, products (`;`-separated); `status` hidden removes a row; validity badge is computed on the page from `valid_to` |
 | `Events` | Wan by hand, pipeline when a message is an event | page | |
 | `News` | news sweep | page | `expires_at` = `fetched_at` + 72 h; purged by the sweep and by `purgeExpiredNews()` |
 | `Settings` | Admin panel | page | key/value: hero_*, notice_*, posters (JSON array) |

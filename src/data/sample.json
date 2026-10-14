@@ -14,55 +14,216 @@
   },
   "faq": [
     {
-      "id": "FAQ-0001", "category": "halal", "subcategory": "Standards",
+      "id": "FAQ-0001",
+      "category": "halal",
+      "subcategory": "Standards",
       "question_en": "Which Malaysian Standard applies to cosmetics for halal certification?",
       "question_bm": "Standard Malaysia yang mana terpakai untuk pensijilan halal kosmetik?",
       "answer_formal_en": "Cosmetic and personal care products are assessed against MS 2200-1 (Islamic consumer goods, Part 1: Cosmetic and personal care, general guidelines) under the Malaysian Halal Certification Procedure Manual. [SAHKAN: current edition year and manual revision]",
       "answer_layman_en": "For cosmetics, the halal yardstick is MS 2200 Part 1, not the food standard MS 1500.",
       "answer_formal_bm": "Produk kosmetik dan penjagaan diri dinilai berdasarkan MS 2200-1 (Barangan gunaan Islam, Bahagian 1: Kosmetik dan penjagaan diri, garis panduan umum) di bawah Manual Prosedur Pensijilan Halal Malaysia. [SAHKAN: tahun edisi semasa dan semakan manual]",
       "answer_layman_bm": "Untuk kosmetik, ukuran halalnya ialah MS 2200 Bahagian 1, bukan standard makanan MS 1500.",
-      "source_refs": "whatsapp:2026-10-02 14:12", "confidence": "high", "status": "published",
-      "created_at": "2026-10-02T06:20:00Z", "updated_at": "2026-10-02T06:20:00Z", "model": "sample"
+      "source_refs": "whatsapp:2026-10-02 14:12",
+      "confidence": "high",
+      "status": "published",
+      "created_at": "2026-08-12T06:20:00Z",
+      "updated_at": "2026-10-02T06:20:00Z",
+      "model": "sample"
     },
     {
-      "id": "FAQ-0002", "category": "food", "subcategory": "Premises",
+      "id": "FAQ-0002",
+      "category": "food",
+      "subcategory": "Premises",
       "question_en": "Does a halal-certified premise still need a KKM food premise licence?",
       "question_bm": "Adakah premis bersijil halal masih perlu lesen premis makanan KKM?",
       "answer_formal_en": "Yes. Halal certification (JAKIM / JAIN / MAIN) and food-safety registration with the Ministry of Health (Food Act 1983 and Food Regulations 1985; MeSTI or HACCP where applicable) are separate requirements and both apply. [SAHKAN: which registration the premise category requires]",
       "answer_layman_en": "Two different doors: halal is JAKIM, food safety is KKM. You need both.",
       "answer_formal_bm": "Ya. Pensijilan halal (JAKIM / JAIN / MAIN) dan pendaftaran keselamatan makanan dengan Kementerian Kesihatan (Akta Makanan 1983 dan Peraturan-Peraturan Makanan 1985; MeSTI atau HACCP jika berkenaan) ialah keperluan berasingan dan kedua-duanya terpakai. [SAHKAN: pendaftaran yang diperlukan mengikut kategori premis]",
       "answer_layman_bm": "Dua pintu berbeza: halal ialah JAKIM, keselamatan makanan ialah KKM. Kedua-duanya perlu.",
-      "source_refs": "whatsapp:2026-10-05 09:40", "confidence": "high", "status": "published",
-      "created_at": "2026-10-05T02:10:00Z", "updated_at": "2026-10-05T02:10:00Z", "model": "sample"
+      "source_refs": "whatsapp:2026-10-05 09:40",
+      "confidence": "high",
+      "status": "published",
+      "created_at": "2026-09-05T02:10:00Z",
+      "updated_at": "2026-10-05T02:10:00Z",
+      "model": "sample"
     },
     {
-      "id": "FAQ-0003", "category": "cosmetic", "subcategory": "Notification",
+      "id": "FAQ-0003",
+      "category": "cosmetic",
+      "subcategory": "Notification",
       "question_en": "Is a cosmetic product with a halal certificate exempt from NPRA notification?",
       "question_bm": "Adakah produk kosmetik yang mempunyai sijil halal dikecualikan daripada notifikasi NPRA?",
       "answer_formal_en": "No. Notifikasi Kosmetik with NPRA under the Control of Drugs and Cosmetics Regulations 1984 is required before a cosmetic is marketed in Malaysia, regardless of halal status. The halal certificate is a separate voluntary scheme.",
       "answer_layman_en": "Halal does not replace NPRA. Notify first, then market.",
       "answer_formal_bm": "Tidak. Notifikasi Kosmetik dengan NPRA di bawah Peraturan-Peraturan Kawalan Dadah dan Kosmetik 1984 diperlukan sebelum kosmetik dipasarkan di Malaysia, tanpa mengira status halal. Sijil halal ialah skim sukarela yang berasingan.",
       "answer_layman_bm": "Halal tidak menggantikan NPRA. Notifikasi dahulu, baru pasarkan.",
-      "source_refs": "telegram:2026-10-08 20:05", "confidence": "high", "status": "published",
-      "created_at": "2026-10-08T12:30:00Z", "updated_at": "2026-10-08T12:30:00Z", "model": "sample"
+      "source_refs": "telegram:2026-10-08 20:05",
+      "confidence": "high",
+      "status": "published",
+      "created_at": "2026-10-08T12:30:00Z",
+      "updated_at": "2026-10-08T12:30:00Z",
+      "model": "sample"
     }
   ],
   "guidelines": [
-    { "id": "GL-0001", "category": "halal", "title": "Malaysian Halal Certification Procedure Manual", "title_bm": "Manual Prosedur Pensijilan Halal Malaysia", "summary_en": "Procedure for application, audit, certification and renewal of the Malaysian halal certificate. [SAHKAN: current revision]", "summary_bm": "Prosedur permohonan, audit, pensijilan dan pembaharuan sijil halal Malaysia. [SAHKAN: semakan semasa]", "link": "https://www.halal.gov.my/", "issuer": "JAKIM", "effective_date": "", "updated_at": "2026-10-01T00:00:00Z", "status": "published" },
-    { "id": "GL-0002", "category": "cosmetic", "title": "Guidelines for Control of Cosmetic Products in Malaysia", "title_bm": "Garis Panduan Kawalan Produk Kosmetik di Malaysia", "summary_en": "NPRA requirements for Notifikasi Kosmetik, ingredient annexes, labelling and claims. [SAHKAN: revision date]", "summary_bm": "Keperluan NPRA untuk Notifikasi Kosmetik, lampiran bahan, pelabelan dan dakwaan. [SAHKAN: tarikh semakan]", "link": "https://www.npra.gov.my/", "issuer": "NPRA", "effective_date": "", "updated_at": "2026-10-01T00:00:00Z", "status": "published" }
+    {
+      "id": "GL-0001",
+      "category": "halal",
+      "title": "Malaysian Halal Certification Procedure Manual",
+      "title_bm": "Manual Prosedur Pensijilan Halal Malaysia",
+      "summary_en": "Procedure for application, audit, certification and renewal of the Malaysian halal certificate. [SAHKAN: current revision]",
+      "summary_bm": "Prosedur permohonan, audit, pensijilan dan pembaharuan sijil halal Malaysia. [SAHKAN: semakan semasa]",
+      "link": "https://www.halal.gov.my/",
+      "issuer": "JAKIM",
+      "effective_date": "",
+      "updated_at": "2026-10-01T00:00:00Z",
+      "status": "published"
+    },
+    {
+      "id": "GL-0002",
+      "category": "cosmetic",
+      "title": "Guidelines for Control of Cosmetic Products in Malaysia",
+      "title_bm": "Garis Panduan Kawalan Produk Kosmetik di Malaysia",
+      "summary_en": "NPRA requirements for Notifikasi Kosmetik, ingredient annexes, labelling and claims. [SAHKAN: revision date]",
+      "summary_bm": "Keperluan NPRA untuk Notifikasi Kosmetik, lampiran bahan, pelabelan dan dakwaan. [SAHKAN: tarikh semakan]",
+      "link": "https://www.npra.gov.my/",
+      "issuer": "NPRA",
+      "effective_date": "",
+      "updated_at": "2026-10-01T00:00:00Z",
+      "status": "published"
+    }
   ],
   "documents": [
-    { "id": "DOC-0001", "title": "Halal Certificate – Sample Sdn Bhd (Premise)", "kind": "certificate", "category": "halal", "drive_file_id": "", "drive_url": "", "content_hash": "sample-a1", "version": 2, "supersedes_id": "DOC-0000", "source_msg_id": "wa:123", "received_at": "2026-10-09T03:00:00Z", "updated_at": "2026-10-09T03:05:00Z", "status": "current", "notes": "Sample row" },
-    { "id": "DOC-0000", "title": "Halal Certificate – Sample Sdn Bhd (Premise)", "kind": "certificate", "category": "halal", "drive_file_id": "", "drive_url": "", "content_hash": "sample-a0", "version": 1, "supersedes_id": "", "source_msg_id": "wa:77", "received_at": "2026-04-02T03:00:00Z", "updated_at": "2026-10-09T03:05:00Z", "status": "archived", "notes": "Sample row" }
+    {
+      "id": "DOC-0001",
+      "title": "Halal Certificate – Sample Sdn Bhd (Premise)",
+      "kind": "certificate",
+      "category": "halal",
+      "drive_file_id": "",
+      "drive_url": "",
+      "content_hash": "sample-a1",
+      "version": 2,
+      "supersedes_id": "DOC-0000",
+      "source_msg_id": "wa:123",
+      "received_at": "2026-10-09T03:00:00Z",
+      "updated_at": "2026-10-09T03:05:00Z",
+      "status": "current",
+      "notes": "Sample row"
+    },
+    {
+      "id": "DOC-0000",
+      "title": "Halal Certificate – Sample Sdn Bhd (Premise)",
+      "kind": "certificate",
+      "category": "halal",
+      "drive_file_id": "",
+      "drive_url": "",
+      "content_hash": "sample-a0",
+      "version": 1,
+      "supersedes_id": "",
+      "source_msg_id": "wa:77",
+      "received_at": "2026-04-02T03:00:00Z",
+      "updated_at": "2026-10-09T03:05:00Z",
+      "status": "archived",
+      "notes": "Sample row"
+    }
   ],
   "events": [
-    { "id": "EV-0001", "title": "Halal Executive Monthly Sharing", "title_bm": "Perkongsian Bulanan Halal Executive", "date_start": "2026-10-28T02:00:00Z", "date_end": "2026-10-28T04:00:00Z", "venue": "Online", "poster_url": "", "link": "", "description": "Sample event row. Posters are set from the Admin panel.", "status": "published" }
+    {
+      "id": "EV-0001",
+      "title": "Halal Executive Monthly Sharing",
+      "title_bm": "Perkongsian Bulanan Halal Executive",
+      "date_start": "2026-10-28T02:00:00Z",
+      "date_end": "2026-10-28T04:00:00Z",
+      "venue": "Online",
+      "poster_url": "",
+      "link": "",
+      "description": "Sample event row. Posters are set from the Admin panel.",
+      "status": "published"
+    }
   ],
   "news": [
-    { "id": "NEWS-0001", "title": "Sample: JAKIM halal news headline", "url": "https://www.halal.gov.my/", "source": "halal.gov.my", "published_at": "2026-10-13T01:00:00Z", "fetched_at": "2026-10-13T02:00:00Z", "expires_at": "2026-10-16T02:00:00Z", "summary_en": "Sample news row; live rows come from pipeline/news_sweep.py and expire 72 hours after they are fetched.", "summary_bm": "Baris berita contoh; baris sebenar datang daripada pipeline/news_sweep.py dan tamat 72 jam selepas diambil.", "category": "halal" }
+    {
+      "id": "NEWS-0001",
+      "title": "Sample: JAKIM halal news headline",
+      "url": "https://www.halal.gov.my/",
+      "source": "halal.gov.my",
+      "published_at": "2026-10-13T01:00:00Z",
+      "fetched_at": "2026-10-13T02:00:00Z",
+      "expires_at": "2026-10-16T02:00:00Z",
+      "summary_en": "Sample news row; live rows come from pipeline/news_sweep.py and expire 72 hours after they are fetched.",
+      "summary_bm": "Baris berita contoh; baris sebenar datang daripada pipeline/news_sweep.py dan tamat 72 jam selepas diambil.",
+      "category": "halal"
+    }
   ],
   "runs": [
-    { "ts": "2026-10-14T03:00:00Z", "job": "process_raw", "provider": "AFIQ", "model": "glm-5.3", "processed": 0, "ok": true, "error": "" }
+    {
+      "ts": "2026-10-14T03:00:00Z",
+      "job": "process_raw",
+      "provider": "AFIQ",
+      "model": "glm-5.3",
+      "processed": 0,
+      "ok": true,
+      "error": ""
+    }
   ],
-  "raw_stats": { "new": 0, "processed": 0, "skipped": 0, "by_source": { "whatsapp": 0, "facebook": 0, "telegram": 0 } }
+  "raw_stats": {
+    "new": 0,
+    "processed": 0,
+    "skipped": 0,
+    "by_source": {
+      "whatsapp": 0,
+      "facebook": 0,
+      "telegram": 0
+    }
+  },
+  "certificates": [
+    {
+      "id": "CERT-0001",
+      "company": "Contoh Makanan Sdn Bhd",
+      "cert_no": "[SAHKAN: cert no.]",
+      "scheme": "Food Product",
+      "category": "food",
+      "state": "Selangor",
+      "valid_from": "2025-03-01",
+      "valid_to": "2027-02-28",
+      "products": "Sos cili (1 kg); Sos tomato (1 kg); Kicap manis (500 ml)",
+      "drive_url": "",
+      "doc_id": "DOC-0001",
+      "status": "valid",
+      "updated_at": "2026-10-09T03:05:00Z",
+      "notes": "Sample row"
+    },
+    {
+      "id": "CERT-0002",
+      "company": "Contoh Kosmetik Sdn Bhd",
+      "cert_no": "[SAHKAN: cert no.]",
+      "scheme": "Cosmetic",
+      "category": "cosmetic",
+      "state": "Johor",
+      "valid_from": "2024-12-15",
+      "valid_to": "2026-12-14",
+      "products": "Pelembap muka 50 ml; Pencuci muka 100 ml",
+      "drive_url": "",
+      "doc_id": "",
+      "status": "expiring",
+      "updated_at": "2026-10-01T00:00:00Z",
+      "notes": "Sample row"
+    },
+    {
+      "id": "CERT-0003",
+      "company": "Contoh Restoran Sdn Bhd",
+      "cert_no": "[SAHKAN: cert no.]",
+      "scheme": "Food Premise",
+      "category": "halal",
+      "state": "Pulau Pinang",
+      "valid_from": "2023-09-01",
+      "valid_to": "2025-08-31",
+      "products": "Premis: Restoran Contoh, Bayan Lepas",
+      "drive_url": "",
+      "doc_id": "",
+      "status": "expired",
+      "updated_at": "2026-10-01T00:00:00Z",
+      "notes": "Sample row"
+    }
+  ]
 }

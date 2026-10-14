@@ -13,7 +13,9 @@ classified attachment):
 4. New version → version = old + 1, old row → `archived`, old file moved to
    `90 Archive/<category>`; new file renamed "YYYY-MM-DD vN Title.ext" and
    moved to `10 Documents/<category>`. New document → version 1, same naming.
-5. `updated_at` is Drive's modifiedTime after the move, so the Sheet and the
+5. A certificate also gets a Certificates row (holder, number, scheme, state,
+   validity, product list) so the Halal Certificates segment can fold/unfold it.
+6. `updated_at` is Drive's modifiedTime after the move, so the Sheet and the
    Drive "Last modified" column agree.
 
   python drive_organiser.py            (daily job, and after each process run)
@@ -28,7 +30,8 @@ import he_api
 import llm_router
 
 CLASSIFY = """You compare a newly received document with the current documents already on file for halal executives in Malaysia. Decide if the new one is a NEW VERSION of one of them (same subject: same certificate holder and scheme, or same circular / guideline / form, with a later date or revision) or a NEW DOCUMENT. Use the OCR text; do not guess from the file name alone. Also extract a clean title ("<Type> – <Holder or subject> – <scheme or ref>"), the document date (ISO, or empty) and an expiry date if printed.
-Return JSON: {"relation":"version_of|new","of_id":"existing id or null","title":"","doc_date":"","expiry":"","confidence":"high|medium|low","reason":""}"""
+If the document is a halal certificate (Sijil Pengesahan Halal Malaysia or a foreign body's certificate), also fill `certificate`: holder company name as printed, certificate number, scheme (Food Product, Food Premise, Cosmetic, Pharmaceutical, Logistics, Slaughterhouse, OEM, other), Malaysian state of the holder if printed, valid_from and valid_to (ISO), and the product or premise list as printed (one string per item). Leave `certificate` null for anything else. Never invent a number: an unreadable field is "[SAHKAN]".
+Return JSON: {"relation":"version_of|new","of_id":"existing id or null","title":"","doc_date":"","expiry":"","confidence":"high|medium|low","reason":"","certificate":null|{"company":"","cert_no":"","scheme":"","state":"","valid_from":"","valid_to":"","products":[""]}}"""
 
 
 def safe(s):
@@ -42,6 +45,16 @@ def run():
         print("nothing in inbox"); he_api.run_log("drive_organiser", "", "", 0, True); return 0
     by_hash = {d["content_hash"]: d for d in docs if d.get("content_hash") and d.get("status") in ("current", "archived")}
     current = [d for d in docs if d.get("status") == "current"]
+    certs = he_api.read("Certificates")
+    _ci = [0]
+    for c in certs:
+        try:
+            _ci[0] = max(_ci[0], int(str(c["id"]).split("-")[1]))
+        except (IndexError, ValueError, KeyError):
+            pass
+    def ids_cert():
+        _ci[0] += 1
+        return f"CERT-{_ci[0]:04d}"
     provider, model, n, errs = "", "", 0, []
 
     for d in inbox:
@@ -73,6 +86,14 @@ def run():
                 he_api.upsert("Documents", [{**old, "status": "archived", "updated_at": om["modified"], "notes": f"superseded by {d['id']}"}])
                 current = [c for c in current if c["id"] != old["id"]]
             d.update(content_hash=h, version=version, status="current", title=title); current.append(d); by_hash[h] = d
+            cert = j.get("certificate")
+            if cert and cert.get("company"):
+                prev = next((c for c in certs if c.get("doc_id") == (old["id"] if old else None)), None)
+                cid = prev["id"] if prev else ids_cert()
+                he_api.upsert("Certificates", [{"id": cid, "company": cert.get("company", ""), "cert_no": cert.get("cert_no", ""), "scheme": cert.get("scheme", ""), "category": d.get("category", "halal"),
+                                                 "state": cert.get("state", ""), "valid_from": cert.get("valid_from", ""), "valid_to": cert.get("valid_to", ""), "products": "; ".join(cert.get("products") or []),
+                                                 "drive_url": moved["url"], "doc_id": d["id"], "status": "current", "updated_at": moved["modified"], "notes": f"{provider}:{model} {j.get('confidence', '')}"}])
+                print("  certificate", cid, cert.get("company"), cert.get("valid_to"))
             print(d["id"], "filed as", moved["name"], "(supersedes %s)" % old["id"] if old else "")
             n += 1
         except (he_api.ApiError, llm_router.LLMError, KeyError) as e:
