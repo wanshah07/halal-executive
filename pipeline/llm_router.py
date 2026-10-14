@@ -114,8 +114,25 @@ def _call(name, messages, json_mode=False, max_tokens=2000, temperature=0.2, mod
     return {"text": text, "provider": name, "model": model}
 
 
+def parse_json(text):
+    """JSON out of a completion: strips <think> blocks and code fences, then
+    falls back to the outermost {...}."""
+    t = re.sub(r"<think>.*?</think>", "", text or "", flags=re.S).strip()
+    m = re.search(r"```(?:json)?\s*(.*?)```", t, re.S)
+    if m:
+        t = m.group(1).strip()
+    try:
+        return json.loads(t)
+    except json.JSONDecodeError:
+        s, e = t.find("{"), t.rfind("}")
+        if s < 0 or e <= s:
+            raise LLMError("non-JSON completion: " + t[:160].replace("\n", " "))
+        return json.loads(t[s:e + 1])
+
+
 def complete(messages, json_mode=False, **kw):
-    """Alternate providers; fall back to the other on any error."""
+    """Alternate providers; fall back to the other on any error, including a
+    reply that cannot be read as JSON when JSON was asked for."""
     avail = available()
     if not avail:
         raise LLMError("no provider keys set (MIRELD_API_KEY / AFIQ_API_KEY)")
@@ -125,31 +142,28 @@ def complete(messages, json_mode=False, **kw):
     for name in order:
         try:
             out = _call(name, messages, json_mode=json_mode, **kw)
+            if json_mode:
+                try:
+                    out["json"] = parse_json(out["text"])
+                except (LLMError, ValueError) as e:
+                    # Some gateways ignore response_format: ask once more
+                    # without it before handing the request on.
+                    retry = _call(name, messages + [{"role": "user", "content": "Reply with the JSON object only, no other text."}], json_mode=False, **kw)
+                    out = {**retry, "json": parse_json(retry["text"])}
             if errors:
                 out["fallback_from"] = order[0]
                 out["first_error"] = errors[0]
             return out
         except (LLMError, requests.RequestException, ValueError) as e:
             errors.append(f"{name}: {e}")
+            print(f"[router] {name} failed: {str(e)[:200]}")
             time.sleep(1)
     raise LLMError("all providers failed: " + " | ".join(errors))
 
 
 def complete_json(messages, **kw):
-    """complete() plus tolerant JSON extraction (fenced or bare)."""
-    out = complete(messages, json_mode=True, **kw)
-    t = out["text"].strip()
-    m = re.search(r"```(?:json)?\s*(.*?)```", t, re.S)
-    if m:
-        t = m.group(1)
-    try:
-        out["json"] = json.loads(t)
-    except json.JSONDecodeError:
-        s, e = t.find("{"), t.rfind("}")
-        if s < 0 or e < 0:
-            raise LLMError(f"{out['provider']}: non-JSON completion")
-        out["json"] = json.loads(t[s:e + 1])
-    return out
+    """complete() with the reply parsed as JSON into out["json"]."""
+    return complete(messages, json_mode=True, **kw)
 
 
 if __name__ == "__main__":
