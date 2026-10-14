@@ -148,6 +148,51 @@ def index_one(r):
     return provider, model
 
 
+# ---- Guidelines follow the references library --------------------------
+# Every indexed reference appears on the Guidelines tab with the summary the
+# model wrote from the document itself (rule 12: the file stays private, so no
+# link to it). A reference that matches a guideline already listed (same title
+# words, ignoring the year) updates that row instead of adding a twin; an
+# amendment ("Pindaan …", "Amendment …") is always its own row.
+AMEND = {"pindaan", "amendment", "amended", "addendum", "semakan"}
+
+
+def title_words(t):
+    return {w for w in re.sub(r"[^a-z ]", " ", str(t or "").lower()).split() if len(w) > 1 and w not in {"the", "of", "and", "dan", "for"}}
+
+
+def same_doc(a, b):
+    wa, wb = title_words(a), title_words(b)
+    if not wa or not wb or (wa & AMEND) != (wb & AMEND):
+        return False
+    return wa == wb or wa <= wb or wb <= wa
+
+
+def sync_guidelines():
+    try:
+        refs = [r for r in he_api.read("References") if r.get("status") == "indexed" and (r.get("summary_en") or r.get("summary_bm"))]
+        gls = he_api.read("Guidelines")
+    except he_api.ApiError as e:
+        print("guidelines sync skipped:", e)
+        return
+    out = []
+    for r in refs:
+        g = next((x for x in gls if x.get("source") == r["id"]), None) or next((x for x in gls if same_doc(x.get("title"), r.get("title"))), None)
+        row = {**(g or {}), "id": (g or {}).get("id") or f"GL-{r['id']}", "category": r.get("category") or (g or {}).get("category") or "halal",
+               "title": (g or {}).get("title") or r.get("title"), "title_bm": (g or {}).get("title_bm") or r.get("title"),
+               "summary_en": r.get("summary_en") or (g or {}).get("summary_en", ""), "summary_bm": r.get("summary_bm") or (g or {}).get("summary_bm", ""),
+               "link": (g or {}).get("link", ""), "issuer": r.get("issuer") or (g or {}).get("issuer", ""),
+               "effective_date": str(r.get("edition") or (g or {}).get("effective_date") or ""), "status": "published", "source": r["id"]}
+        keep = ("summary_en", "summary_bm", "issuer", "effective_date", "status", "source", "category")
+        if g and all(str(g.get(k, "")) == str(row.get(k, "")) for k in keep):
+            continue
+        row["updated_at"] = now()
+        out.append(row)
+    if out:
+        he_api.upsert("Guidelines", out)
+    print(f"guidelines: {len(out)} added or updated from the references library")
+
+
 def run():
     try:
         rows = he_api.read("References")
@@ -160,6 +205,7 @@ def run():
     refs = [r for r in rows if r.get("status") == "pending" or (r.get("status") == "error" and "cryptography" in str(r.get("error", "")))]
     if not refs:
         print("no references waiting")
+        sync_guidelines()
         return 0
     provider = model = ""
     errs = []
@@ -172,6 +218,7 @@ def run():
             he_api.upsert("References", [{**r, "status": "error", "error": str(e)[:300]}])
             print("  failed:", e, file=sys.stderr)
     he_api.run_log("index_references", provider, model, len(refs) - len(errs), not errs, "; ".join(errs)[:500])
+    sync_guidelines()
     return 1 if errs else 0
 
 

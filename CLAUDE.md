@@ -20,8 +20,12 @@
    pembungkusan not kemasan. Regulatory terms stay original.
 5. **News lives 72 hours.** `expires_at` is set once at fetch and never
    extended.
-6. **Documents are never deleted from Drive.** Superseded versions move to
-   `90 Archive`; duplicates are marked, not removed.
+6. **Nothing is deleted automatically except finished events.** Superseded
+   document versions move to `90 Archive`; duplicates are marked, not removed.
+   Deleting for good (row + its Drive file) happens only through Admin's
+   Delete button, which asks first (`adminDelete` in Code.gs). Finished
+   events (a day after they end) and their uploaded posters are removed by
+   `purgePastEvents` on the 30-minute timer (Wan, 14 Oct 2026).
 7. **One repository publishes this site**, this one, to
    `halalexecutive.kkmhalalconsultant.com`. Never connect it to a host that
    serves the repo root (the 05 Sep 2026 Cloudflare Pages exposure in

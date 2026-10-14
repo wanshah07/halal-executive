@@ -225,7 +225,7 @@ function publicData() {
     guidelines: noMarks(readTab('Guidelines').filter(function (r) { return r.status !== 'hidden' && r.status !== 'draft'; })),
     documents: noMarks(readTab('Documents')),
     certificates: noMarks(readTab('Certificates').filter(function (r) { return r.status !== 'hidden'; })),
-    events: noMarks(readTab('Events').filter(function (r) { return r.status !== 'hidden' && r.status !== 'draft'; })),
+    events: noMarks(readTab('Events').filter(function (r) { return r.status !== 'hidden' && r.status !== 'draft' && !eventOver(r, now); })),
     news: readTab('News').filter(function (r) { return !r.expires_at || Date.parse(r.expires_at) > now; }),
     references: readTab('References').filter(function (r) { return r.status === 'indexed'; }).map(function (r) {
       return { id: r.id, title: r.title, issuer: r.issuer, edition: r.edition, category: r.category, pages: r.pages, summary_en: r.summary_en, summary_bm: r.summary_bm, key_points: r.key_points, indexed_at: r.indexed_at };
@@ -271,13 +271,14 @@ function doPost(e) {
     var lock = LockService.getScriptLock(); lock.waitLock(30000);
     try {
       if (a === 'admins_set')    { needAdmin(); return json(setAdminEmails(body.emails || [])); }
-      if (a === 'manual_upload') { needAdmin(); return json(manualUpload(body, sessEmail || 'token')); }
+      if (a === 'manual_upload') { needAdmin(); var mu = manualUpload(body, sessEmail || 'token'); mu.run = autoRun('process_whatsapp'); return json(mu); }
       if (a === 'review_set')    { needAdmin(); return json(reviewSet(body.tab, body.id, body.status)); }
       if (a === 'settings')      { needAdmin(); return json(writeSettings(body.settings || {})); }
-      if (a === 'ref_upload')    { needAdmin(); return json(refUpload(body, sessEmail || 'token')); }
-      if (a === 'ref_set')       { needAdmin(); return json(refSet(body.id, body.status)); }
+      if (a === 'ref_upload')    { needAdmin(); var ru = refUpload(body, sessEmail || 'token'); ru.run = autoRun('references'); return json(ru); }
+      if (a === 'ref_set')       { needAdmin(); var rs = refSet(body.id, body.status); if (body.status === 'pending') rs.run = autoRun('references'); return json(rs); }
       if (a === 'event_save')    { needAdmin(); return json(eventSave(body)); }
       if (a === 'run_now')       { needAdmin(); return json(runNow(body)); }
+      if (a === 'admin_delete')  { needAdmin(); return json(adminDelete(String(body.tab || ''), String(body.id || ''))); }
       if (a === 'poster_upload') { needAdmin(); return json(posterUpload(body)); }
       if (a === 'ingest')        return json(ingest(body.rows || []));
       if (a === 'raw_update')    return json(updateByIds('Raw', body.ids || [], body.patch || {}));
@@ -395,13 +396,81 @@ function dispatchRun(job, token) {
   props().setProperty('last_dispatch', JSON.stringify({ job: job, ts: new Date().toISOString() }));
 }
 
+// Start a run straight after an admin action (upload, Re-read) instead of
+// waiting for the timer. Never fails the action itself.
+function autoRun(job) {
+  try {
+    if (!props().getProperty('GITHUB_TOKEN')) return 'next scheduled run';
+    if (!rate('auto_' + job, 1, 90)) return 'already starting';
+    dispatchRun(job); return 'started';
+  } catch (e) { return 'next scheduled run (' + String(e.message || e).slice(0, 80) + ')'; }
+}
+
+// Finished events are deleted for good (Wan, 14 Oct 2026): the row, and the
+// poster file if it was uploaded to Drive "30 Posters". An event is finished
+// a day after its end (or start, when it has no end). Runs with the 30-minute
+// timer; publicData already hides them in between.
+function eventOver(e, now) {
+  var t = Date.parse(e.date_end || e.date_start);
+  return !isNaN(t) && t + 24 * 3600 * 1000 < now;
+}
+function purgePastEvents() {
+  var now = Date.now(), gone = readTab('Events').filter(function (e) { return eventOver(e, now); });
+  if (!gone.length) return 0;
+  var posters = folder('30 Posters');
+  gone.forEach(function (e) {
+    var m = String(e.poster_file || e.poster_url || '').match(/(?:\/d\/|[?&]id=)([\w-]{20,})/);
+    if (!m) return;
+    try { var f = DriveApp.getFileById(m[1]); if (f.getParents().hasNext() && f.getParents().next().getId() === posters.getId()) f.setTrashed(true); } catch (er) { /* not ours or already gone */ }
+  });
+  deleteByIds('Events', gone.map(function (e) { return e.id; }));
+  return gone.length;
+}
+
+// ---------- Delete for good (Admin) ----------
+// Hide keeps a row out of the page; Delete removes it from the Sheet and, where
+// the row owns a Drive file (a reference, an uploaded poster, a document),
+// deletes that file permanently too (skips the Drive bin when the Drive
+// service allows it). A reference also loses its passages, so the Q&A forgets
+// it. Asked for by Wan, 14 Oct 2026; the page confirms before calling this.
+var DELETABLE = ['FAQ', 'Guidelines', 'Events', 'Certificates', 'Documents', 'References', 'News'];
+function removeDriveFile(id) {
+  if (!id) return false;
+  try { Drive.Files.remove(id); return true; } catch (e) {
+    try { DriveApp.getFileById(id).setTrashed(true); return true; } catch (e2) { return false; }
+  }
+}
+function adminDelete(tab, id) {
+  if (DELETABLE.indexOf(tab) < 0) throw new Error('Cannot delete from ' + tab);
+  var row = readTab(tab).filter(function (r) { return String(r.id) === id; })[0];
+  if (!row) throw new Error('Not found (already deleted?)');
+  var file = '';
+  if (tab === 'References') {
+    var sh = sheet('RefChunks'), v = sh.getDataRange().getValues(), keep = [v[0]];
+    for (var i = 1; i < v.length; i++) if (String(v[i][1]) !== id) keep.push(v[i]);
+    sh.clearContents(); sh.getRange(1, 1, keep.length, TABS.RefChunks.length).setValues(keep);
+    file = row.drive_file_id; bumpAnswerVersion();
+    // The guideline made from this reference goes too.
+    var gl = readTab('Guidelines').filter(function (g) { return String(g.source) === id && String(g.id) === 'GL-' + id; });
+    if (gl.length) deleteByIds('Guidelines', gl.map(function (g) { return g.id; }));
+  } else if (tab === 'Documents') {
+    file = row.drive_file_id;
+  } else if (tab === 'Events') {
+    var m = String(row.poster_file || row.poster_url || '').match(/(?:\/d\/|[?&]id=)([\w-]{20,})/);
+    if (m) { try { var f = DriveApp.getFileById(m[1]), par = f.getParents(); if (par.hasNext() && par.next().getId() === folder('30 Posters').getId()) file = m[1]; } catch (e) { /* not ours */ } }
+  }
+  var fileGone = file ? removeDriveFile(file) : false;
+  deleteByIds(tab, [id]);
+  return { ok: true, deleted: id, file_deleted: fileGone };
+}
+
 // ---------- The clock ----------
 // GitHub's own cron for this repo fired only twice in its first ten hours, so
 // Apps Script's time-driven triggers start the Pipeline instead (through
 // dispatchRun and the same GITHUB_TOKEN). Run installTriggers() once from the
 // editor; run it again after changing the times here. Pipeline cadence is
 // rule 14 in CLAUDE.md.
-function tickPipeline() { dispatchRun('process_whatsapp'); }
+function tickPipeline() { try { purgePastEvents(); } catch (e) { console.error('purge: ' + e); } dispatchRun('process_whatsapp'); }
 function tickNews() { dispatchRun('news'); }
 function tickOrganise() { dispatchRun('organise'); }
 function tickFacebook() { dispatchRun('process_facebook'); }
@@ -500,7 +569,7 @@ function ingest(rows) {
   var sh = sheet('Raw'), have = {}, fps = {};
   ensureHeader(sh, TABS.Raw);
   readTab('Raw').forEach(function (r) { have[r.source + ':' + r.msg_id] = 1; if (r.fp) fps[r.fp] = 1; });
-  var added = 0, skipped = 0;
+  var added = 0, skipped = 0, lines = [];
   rows.forEach(function (r) {
     var key = r.source + ':' + r.msg_id, fp = rawFp(r);
     if (have[key] || (fp.length && (fps[fp[0]] || fps[fp[1]] || fps[fp[2]]))) { skipped++; return; }
@@ -508,9 +577,11 @@ function ingest(rows) {
       if (a.b64) { var f = saveToInbox(a, r); return { name: f.name, drive_file_id: f.id, drive_url: f.url, mime: a.mime, sha256: a.sha256 || '' }; }
       return a;
     });
-    sh.appendRow([r.source + '-' + r.msg_id, r.source, r.group || '', String(r.msg_id), r.sender_hash || '', r.ts || new Date().toISOString(), r.text || '', JSON.stringify(att), 'new', '', '', '', fp[0] || '']);
+    lines.push([r.source + '-' + r.msg_id, r.source, r.group || '', String(r.msg_id), r.sender_hash || '', r.ts || new Date().toISOString(), r.text || '', JSON.stringify(att), 'new', '', '', '', fp[0] || '']);
     have[key] = 1; if (fp.length) fps[fp[0]] = 1; added++;
   });
+  // One write for the whole batch (a chat export can hold thousands of rows).
+  if (lines.length) sh.getRange(sh.getLastRow() + 1, 1, lines.length, TABS.Raw.length).setValues(lines);
   return { ok: true, added: added, skipped: skipped };
 }
 
@@ -588,7 +659,58 @@ function extractText(f, blob) {
 // Admin upload: one file (or a note alone) becomes a Raw row with source
 // "manual", so the same pipeline reads it, writes FAQ entries and files any
 // certificate. The hint tells the model what Wan says the file is.
+// ---------- WhatsApp chat export uploaded in Admin ----------
+// Same parser and the same message ids as collectors/whatsapp/import.js, so a
+// message is stored once whether it came from the export, the live collector
+// or both (the id or the text fingerprint matches). Senders are hashed.
+var CHAT_LINE = /^\u200e?\[?(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4}),?\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*([aApP]\.?\s?[mM]\.?)?\]?\s*(?:-\s)?(.*)$/;
+function chatDate(d, mo, y, h, mi, se, ap) {
+  var Y = Number(y); if (Y < 100) Y += 2000;
+  var H = Number(h), pm = ap && /p/i.test(ap), am = ap && /a/i.test(ap);
+  if (pm && H < 12) H += 12; if (am && H === 12) H = 0;
+  var D = Number(d), M = Number(mo);
+  if (M > 12 && D <= 12) { var t = D; D = M; M = t; }
+  return new Date(Date.UTC(Y, M - 1, D, H - 8, Number(mi), Number(se || 0))); // MYT -> UTC
+}
+function parseChatExport(text) {
+  var out = [];
+  String(text).replace(/^\uFEFF/, '').split(/\r?\n/).forEach(function (raw) {
+    var m = raw.match(CHAT_LINE);
+    if (m) {
+      var rest = m[8], c = rest.indexOf(': ');
+      out.push({ ts: chatDate(m[1], m[2], m[3], m[4], m[5], m[6], m[7]), sender: c < 0 ? '' : rest.slice(0, c), text: c < 0 ? rest : rest.slice(c + 2), system: c < 0 });
+    } else if (out.length) out[out.length - 1].text += '\n' + raw;
+  });
+  return out.filter(function (x) { return !x.system && !isNaN(x.ts.getTime()); });
+}
+function exportHash(s) { return sha256(Utilities.newBlob('halal-executive' + String(s)).getBytes()).slice(0, 16); }
+function looksLikeChat(text) {
+  var n = 0; String(text).split(/\r?\n/).slice(0, 40).forEach(function (l) { if (CHAT_LINE.test(l) && l.indexOf(': ') > 0) n++; });
+  return n >= 3;
+}
+function importChat(text, fileName) {
+  var msgs = parseChatExport(text), rows = [];
+  msgs.forEach(function (m) {
+    var t = m.text.replace(/<attached:[^>]+>/gi, '').replace(/^\u200e?.+?\.[A-Za-z0-9]{2,5}\s*\((?:file attached|fail dilampirkan)\)\s*$/gim, '').replace(/[\u200e\u200f]/g, '').trim();
+    if (!t || /^<Media omitted>$|^<Media tidak disertakan>$/i.test(t)) return;
+    rows.push({ source: 'whatsapp', group: 'Chat export', msg_id: 'exp-' + exportHash(m.ts.toISOString() + '|' + m.sender + '|' + m.text), sender_hash: exportHash(m.sender), ts: m.ts.toISOString(), text: t, attachments: [] });
+  });
+  var r = rows.length ? ingest(rows) : { added: 0, skipped: 0 };
+  return { ok: true, chat: true, file: fileName, messages: rows.length, added: r.added, skipped: r.skipped,
+    from: msgs.length ? msgs[0].ts.toISOString() : '', to: msgs.length ? msgs[msgs.length - 1].ts.toISOString() : '' };
+}
+
 function manualUpload(b, email) {
+  // A WhatsApp "Export chat" .txt becomes one row per message instead of one
+  // attachment the model would only see the first 6000 characters of. The
+  // file itself is kept in Drive (00 Inbox/manual).
+  if (b.b64 && (/\.txt$/i.test(b.name || '') || /^text\/plain/.test(b.mime || ''))) {
+    var txt = Utilities.newBlob(Utilities.base64Decode(b.b64)).getDataAsString('UTF-8');
+    if (looksLikeChat(txt)) {
+      folder('00 Inbox/manual').createFile(Utilities.newBlob(Utilities.base64Decode(b.b64), 'text/plain', b.name || 'chat.txt'));
+      return importChat(txt, b.name || 'chat.txt');
+    }
+  }
   var hint = { faq: 'Admin upload: material for the FAQ.', certificate: 'Admin upload: this is a halal certificate. File it as a document of kind certificate.', guideline: 'Admin upload: this is a guideline, circular or standard. Add it to guidelines.', event: 'Admin upload: this is an event or course announcement.' }[b.kind] || 'Admin upload.';
   var text = hint + (b.note ? '\n' + String(b.note).slice(0, 4000) : '');
   var row = { source: 'manual', group: 'Admin upload', msg_id: 'up-' + Date.now() + '-' + Math.floor(Math.random() * 1e6), sender_hash: sha256(Utilities.newBlob(email).getBytes()).slice(0, 16), ts: new Date().toISOString(), text: text, attachments: [] };

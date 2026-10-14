@@ -5,6 +5,14 @@ import { t } from '../lib/i18n'
 import { fmtDateTime } from '../lib/util'
 import { POSTER_ACCEPT, POSTER_MAX } from './Poster'
 
+// Delete for good: the row, and its Drive file where it owns one (Code.gs
+// adminDelete). Asks first, because nothing can bring it back.
+export async function deleteForGood(lang, tab, id, label) {
+  if (!window.confirm(t(lang, 'delete_confirm').replace('{x}', label || id))) return false
+  await adminPost('admin_delete', { tab, id })
+  return true
+}
+
 const toB64 = (file) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1] || ''); r.onerror = () => rej(r.error); r.readAsDataURL(file) })
 
 // References library: upload a manual, standard or circular. The next
@@ -25,7 +33,9 @@ export function RefAdmin({ lang }) {
     try { await adminPost('ref_upload', { ...f, name: file.name, mime: file.type || '', b64: await toB64(file) }); setMsg(t(lang, 'ref_queued')); setFile(null); setF({ title: '', issuer: '', edition: '', category: f.category }); const i = document.getElementById('ref-file'); if (i) i.value = ''; load() }
     catch (er) { setMsg(er.message) } finally { setBusy(false) }
   }
-  const set = (id, status) => adminPost('ref_set', { id, status }).then(load).catch((e) => setMsg(e.message))
+  const set = (id, status) => adminPost('ref_set', { id, status })
+    .then((r) => { setMsg(status === 'pending' ? (r.run === 'started' ? t(lang, 'reread_started') : t(lang, 'reread_queued')) : ''); load() })
+    .catch((e) => setMsg(e.message))
   const tone = { indexed: 'bg-brand-100 text-brand-700', pending: 'bg-amber-100 text-amber-800', error: 'bg-red-100 text-red-700', hidden: 'bg-paper text-ink-400 border border-line' }
   return (
     <div className="card p-5 mb-4 space-y-3">
@@ -46,6 +56,7 @@ export function RefAdmin({ lang }) {
             <div className="flex gap-2 shrink-0">
               <button className="btn" onClick={() => set(r.id, 'pending')}>{t(lang, 'reindex')}</button>
               {r.status !== 'hidden' ? <button className="btn" onClick={() => set(r.id, 'hidden')}>{t(lang, 'hide')}</button> : <button className="btn" onClick={() => set(r.id, 'pending')}>{t(lang, 'restore')}</button>}
+              <button className="btn text-red-700" onClick={() => deleteForGood(lang, 'References', r.id, r.title).then((ok) => ok && load()).catch((e) => setMsg(e.message))}>{t(lang, 'delete')}</button>
             </div>
           </li>
         ))}
@@ -75,6 +86,7 @@ export function EventsAdmin({ lang, onChanged }) {
       await adminPost('event_save', payload); setMsg(t(lang, 'saved')); setE(EMPTY); setPoster(null); const i = document.getElementById('ev-poster'); if (i) i.value = ''; load(); onChanged && onChanged()
     } catch (er) { setMsg(er.message) } finally { setBusy(false) }
   }
+  async function remove(r) { try { if (await deleteForGood(lang, 'Events', r.id, r.title)) { load(); onChanged && onChanged() } } catch (er) { setMsg(er.message) } }
   async function hide(r) { try { await adminPost('event_save', { event: { ...r, status: 'hidden' } }); load(); onChanged && onChanged() } catch (er) { setMsg(er.message) } }
   return (
     <div className="card p-5 mb-4 space-y-3">
@@ -95,9 +107,51 @@ export function EventsAdmin({ lang, onChanged }) {
         {(rows || []).filter((r) => r.status !== 'hidden').map((r) => (
           <li key={r.id} className="py-2.5 flex flex-col sm:flex-row sm:items-center gap-2 text-sm">
             <div className="min-w-0 flex-1"><b>{r.title}</b> <span className="text-ink-400">· {fmtDateTime(r.date_start, lang)}{r.venue ? ` · ${r.venue}` : ''} · {r.status || 'published'}{r.source === 'admin' ? '' : ' · AI'}</span></div>
-            <div className="flex gap-2 shrink-0"><button className="btn" onClick={() => { setE({ ...EMPTY, ...r }); window.scrollTo({ top: 0, behavior: 'smooth' }) }}>{t(lang, 'edit')}</button><button className="btn" onClick={() => hide(r)}>{t(lang, 'hide')}</button></div>
+            <div className="flex gap-2 shrink-0"><button className="btn" onClick={() => { setE({ ...EMPTY, ...r }); window.scrollTo({ top: 0, behavior: 'smooth' }) }}>{t(lang, 'edit')}</button><button className="btn" onClick={() => hide(r)}>{t(lang, 'hide')}</button><button className="btn text-red-700" onClick={() => remove(r)}>{t(lang, 'delete')}</button></div>
           </li>
         ))}
+      </ul>
+    </div>
+  )
+}
+
+
+// Everything already on the page, with Delete for good. Hide stays available
+// through Drafts to review / the Sheet; this is for removing a row entirely.
+const MANAGED = [['FAQ', 'faq', (r, lang) => (lang === 'bm' ? r.question_bm || r.question_en : r.question_en || r.question_bm)],
+  ['Guidelines', 'guidelines', (r, lang) => (lang === 'bm' ? r.title_bm || r.title : r.title)],
+  ['Certificates', 'certificates', (r) => `${r.company || ''} · ${r.cert_no || ''}`],
+  ['Documents', 'documents', (r) => r.title],
+  ['News', 'news', (r) => r.title]]
+export function ContentManager({ lang, data, onChanged }) {
+  const [tab, setTab] = useState('FAQ')
+  const [q, setQ] = useState('')
+  const [msg, setMsg] = useState('')
+  const [gone, setGone] = useState({})
+  const [, key, label] = MANAGED.find((m) => m[0] === tab)
+  const rows = ((data && data[key]) || []).filter((r) => !gone[tab + r.id] && (!q || JSON.stringify(r).toLowerCase().includes(q.toLowerCase())))
+  async function del(r) {
+    try { if (await deleteForGood(lang, tab, r.id, label(r, lang))) { setGone((g) => ({ ...g, [tab + r.id]: 1 })); setMsg(t(lang, 'deleted')); onChanged && onChanged() } } catch (e) { setMsg(e.message) }
+  }
+  return (
+    <div className="card p-5 mb-4 space-y-3">
+      <h3 className="font-semibold">{t(lang, 'manage_title')}</h3>
+      <p className="text-sm text-ink-600">{t(lang, 'manage_sub')}</p>
+      <div className="flex flex-wrap gap-2">
+        <select className="input w-auto" value={tab} onChange={(e) => setTab(e.target.value)} aria-label={t(lang, 'manage_title')}>
+          {MANAGED.map(([k, d]) => <option key={k} value={k}>{t(lang, d)} ({((data && data[d]) || []).length})</option>)}
+        </select>
+        <input className="input flex-1 min-w-40" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t(lang, 'search_ph')} />
+      </div>
+      {msg && <div className="text-sm text-ink-600">{msg}</div>}
+      <ul className="divide-y divide-line max-h-96 overflow-auto">
+        {rows.map((r) => (
+          <li key={r.id} className="py-2 flex items-start gap-3 text-sm">
+            <div className="min-w-0 flex-1"><span className="text-ink-400 text-xs mr-2">{r.id}</span>{label(r, lang)}</div>
+            <button className="btn text-red-700 shrink-0" onClick={() => del(r)}>{t(lang, 'delete')}</button>
+          </li>
+        ))}
+        {!rows.length && <li className="py-2 text-sm text-ink-400">{t(lang, 'no_data')}</li>}
       </ul>
     </div>
   )

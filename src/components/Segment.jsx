@@ -6,7 +6,10 @@ import { t } from '../lib/i18n'
 // either a card grid or a table over the same rows. `columns` drives the
 // table; `renderCard` draws a card. Both receive the same row objects.
 export default function Segment({ lang, title, rows, columns, renderCard, filters, defaultView = 'cards', empty, id }) {
-  const [view, setView] = useState(() => { try { return localStorage.getItem('he:view:' + id) || defaultView } catch { return defaultView } })
+  // Phones start on cards (tables need sideways scrolling there); a choice the
+  // reader made before is kept.
+  const start = typeof window !== 'undefined' && window.innerWidth < 640 ? 'cards' : defaultView
+  const [view, setView] = useState(() => { try { return localStorage.getItem('he:view:' + id) || start } catch { return start } })
   const pick = (v) => { setView(v); try { localStorage.setItem('he:view:' + id, v) } catch { /* ignore */ } }
   return (
     <section id={id} className="mb-8">

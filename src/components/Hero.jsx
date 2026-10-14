@@ -1,10 +1,12 @@
-import { safeUrl } from '../lib/safe'
+import { useState } from 'react'
+import { safeUrl, imageUrl } from '../lib/safe'
 import { t } from '../lib/i18n'
 
 export default function Hero({ lang, settings }) {
   const title = settings.hero_title || t(lang, 'hero_default_title')
   const sub = (lang === 'bm' && settings.hero_subtitle_bm) || settings.hero_subtitle || t(lang, 'hero_default_sub')
-  const img = safeUrl(settings.hero_image)
+  const img = imageUrl(settings.hero_image)
+  const [bad, setBad] = useState(false)
   return (
     <section className="card overflow-hidden mb-6">
       <div className="grid md:grid-cols-[1fr_320px]">
@@ -16,7 +18,9 @@ export default function Hero({ lang, settings }) {
             <a href={safeUrl(settings.hero_cta_url, { allowHash: true }) || '#faq'} className="btn-brand mt-4">{settings.hero_cta}</a>
           )}
         </div>
-        {img ? <img src={img} alt="" className="h-full w-full object-cover max-h-64 md:max-h-none" /> : <div className="hidden md:block bg-brand-600" />}
+        {img && !bad
+          ? <img src={img} alt="" referrerPolicy="no-referrer" onError={() => setBad(true)} className="h-full w-full object-cover max-h-64 md:max-h-none bg-brand-600" />
+          : <div className="hidden md:block bg-brand-600" />}
       </div>
     </section>
   )

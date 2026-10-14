@@ -1,5 +1,8 @@
 export const fmtDate = (iso, lang = 'en') => {
   if (!iso) return '—'
+  // A bare year ("2020", or 2020 once the Sheet turns it into a number) is an
+  // edition year, not a timestamp.
+  if (/^\d{4}$/.test(String(iso).trim())) return String(iso).trim()
   const d = new Date(iso)
   if (isNaN(d)) return String(iso)
   return d.toLocaleDateString(lang === 'bm' ? 'ms-MY' : 'en-MY', { year: 'numeric', month: 'short', day: 'numeric' })
@@ -8,6 +11,8 @@ export const fmtDateTime = (iso, lang = 'en') => {
   if (!iso) return '—'
   const d = new Date(iso)
   if (isNaN(d)) return String(iso)
+  // A date with no time (midnight Malaysia time) reads "21 Oct 2026", not "12:00 am".
+  if (d.getHours() === 0 && d.getMinutes() === 0) return fmtDate(iso, lang)
   return d.toLocaleString(lang === 'bm' ? 'ms-MY' : 'en-MY', { dateStyle: 'medium', timeStyle: 'short' })
 }
 export const hoursLeft = (iso) => Math.max(0, Math.round((Date.parse(iso) - Date.now()) / 36e5))

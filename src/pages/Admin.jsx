@@ -3,7 +3,7 @@ import { adminPost, post, getSession, setSession } from '../lib/api'
 import { API_URL } from '../lib/config'
 import { t } from '../lib/i18n'
 import { fmtDateTime } from '../lib/util'
-import { RefAdmin, EventsAdmin } from '../components/AdminExtra'
+import { RefAdmin, EventsAdmin, ContentManager, deleteForGood } from '../components/AdminExtra'
 import { POSTER_ACCEPT, POSTER_MAX } from '../components/Poster'
 import { ICON, Lock, RefreshCw, Upload, X, Play } from '../components/Icon'
 
@@ -77,8 +77,11 @@ function UploadBox({ lang }) {
       try {
         if (f && f.size > MAX_BYTES) throw new Error(t(lang, 'too_big'))
         const payload = { kind, note, name: f && f.name, mime: f && (f.type || ''), b64: f ? await toB64(f) : '' }
-        await adminPost('manual_upload', payload)
-        setLog((l) => [...l, { label, ok: true }])
+        const r = await adminPost('manual_upload', payload)
+        const msg = r.chat
+          ? t(lang, 'chat_imported').replace('{n}', r.messages).replace('{a}', r.added).replace('{s}', r.skipped)
+          : ''
+        setLog((l) => [...l, { label, ok: true, msg: [msg, r.run === 'started' ? t(lang, 'ai_started') : ''].filter(Boolean).join(' · ') }])
       } catch (er) { setLog((l) => [...l, { label, ok: false, msg: er.message }]) }
     }
     setBusy(false); setFiles([]); setNote('')
@@ -162,7 +165,7 @@ function ReviewBox({ lang, onChanged }) {
               <div className="font-medium">{title(it)}</div>
               <div className="text-sm text-ink-600 line-clamp-3 whitespace-pre-wrap">{body(it)}</div>
             </div>
-            <div className="flex gap-2 shrink-0"><button className="btn-brand" onClick={() => set(it.tab, it.r.id, 'published')}>{t(lang, 'publish')}</button><button className="btn" onClick={() => set(it.tab, it.r.id, 'hidden')}>{t(lang, 'hide')}</button></div>
+            <div className="flex gap-2 shrink-0"><button className="btn-brand" onClick={() => set(it.tab, it.r.id, 'published')}>{t(lang, 'publish')}</button><button className="btn" onClick={() => set(it.tab, it.r.id, 'hidden')}>{t(lang, 'hide')}</button><button className="btn text-red-700" onClick={() => deleteForGood(lang, it.tab, it.r.id, title(it)).then((ok) => ok && load()).catch((e) => setMsg(e.message))}>{t(lang, 'delete')}</button></div>
           </li>
         ))}
       </ul>
@@ -243,6 +246,7 @@ export default function Admin({ lang, data, onSaved, onSession }) {
 
       <RunNow lang={lang} runs={data && data.runs} />
       <ReviewBox lang={lang} onChanged={onSaved} />
+      <ContentManager lang={lang} data={data} onChanged={onSaved} />
       <UploadBox lang={lang} />
       <RefAdmin lang={lang} />
       <EventsAdmin lang={lang} onChanged={onSaved} />

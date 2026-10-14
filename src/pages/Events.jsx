@@ -1,4 +1,4 @@
-import { safeUrl } from '../lib/safe'
+import { safeUrl, imageUrl } from '../lib/safe'
 import Segment from '../components/Segment'
 import { t } from '../lib/i18n'
 import { fmtDateTime } from '../lib/util'
@@ -14,7 +14,7 @@ export default function Events({ lang, data }) {
       {!!posters.length && (
         <section className="mb-6">
           <h2 className="text-xl font-bold mb-3">{t(lang, 'posters')}</h2>
-          <div className="grid gap-4 grid-cols-2 md:grid-cols-4">{posters.map((p, i) => <a key={i} href={safeUrl(p.link) || safeUrl(p.file) || safeUrl(p.url) || undefined} target="_blank" rel="noreferrer" className="card overflow-hidden"><img src={safeUrl(p.url)} alt={p.title || ''} className="w-full object-cover aspect-[4/5]" />{p.title && <div className="p-2 text-sm font-medium">{p.title}</div>}</a>)}</div>
+          <div className="grid gap-4 grid-cols-2 md:grid-cols-4">{posters.map((p, i) => <a key={i} href={safeUrl(p.link) || safeUrl(p.file) || safeUrl(p.url) || undefined} target="_blank" rel="noreferrer" className="card overflow-hidden"><img src={imageUrl(p.url)} alt={p.title || ''} referrerPolicy="no-referrer" className="block w-full h-auto object-contain bg-paper" />{p.title && <div className="p-2 text-sm font-medium">{p.title}</div>}</a>)}</div>
         </section>
       )}
       <Segment id="events" lang={lang} title={t(lang, 'events')} rows={rows}
