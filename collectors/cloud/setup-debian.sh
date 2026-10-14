@@ -11,10 +11,12 @@
 set -euo pipefail
 
 echo "== 1/6 Swap (2 GB) =="
-if ! swapon --show | grep -q /swapfile; then
-  sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile >/dev/null && sudo swapon /swapfile
-  echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab >/dev/null
+# swapon lives in /sbin, which is not on a normal user's PATH: go through sudo.
+if ! sudo swapon --show | grep -q /swapfile; then
+  [ -f /swapfile ] || { sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile >/dev/null; }
+  sudo swapon /swapfile
 fi
+grep -q '^/swapfile ' /etc/fstab || echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab >/dev/null
 
 echo "== 2/6 Chromium, git, Node.js 22 =="
 sudo apt-get update -qq
