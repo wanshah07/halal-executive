@@ -50,7 +50,7 @@ export default function MonthlyChart({ lang, title, data, dark = false }) {
               <XAxis dataKey="label" tick={{ fontSize: 11, fill: c.ink }} axisLine={{ stroke: c.grid }} tickLine={false} />
               <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: c.ink }} axisLine={false} tickLine={false} />
               <Tooltip cursor={{ fill: 'rgba(0,0,0,0.04)' }} content={<Tip lang={lang} />} />
-              <Legend iconType="square" iconSize={10} wrapperStyle={{ fontSize: 12 }} payload={['halal', 'food', 'cosmetic'].map((k) => ({ value: (CATEGORIES.find((x) => x.id === k) || {})[lang] || k, type: 'square', color: c[k], id: k }))} />
+              <Legend content={() => <div className="flex justify-center gap-4 text-xs mt-1">{['halal', 'food', 'cosmetic'].map((k) => <span key={k} className="inline-flex items-center gap-1.5 text-ink-600"><span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: c[k] }} />{(CATEGORIES.find((x) => x.id === k) || {})[lang] || k}</span>)}</div>} />
               <Bar dataKey="halal" stackId="a" fill={c.halal} stroke="#fff" strokeWidth={2} />
               <Bar dataKey="food" stackId="a" fill={c.food} stroke="#fff" strokeWidth={2} />
               <Bar dataKey="cosmetic" stackId="a" fill={c.cosmetic} stroke="#fff" strokeWidth={2} radius={[4, 4, 0, 0]} />
