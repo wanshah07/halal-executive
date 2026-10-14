@@ -81,7 +81,7 @@ export default function Overview({ lang, data, setTab }) {
       </div>
 
       <div className="grid gap-4 md:grid-cols-3 mb-4">
-        <Bars lang={lang} title={t(lang, 'by_source')} rows={['whatsapp', 'facebook', 'telegram'].map((s) => ({ label: s, value: bySource[s] || 0 }))} />
+        <Bars lang={lang} title={t(lang, 'by_source')} rows={['whatsapp', 'facebook', 'telegram', 'manual'].map((s) => ({ label: s === 'manual' ? t(lang, 'admin') : s, value: bySource[s] || 0 }))} />
         <div className="card p-5">
           <h3 className="font-semibold mb-3">{t(lang, 'top_topics')}</h3>
           {!topics.length && <div className="text-sm text-ink-400">{t(lang, 'no_data')}</div>}

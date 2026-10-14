@@ -71,8 +71,8 @@ export default function App() {
     <div className="min-h-screen">
       <Header lang={lang} setLang={setLang} tab={tab} setTab={setTab} onRefresh={() => refresh(true)} onExport={doExport} counts={counts} loading={loading} onMenu={() => setMenu(true)} />
       <Sidebar lang={lang} tab={tab} setTab={setTab} counts={counts} mobileOpen={menu} setMobileOpen={setMenu} pinned={pinned} setPinned={setPinned} />
-      <div className={`transition-[padding] duration-200 ${pinned ? 'md:pl-[232px]' : 'md:pl-14'}`}>
-        <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
+      <div className={`min-h-[calc(100vh-106px)] flex flex-col transition-[padding] duration-200 ${pinned ? 'md:pl-[232px]' : 'md:pl-14'}`}>
+        <main className="w-full flex-1 max-w-7xl mx-auto px-4 sm:px-6 py-6">
           {err && <div className="card p-3 mb-4 text-sm bg-red-50 border-red-200">{err}</div>}
           <div className="mb-6"><SearchBar lang={lang} data={data} onOpen={(type, id) => setTab(type, id)} onAsk={(q) => setSeed({ q, n: Date.now() })} /></div>
           {tab === 'overview' && <Overview lang={lang} data={data} setTab={setTab} />}
@@ -85,7 +85,8 @@ export default function App() {
           {tab === 'admin' && <Admin lang={lang} data={data} onSaved={() => refresh(true)} />}
         </main>
         <footer className="border-t border-line bg-white">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-ink-400">
+          {/* right padding keeps the floating Assistant button off the text */}
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-5 pb-24 sm:pb-5 sm:pr-48 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-ink-400">
             <div><span className="font-semibold text-ink-600">Halal Executive</span> · halalexecutive.kkmhalalconsultant.com · {t(lang, 'updated')} {new Date(data._fetched).toLocaleString()}</div>
             <div className="font-medium text-ink-600">{t(lang, 'developed')}</div>
           </div>

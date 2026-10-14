@@ -24,6 +24,23 @@ HE_GROUP_NAME=Halal Executive   # exact group title; `npm run groups` lists your
 WhatsApp uses Chrome or Edge already installed on the machine, so npm's
 "install-scripts" warning about puppeteer can be ignored.
 
+## Older WhatsApp messages: import the chat export
+
+The live collector is a linked device, and a linked device only holds what
+the phone has synced, often a few dozen recent messages. The full history
+comes from WhatsApp's own export:
+
+1. Phone: open the group → ⋮ (Android) or the group name (iPhone) → More →
+   **Export chat** → **Include media**. Save or send the `.zip` to the PC.
+2. PC: `cd collectors\whatsapp` then
+   `npm run import -- "C:\Users\Muham\Downloads\WhatsApp Chat with HE Malaysia.zip"`
+
+It reads the `.zip`, the unzipped folder, or the bare `.txt`. Photos, PDFs
+and office files go to Drive with their message; voice notes and videos are
+skipped. Running the same export twice adds nothing twice. WhatsApp caps an
+export with media at about 10,000 recent messages (40,000 without media).
+`HE_IMPORT_SINCE=2025-01-01` in `.env` limits the import to newer messages.
+
 ## Privacy
 
 Sender identity is hashed (`sender_hash` = SHA-256 of the sender id with a

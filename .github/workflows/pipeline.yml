@@ -8,7 +8,7 @@ name: Pipeline
 # Repository variables (all optional): MIRELD_MODEL, AFIQ_MODEL (empty = auto), NEWS_FEEDS
 on:
   schedule:
-    - cron: '10 */3 * * *'    # whatsapp + telegram, every 3 h
+    - cron: '10 */3 * * *'    # whatsapp + telegram + admin uploads, every 3 h
     - cron: '40 18 * * *'     # facebook, once a day
     - cron: '25 */6 * * *'    # news sweep
     - cron: '50 19 * * *'     # drive organiser
@@ -61,7 +61,7 @@ jobs:
         working-directory: pipeline
         run: |
           case "${{ steps.pick.outputs.job }}" in
-            process_whatsapp) python process_raw.py --source whatsapp,telegram && python drive_organiser.py ;;
+            process_whatsapp) python process_raw.py --source whatsapp,telegram,manual && python drive_organiser.py ;;
             process_facebook) python process_raw.py --source facebook ;;
             news)             python news_sweep.py ;;
             organise)         python drive_organiser.py ;;

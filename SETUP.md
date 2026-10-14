@@ -53,10 +53,21 @@ web app is the only door to the Sheet and Drive.
     to the Raw tab), then keep `npm start` running under pm2. If a group name
     has odd characters, put its `…@g.us` id from `npm run groups` in
     `HE_GROUP_ID` instead.
+10b. Older messages: export the chat from the phone with media and run
+    `npm run import -- "<path to the .zip>"` (details in `collectors/README.md`).
 11. Telegram: BotFather → new bot → `/setprivacy` Disable → add the bot to
     the group → `cd collectors/telegram && npm install && TELEGRAM_BOT_TOKEN=… npm start`.
 12. Facebook: read `collectors/README.md` first. `cd collectors/facebook &&
     npm install && npm run login`, then a daily scheduled `npm start`.
+
+## Admin uploads
+Admin → **Add screenshots or files**: screenshots, PDF, Word, Excel,
+PowerPoint or text (10 MB each), with a type (FAQ material, halal
+certificate, guideline, event) and an optional note. Each file lands in the
+Raw tab as source `manual` and in Drive `00 Inbox/manual`; the next 3-hourly
+run reads its text (OCR for images and scans) and writes FAQ entries, or
+files it as a certificate. Run Actions → Pipeline → `process_whatsapp` to do
+it straight away.
 
 ## Admin sign-in
 The Admin tab is locked. Enter a registered email, receive a 6-digit code

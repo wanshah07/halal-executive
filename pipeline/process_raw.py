@@ -21,6 +21,8 @@ import llm_router
 from prompts import SYSTEM
 
 BATCH = 25
+CHAR_BUDGET = 40000      # per model call; rows with long attachments make smaller batches
+ATTACH_CHARS = 6000      # text kept from one attachment
 
 
 def now():
@@ -41,6 +43,24 @@ class Ids:
     def __call__(self):
         self.n += 1
         return f"{self.prefix}-{self.n:04d}"
+
+
+def message_for_model(r):
+    """One Raw row as the model sees it: the text, plus the text read out of
+    each attachment (screenshot OCR, PDF, Word, Excel, PowerPoint) so a
+    certificate or a screenshot of a chat can become an FAQ or a certificate."""
+    atts = []
+    for a in json.loads(r.get("attachments") or "[]"):
+        if not a.get("name"):
+            continue
+        item = {"name": a["name"], "type": a.get("mime", "")}
+        if a.get("drive_file_id"):
+            try:
+                item["content"] = (he_api.drive_get(a["drive_file_id"], text=True).get("text") or "")[:ATTACH_CHARS]
+            except he_api.ApiError as e:
+                item["content"] = f"[could not read: {e}]"
+        atts.append(item)
+    return {"id": r["id"], "source": r.get("source", ""), "ts": r["ts"], "text": (r.get("text") or "")[:3000], "attachments": atts}
 
 
 def existing_faq_digest(faq):
@@ -64,7 +84,14 @@ def run(sources, max_batches, dry):
         if not rows:
             break
         batches += 1
-        msgs = [{"id": r["id"], "ts": r["ts"], "text": r["text"][:3000], "attachments": [a.get("name") for a in json.loads(r.get("attachments") or "[]") if a.get("name")]} for r in rows]
+        msgs, used, take = [], 0, []
+        for r in rows:
+            m = message_for_model(r)
+            size = len(json.dumps(m, ensure_ascii=False))
+            if take and used + size > CHAR_BUDGET:
+                break  # the rest go in the next loop
+            msgs.append(m); take.append(r); used += size
+        rows = take
         user = json.dumps({"existing": existing_faq_digest(faq), "messages": msgs}, ensure_ascii=False)
         try:
             out = llm_router.complete_json([{"role": "system", "content": SYSTEM}, {"role": "user", "content": user}], max_tokens=6000)
@@ -143,7 +170,7 @@ def run(sources, max_batches, dry):
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("--source", default="whatsapp,telegram")
+    ap.add_argument("--source", default="whatsapp,telegram,manual")
     ap.add_argument("--max-batches", type=int, default=200)
     ap.add_argument("--dry-run", action="store_true")
     a = ap.parse_args()

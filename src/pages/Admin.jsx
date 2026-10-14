@@ -49,6 +49,60 @@ function SignIn({ lang, onIn }) {
   )
 }
 
+// Upload screenshots or files for the AI to read. Each file becomes a Raw
+// row (source "manual"); the next pipeline run reads its text (OCR for
+// images and scans, Word, Excel, PowerPoint, PDF) and writes FAQ entries,
+// or files it as a halal certificate when marked as one.
+const ACCEPT = 'image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx,.txt,.odt,.ods,.odp,.rtf'
+const MAX_BYTES = 10 * 1024 * 1024
+const toB64 = (file) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1] || ''); r.onerror = () => rej(r.error); r.readAsDataURL(file) })
+
+function UploadBox({ lang }) {
+  const [kind, setKind] = useState('faq')
+  const [note, setNote] = useState('')
+  const [files, setFiles] = useState([])
+  const [log, setLog] = useState([])
+  const [busy, setBusy] = useState(false)
+  async function send(e) {
+    e.preventDefault()
+    if (!files.length && !note.trim()) return
+    setBusy(true); setLog([])
+    const items = files.length ? files : [null]
+    for (const f of items) {
+      const label = f ? f.name : t(lang, 'note_only')
+      try {
+        if (f && f.size > MAX_BYTES) throw new Error(t(lang, 'too_big'))
+        const payload = { kind, note, name: f && f.name, mime: f && (f.type || ''), b64: f ? await toB64(f) : '' }
+        await adminPost('manual_upload', payload)
+        setLog((l) => [...l, { label, ok: true }])
+      } catch (er) { setLog((l) => [...l, { label, ok: false, msg: er.message }]) }
+    }
+    setBusy(false); setFiles([]); setNote('')
+    const input = document.getElementById('up-files'); if (input) input.value = ''
+  }
+  return (
+    <form onSubmit={send} className="card p-5 mb-4 space-y-3">
+      <h3 className="font-semibold">{t(lang, 'upload_title')}</h3>
+      <p className="text-sm text-ink-600">{t(lang, 'upload_sub')}</p>
+      <div className="grid sm:grid-cols-2 gap-3">
+        <div><label className="label" htmlFor="up-kind">{t(lang, 'upload_kind')}</label>
+          <select id="up-kind" className="input" value={kind} onChange={(e) => setKind(e.target.value)}>
+            <option value="faq">{t(lang, 'kind_faq')}</option>
+            <option value="certificate">{t(lang, 'kind_cert')}</option>
+            <option value="guideline">{t(lang, 'kind_guideline')}</option>
+            <option value="event">{t(lang, 'kind_event')}</option>
+          </select></div>
+        <div><label className="label" htmlFor="up-files">{t(lang, 'upload_files')}</label>
+          <input id="up-files" type="file" multiple accept={ACCEPT} className="input" onChange={(e) => setFiles(Array.from(e.target.files || []))} /></div>
+      </div>
+      <div><label className="label" htmlFor="up-note">{t(lang, 'upload_note')}</label><textarea id="up-note" className="input" rows={3} value={note} onChange={(e) => setNote(e.target.value)} placeholder={t(lang, 'upload_note_ph')} /></div>
+      {!!files.length && <div className="text-xs text-ink-600">{files.map((f) => `${f.name} (${Math.round(f.size / 1024)} KB)`).join(' · ')}</div>}
+      <div className="flex items-center gap-3"><button className="btn-brand" disabled={busy || (!files.length && !note.trim())}>{busy ? '…' : t(lang, 'upload_send')}</button><span className="text-xs text-ink-400">{t(lang, 'upload_when')}</span></div>
+      {!!log.length && <ul className="text-sm space-y-1">{log.map((x, i) => <li key={i} className={x.ok ? 'text-brand-700' : 'text-red-600'}>{x.ok ? '✓' : '✕'} {x.label}{x.msg ? ` · ${x.msg}` : ''}</li>)}</ul>}
+    </form>
+  )
+}
+
 export default function Admin({ lang, data, onSaved, onSession }) {
   const [sess, setSess] = useState(() => { const s = getSession(); return s && s.until > Date.now() ? s : null })
   const [s, setS] = useState({})
@@ -91,6 +145,8 @@ export default function Admin({ lang, data, onSaved, onSession }) {
         <div className="text-sm text-ink-600">{t(lang, 'signed_in_as')} <b>{sess.email}</b> · <button className="text-brand-600 hover:underline" onClick={signOut}>{t(lang, 'sign_out')}</button></div>
       </div>
       <p className="text-sm text-ink-600 mb-4">{t(lang, 'admin_intro')}</p>
+
+      <UploadBox lang={lang} />
 
       <div className="card p-5 mb-4 space-y-3">
         <h3 className="font-semibold">Hero</h3>

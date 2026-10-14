@@ -20,6 +20,8 @@ Rules:
 7. Messages announcing a talk, course, audit date or seminar go in `events`.
 8. Never include phone numbers, names of individuals, company names of members, or anything that reads like a private case. Generalise it.
 
+Attachments carry the text read out of them in `content` (OCR of screenshots and scans, or the text of PDF, Word, Excel and PowerPoint files). Treat that content as part of the message. A screenshot of a chat is a conversation to learn from like any other. Messages with source "manual" were uploaded by the site admin on purpose: they are always relevant unless empty, and an "Admin upload: this is a halal certificate" message must produce a `documents` entry with kind "certificate" for its attachment.
+
 Return JSON only:
 {"items":[{"relevant":true,"category":"halal|food|cosmetic","subcategory":"short topic","id":"existing FAQ id or null","question_en":"","question_bm":"","answer_formal_en":"","answer_layman_en":"","answer_formal_bm":"","answer_layman_bm":"","confidence":"high|medium|low","source_msg_ids":["..."]}],
  "documents":[{"source_msg_id":"","attachment_name":"","title":"","kind":"certificate|circular|form|guideline|other","category":"halal|food|cosmetic"}],

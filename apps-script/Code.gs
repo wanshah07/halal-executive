@@ -150,6 +150,7 @@ function doPost(e) {
     if (!isIngest) return json({ ok: false, error: 'unauthorised' });
     var lock = LockService.getScriptLock(); lock.waitLock(20000);
     try {
+      if (a === 'manual_upload') { if (!isAdmin) throw new Error('Sign in with a registered email first.'); return json(manualUpload(body, sessEmail || 'token')); }
       if (a === 'settings')     { if (!isAdmin) throw new Error('Sign in with a registered email first.'); return json(writeSettings(body.settings || {})); }
       if (a === 'ingest')       return json(ingest(body.rows || []));
       if (a === 'raw_list')     return json({ ok: true, rows: readTab('Raw').filter(function (r) { return (!body.status || r.status === body.status) && (!body.source || r.source === body.source); }).slice(0, body.limit || 50) });
@@ -309,20 +310,60 @@ function driveFile(b) {
 
 // Bytes of one Drive file (base64) plus text where Drive can extract it, so
 // the organiser can hash and read a certificate without a service account.
+// Bytes of one Drive file (base64) plus its text, so the pipeline can hash
+// and read a certificate, a screenshot or an office file without a service
+// account. Each format is converted by Drive into a temporary Google file,
+// read, then deleted.
 function driveGet(b) {
   var f = DriveApp.getFileById(b.id), blob = f.getBlob(), text = '';
-  if (b.text) {
-    try {
-      var mime = blob.getContentType();
-      if (mime === 'application/pdf' || /^image\//.test(mime)) {
-        // Drive OCR: convert to a temporary Google Doc, read, delete.
-        var res = Drive.Files.create({ name: 'ocr-' + f.getName(), mimeType: 'application/vnd.google-apps.document' }, blob, { ocrLanguage: 'ms' });
-        text = DocumentApp.openById(res.id).getBody().getText();
-        Drive.Files.remove(res.id);
-      } else { text = blob.getDataAsString(); }
-    } catch (e) { text = ''; }
+  if (b.text) { try { text = extractText(f, blob); } catch (e) { text = '[could not read: ' + (e.message || e) + ']'; } }
+  return { ok: true, id: f.getId(), name: f.getName(), mime: blob.getContentType(), size: blob.getBytes().length, modified: f.getLastUpdated().toISOString(), sha256: sha256(blob.getBytes()), text: String(text || '').slice(0, 20000), b64: b.bytes ? Utilities.base64Encode(blob.getBytes()) : '' };
+}
+
+var DOC_LIKE = /(pdf|msword|wordprocessingml|opendocument\.text|rtf)/i;
+var SHEET_LIKE = /(spreadsheetml|ms-excel|opendocument\.spreadsheet|csv)/i;
+var SLIDE_LIKE = /(presentationml|ms-powerpoint|opendocument\.presentation)/i;
+
+function extractText(f, blob) {
+  var mime = blob.getContentType() || '', name = f.getName() || '';
+  if (/^text\/(plain|markdown|html)/.test(mime) || /\.(txt|md)$/i.test(name)) return blob.getDataAsString();
+  var target = null, ocr = false;
+  if (/^image\//.test(mime)) { target = 'application/vnd.google-apps.document'; ocr = true; }
+  else if (DOC_LIKE.test(mime) || /\.(pdf|docx?|odt|rtf)$/i.test(name)) { target = 'application/vnd.google-apps.document'; ocr = /pdf/i.test(mime) || /\.pdf$/i.test(name); }
+  else if (SHEET_LIKE.test(mime) || /\.(xlsx?|ods|csv)$/i.test(name)) target = 'application/vnd.google-apps.spreadsheet';
+  else if (SLIDE_LIKE.test(mime) || /\.(pptx?|odp)$/i.test(name)) target = 'application/vnd.google-apps.presentation';
+  if (!target) return '';
+  var opts = ocr ? { ocrLanguage: 'ms' } : {};
+  var tmp = Drive.Files.create({ name: 'read-' + name, mimeType: target }, blob, opts), out = '';
+  try {
+    if (target.indexOf('document') > 0) out = DocumentApp.openById(tmp.id).getBody().getText();
+    else if (target.indexOf('spreadsheet') > 0) {
+      SpreadsheetApp.openById(tmp.id).getSheets().forEach(function (sh) {
+        out += '## ' + sh.getName() + '\n' + sh.getDataRange().getDisplayValues().map(function (r) { return r.join(' | '); }).join('\n') + '\n';
+      });
+    } else {
+      SlidesApp.openById(tmp.id).getSlides().forEach(function (sl, i) {
+        out += '## Slide ' + (i + 1) + '\n';
+        sl.getShapes().forEach(function (sh) { try { out += sh.getText().asString() + '\n'; } catch (e) { /* not a text shape */ } });
+      });
+    }
+  } finally { Drive.Files.remove(tmp.id); }
+  return out;
+}
+
+// Admin upload: one file (or a note alone) becomes a Raw row with source
+// "manual", so the same pipeline reads it, writes FAQ entries and files any
+// certificate. The hint tells the model what Wan says the file is.
+function manualUpload(b, email) {
+  var hint = { faq: 'Admin upload: material for the FAQ.', certificate: 'Admin upload: this is a halal certificate. File it as a document of kind certificate.', guideline: 'Admin upload: this is a guideline, circular or standard. Add it to guidelines.', event: 'Admin upload: this is an event or course announcement.' }[b.kind] || 'Admin upload.';
+  var text = hint + (b.note ? '\n' + String(b.note).slice(0, 4000) : '');
+  var row = { source: 'manual', group: 'Admin upload', msg_id: 'up-' + Date.now() + '-' + Math.floor(Math.random() * 1e6), sender_hash: sha256(Utilities.newBlob(email).getBytes()).slice(0, 16), ts: new Date().toISOString(), text: text, attachments: [] };
+  if (b.b64) {
+    if (b.b64.length > 14 * 1024 * 1024) throw new Error('File too large (max 10 MB).');
+    row.attachments.push({ name: b.name || 'upload', mime: b.mime || 'application/octet-stream', b64: b.b64, sha256: '' });
   }
-  return { ok: true, id: f.getId(), name: f.getName(), mime: blob.getContentType(), size: blob.getBytes().length, modified: f.getLastUpdated().toISOString(), sha256: sha256(blob.getBytes()), text: text.slice(0, 20000), b64: b.bytes ? Utilities.base64Encode(blob.getBytes()) : '' };
+  var r = ingest([row]);
+  return { ok: true, added: r.added, msg_id: row.msg_id };
 }
 
 function sha256(bytes) {
