@@ -114,7 +114,7 @@ function UploadBox({ lang }) {
 // confidence reaches the public page until an admin publishes it here.
 // Start the pipeline now instead of waiting for the next :10 / :40 slot.
 const RUN_JOBS = ['process_whatsapp', 'references', 'sahkan', 'news', 'organise', 'process_facebook']
-function RunNow({ lang, runs }) {
+function RunNow({ lang, runs, stats }) {
   const [job, setJob] = useState('process_whatsapp')
   const [msg, setMsg] = useState('')
   const [busy, setBusy] = useState(false)
@@ -134,6 +134,15 @@ function RunNow({ lang, runs }) {
         <button className="btn-brand" onClick={go} disabled={busy}><Play {...ICON} size={16} />{busy ? '…' : t(lang, 'run_now')}</button>
         {msg && <span className="text-sm text-ink-600">{msg}</span>}
       </div>
+      {stats && (() => {
+        const waiting = stats.new || 0, done = stats.processed || 0, skipped = stats.skipped || 0, all = waiting + done + skipped
+        return (
+          <div className="text-sm">
+            <div className="flex justify-between text-ink-600"><span>{t(lang, 'ai_queue')}: <b>{waiting.toLocaleString()}</b> {t(lang, 'waiting')} · {done.toLocaleString()} {t(lang, 'read_done')} · {skipped.toLocaleString()} {t(lang, 'filtered')}</span></div>
+            <div className="h-1.5 bg-line rounded-full mt-1 overflow-hidden"><div className="h-full bg-brand-600" style={{ width: all ? `${Math.round(((done + skipped) / all) * 100)}%` : '0%' }} /></div>
+          </div>
+        )
+      })()}
       {last && <p className="text-xs text-ink-400">{t(lang, 'last_run')}: {last.job} · {fmtDateTime(last.ts, lang)} · {last.ok === false || last.ok === 'FALSE' ? '✕' : '✓'} {last.provider || ''}</p>}
     </div>
   )
@@ -244,7 +253,7 @@ export default function Admin({ lang, data, onSaved, onSession }) {
       </div>
       <p className="text-sm text-ink-600 mb-4">{t(lang, 'admin_intro')}</p>
 
-      <RunNow lang={lang} runs={data && data.runs} />
+      <RunNow lang={lang} runs={data && data.runs} stats={data && data.raw_stats} />
       <ReviewBox lang={lang} onChanged={onSaved} />
       <ContentManager lang={lang} data={data} onChanged={onSaved} />
       <UploadBox lang={lang} />

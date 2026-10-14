@@ -80,6 +80,9 @@ def message_for_model(r):
 STOPW = set("the a an of to in is are for and or on do does can i we our my it this that be with what how if any yang dan di ke untuk adalah ini itu apa bagaimana boleh perlu ada kah tak tidak saya kami kita dengan atau jika".split())
 
 
+CERT_TEXT = re.compile(r"sijil\s+pengesahan\s+halal|halal\s+certificat|certificate\s+of\s+halal|perakuan\s+halal|pengesahan\s+halal\s+malaysia", re.I)
+
+
 def toks(s):
     return {w for w in re.sub(r"[^a-z0-9 ]", " ", str(s or "").lower()).split() if len(w) > 1 and w not in STOPW}
 
@@ -186,6 +189,20 @@ def run(sources, max_batches, dry):
                              "drive_file_id": a["drive_file_id"], "drive_url": a.get("drive_url", ""), "content_hash": a.get("sha256", ""), "version": "",
                              "supersedes_id": "", "source_msg_id": d.get("source_msg_id"), "received_at": next((r["ts"] for r in rows if r["id"] == d.get("source_msg_id")), ts),
                              "updated_at": ts, "status": "inbox", "notes": "awaiting organiser"})
+        # A halal certificate posted in the group is filed even when the model
+        # did not list it: the text read from the picture or PDF decides.
+        for m in msgs:
+            for att in m.get("attachments", []):
+                if not CERT_TEXT.search(att.get("content") or ""):
+                    continue
+                a = att_index.get((m["id"], att.get("name")))
+                if not a or a["drive_file_id"] in seen_files:
+                    continue
+                seen_files.add(a["drive_file_id"])
+                doc_rows.append({"id": ids["DOC"](), "title": "Halal certificate", "kind": "certificate", "category": "halal",
+                                 "drive_file_id": a["drive_file_id"], "drive_url": a.get("drive_url", ""), "content_hash": a.get("sha256", ""), "version": "",
+                                 "supersedes_id": "", "source_msg_id": m["id"], "received_at": m.get("ts") or ts,
+                                 "updated_at": ts, "status": "inbox", "notes": "certificate text found; awaiting organiser"})
         for e in j.get("events", []):
             ek = (norm_title(e.get("title")), str(e.get("date_start", ""))[:10])
             if e.get("title") and ek in seen_events:

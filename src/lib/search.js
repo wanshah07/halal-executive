@@ -1,6 +1,6 @@
 // Small client-side search over every segment. Tokenises on word boundaries,
 // scores by term hits weighted by field, and returns mixed results so one box
-// covers FAQ, guidelines, documents, events and news.
+// covers FAQ, guidelines, references, certificates, documents, events and news.
 const norm = (s) => String(s || '').toLowerCase().normalize('NFKD').replace(/[^\p{L}\p{N}\s]/gu, ' ')
 const tokens = (s) => norm(s).split(/\s+/).filter((w) => w.length > 1)
 
@@ -13,6 +13,7 @@ export function buildIndex(data) {
   ;(data.events || []).forEach((e) => push('events', e.id, `${e.title} ${e.title_bm}`, `${e.description} ${e.venue}`, e))
   ;(data.certificates || []).forEach((c) => push('certificates', c.id, `${c.company} ${c.cert_no}`, `${c.scheme} ${c.category} ${c.state} ${c.products}`, c))
   ;(data.news || []).forEach((n) => push('news', n.id, n.title, `${n.summary_en} ${n.summary_bm} ${n.source}`, n))
+  ;(data.references || []).forEach((r) => push('references', r.id, `${r.title} ${r.edition || ''}`, `${r.summary_en || ''} ${r.summary_bm || ''} ${r.key_points || ''} ${r.issuer || ''}`, r))
   return docs
 }
 

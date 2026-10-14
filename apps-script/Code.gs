@@ -274,12 +274,17 @@ function doPost(e) {
     if (a === 'review_list')  { needAdmin(); return json(reviewList()); }
     if (a === 'ref_list')     { needAdmin(); return json({ ok: true, rows: readTab('References') }); }
     if (a === 'event_list')   { needAdmin(); return json({ ok: true, rows: readTab('Events') }); }
-    if (a === 'raw_list')     return json({ ok: true, rows: readTab('Raw').filter(function (r) { return (!body.status || r.status === body.status) && (!body.source || r.source === body.source); }).slice(0, Math.min(body.limit || 50, 500)) });
+    if (a === 'raw_list')     return json({ ok: true, rows: rawList(body.status, body.source, Math.min(body.limit || 50, 500)) });
     if (a === 'read')         { if (WRITABLE.indexOf(body.tab) < 0 && body.tab !== 'Raw') throw new Error('tab not readable'); return json({ ok: true, rows: readTab(body.tab) }); }
     if (a === 'drive_get')    return json(driveGet(body));
     if (a === 'llm_next')     return json({ ok: true, provider: nextProvider() });
     if (a === 'llm')          return json(llmProxy(body));
     if (a === 'heartbeat')    return json(heartbeat(body));
+
+    // A chat-export .txt can hold tens of thousands of messages: import it
+    // without the write lock, so Run now, events and deletes are not blocked
+    // while it runs (it took several minutes on 14 Oct 2026).
+    if (a === 'manual_upload' && body.b64 && /\.txt$/i.test(String(body.name || ''))) { needAdmin(); var mc = manualUpload(body, sessEmail || 'token'); mc.run = autoRun('process_whatsapp'); return json(mc); }
 
     var lock = LockService.getScriptLock(); lock.waitLock(30000);
     try {
@@ -483,7 +488,11 @@ function adminDelete(tab, id) {
 // dispatchRun and the same GITHUB_TOKEN). Run installTriggers() once from the
 // editor; run it again after changing the times here. Pipeline cadence is
 // rule 14 in CLAUDE.md.
-function tickPipeline() { try { purgePastEvents(); } catch (e) { console.error('purge: ' + e); } dispatchRun('process_whatsapp'); }
+function tickPipeline() {
+  try { purgePastEvents(); } catch (e) { console.error('purge: ' + e); }
+  try { rawTriage(); } catch (e) { console.error('triage: ' + e); }
+  dispatchRun('process_whatsapp');
+}
 function tickNews() { dispatchRun('news'); }
 function tickOrganise() { dispatchRun('organise'); }
 function tickFacebook() { dispatchRun('process_facebook'); }
@@ -580,10 +589,59 @@ function rawFp(r) {
   return [h + '@' + m, h + '@' + (m - 1), h + '@' + (m + 1)];
 }
 
+// Group chatter ("ok", "terima kasih", stickers, greetings) never reaches the
+// AI: a message goes to the model only when it has an attachment, or is a
+// question, or names something a halal executive works with. The rest is
+// stored as skipped with notes "prefilter", so it still blocks duplicates.
+var RELEVANT = /halal|haram|sijil|certif|\bcert\b|jakim|jain|\bmain\b|mpphm|mhms|ms ?1500|ms ?2634|ms ?2200|sertu|samak|najis|najs|audit|premis|premise|permohonan|pembaharuan|renew|myehalal|sphm|logo|bahan|ramuan|ingredient|supplier|pembekal|label|kkm|npra|notifikasi|kosmetik|cosmetic|makanan|food|haccp|\bgmp\b|mesti|eksekutif|executive|jawatankuasa|committee|\bsop\b|kursus|latihan|training|seminar|webinar|borang|\bform\b|yuran|\bfee\b|sembelih|slaughter|alkohol|alcohol|gelatin|enzim|enzyme|e-?code|eksport|export|import|pengilang|manufactur|kilang|factory|dapur|kitchen|restoran|restaurant|jenama|brand|produk|product|pindaan|amendment|pekeliling|circular|garis panduan|guideline|standard|akta|act\b|peraturan|regulation/i;
+function rawRelevant(text, att) {
+  if (att && att.some(function (a) { return a && (a.drive_file_id || a.name); })) return true;
+  var t = String(text || '').trim();
+  if (t.length < 15) return false;
+  return t.indexOf('?') >= 0 || RELEVANT.test(t);
+}
+
+// Prefilter rows already in Raw (the chat export imported before the filter
+// existed). Runs on the 30-minute timer; touches only rows still "new".
+function rawTriage() {
+  var sh = sheet('Raw'), n = sh.getLastRow() - 1, C = TABS.Raw;
+  if (n < 1) return 0;
+  var st = sh.getRange(2, C.indexOf('status') + 1, n, 1).getValues(), tx = sh.getRange(2, C.indexOf('text') + 1, n, 1).getValues(),
+      at = sh.getRange(2, C.indexOf('attachments') + 1, n, 1).getValues(), no = sh.getRange(2, C.indexOf('notes') + 1, n, 1).getValues(), changed = 0;
+  for (var i = 0; i < n; i++) {
+    if (st[i][0] !== 'new') continue;
+    var att = []; try { att = JSON.parse(at[i][0] || '[]'); } catch (e) { att = []; }
+    if (!rawRelevant(tx[i][0], att)) { st[i][0] = 'skipped'; no[i][0] = 'prefilter'; changed++; }
+  }
+  if (changed) { sh.getRange(2, C.indexOf('status') + 1, n, 1).setValues(st); sh.getRange(2, C.indexOf('notes') + 1, n, 1).setValues(no); pubBust(); }
+  return changed;
+}
+
+// Rows by status/source without reading the whole tab: two columns to find
+// them, then just those rows.
+function rawList(status, source, limit) {
+  var sh = sheet('Raw'), n = sh.getLastRow() - 1, C = TABS.Raw, out = [];
+  if (n < 1) return out;
+  var st = sh.getRange(2, C.indexOf('status') + 1, n, 1).getValues(), src = sh.getRange(2, C.indexOf('source') + 1, n, 1).getValues();
+  for (var i = 0; i < n && out.length < limit; i++) {
+    if ((status && st[i][0] !== status) || (source && src[i][0] !== source)) continue;
+    var v = sh.getRange(i + 2, 1, 1, C.length).getValues()[0], o = {};
+    C.forEach(function (k, j) { o[k] = v[j] instanceof Date ? v[j].toISOString() : v[j]; });
+    out.push(o);
+  }
+  return out;
+}
+
 function ingest(rows) {
   var sh = sheet('Raw'), have = {}, fps = {};
   ensureHeader(sh, TABS.Raw);
-  readTab('Raw').forEach(function (r) { have[r.source + ':' + r.msg_id] = 1; if (r.fp) fps[r.fp] = 1; });
+  // Only the three key columns are read: Raw holds tens of thousands of rows
+  // once a chat export is in, and this runs under the lock for every message.
+  var n = sh.getLastRow() - 1, C = TABS.Raw;
+  if (n > 0) {
+    var src = sh.getRange(2, C.indexOf('source') + 1, n, 1).getValues(), mid = sh.getRange(2, C.indexOf('msg_id') + 1, n, 1).getValues(), fpc = sh.getRange(2, C.indexOf('fp') + 1, n, 1).getValues();
+    for (var i = 0; i < n; i++) { have[src[i][0] + ':' + mid[i][0]] = 1; if (fpc[i][0]) fps[fpc[i][0]] = 1; }
+  }
   var added = 0, skipped = 0, lines = [];
   rows.forEach(function (r) {
     var key = r.source + ':' + r.msg_id, fp = rawFp(r);
@@ -592,7 +650,8 @@ function ingest(rows) {
       if (a.b64) { var f = saveToInbox(a, r); return { name: f.name, drive_file_id: f.id, drive_url: f.url, mime: a.mime, sha256: a.sha256 || '' }; }
       return a;
     });
-    lines.push([r.source + '-' + r.msg_id, r.source, r.group || '', String(r.msg_id), r.sender_hash || '', r.ts || new Date().toISOString(), r.text || '', JSON.stringify(att), 'new', '', '', '', fp[0] || '']);
+    var keep = rawRelevant(r.text, att);
+    lines.push([r.source + '-' + r.msg_id, r.source, r.group || '', String(r.msg_id), r.sender_hash || '', r.ts || new Date().toISOString(), r.text || '', JSON.stringify(att), keep ? 'new' : 'skipped', '', '', keep ? '' : 'prefilter', fp[0] || '']);
     have[key] = 1; if (fp.length) fps[fp[0]] = 1; added++;
   });
   // One write for the whole batch (a chat export can hold thousands of rows).
@@ -756,7 +815,8 @@ function upsert(tab, rows) {
 }
 
 function updateByIds(tab, ids, patch) {
-  var cols = TABS[tab], sh = sheet(tab), v = sh.getDataRange().getValues(), n = 0; pubBust();
+  var cols = TABS[tab], sh = sheet(tab), last = sh.getLastRow(), n = 0; pubBust();
+  var v = last > 1 ? [[cols[0]]].concat(sh.getRange(2, 1, last - 1, 1).getValues()) : [[cols[0]]]; // id column only
   var want = {}; ids.forEach(function (i) { want[String(i)] = 1; });
   v.forEach(function (r, i) {
     if (!i || !want[String(r[0])]) return;
@@ -898,8 +958,14 @@ function chat(b) {
   b.question = String(b.question || '').slice(0, 600);
   b.context = (b.context || []).slice(0, 8).map(function (c) { return { type: String(c.type || '').slice(0, 20), id: String(c.id || '').slice(0, 40), title: String(c.title || '').slice(0, 300), body: String(c.body || '').slice(0, 1500) }; });
   var lang = b.lang === 'bm' ? 'Bahasa Malaysia (Malaysian register: boleh, ubat, syarikat, kualiti; never Indonesian)' : 'English';
-  var ctx = (b.context || []).map(function (c, i) { return '[' + (i + 1) + '] (' + c.type + ' ' + c.id + ') ' + c.title + '\n' + c.body; }).join('\n\n');
-  var sys = 'You are the Halal Executive assistant for halal executives in Malaysia. Answer ONLY from the numbered context entries. Cite entries like [1]. If the context does not answer, say so in one sentence and suggest which tab to check (FAQ, Guidelines, Documents). Keep regulatory terms original (Notifikasi Kosmetik, Garis Panduan, Borang). Never invent a limit, entry number or date; if a number is not in the context, say it is not in the site sources yet. Reply in the language of the question (Bahasa Malaysia or English; if unclear, ' + lang + '). Be brief but always finish the answer.';
+  // The page sends its own best matches (FAQ, guidelines, documents, events,
+  // certificates, news); the reference passages are added here, so the
+  // Assistant covers everything on the site and in the references library.
+  var refPass = [];
+  try { refPass = retrievePassages(b.question, 5).passages; } catch (e) { refPass = []; }
+  var all = (b.context || []).concat(refPass.map(function (p) { return { type: 'reference', id: p.title + ', page ' + p.page, title: p.title + ', page ' + p.page, body: p.text.slice(0, 1400) }; }));
+  var ctx = all.map(function (c, i) { return '[' + (i + 1) + '] (' + c.type + ' ' + c.id + ') ' + c.title + '\n' + c.body; }).join('\n\n');
+  var sys = 'You are the Halal Executive assistant for halal executives in Malaysia. Answer ONLY from the numbered context entries (FAQ, guidelines, documents, events, certificates, news and passages from the official references). Cite entries like [1]; for a reference passage also name the document and page. A one-word question (e.g. "warna") means: what do the sources say about it? If the context does not answer, say so in one sentence and suggest the References tab. Keep regulatory terms original (Notifikasi Kosmetik, Garis Panduan, Borang). Never invent a limit, entry number or date; if a number is not in the context, say it is not in the site sources yet. Reply in the language of the question (Bahasa Malaysia or English; if unclear, ' + lang + '). Be brief but always finish the answer.';
   try {
     var r = complete([{ role: 'system', content: sys }, { role: 'user', content: 'Context:\n' + (ctx || '(none)') + '\n\nQuestion: ' + b.question }], { max_tokens: 1500, fast: true, whole: true });
     return { ok: true, answer: String(r.text).replace(/<think>[\s\S]*?<\/think>/g, '').trim(), provider: r.provider, model: r.model };
@@ -1006,6 +1072,52 @@ function expandQuery(q) {
   return out;
 }
 
+// Reference passages for a question, best first (used by the References tab
+// and by the Assistant). BM25-style score over every passage; the question's
+// words are widened with their Malay/English pair and with the fast model's
+// search words in both languages. The best k, plus the passage right after
+// each of the best three, so a requirement that runs over a passage break
+// reaches the model whole.
+function retrievePassages(q, k) {
+  var refs = {}; readTab('References').forEach(function (r) { if (r.status === 'indexed') refs[r.id] = r; });
+  var rows = sheet('RefChunks').getDataRange().getValues().slice(1).filter(function (r) { return refs[r[1]]; });
+  if (!rows.length) return { indexed: false, passages: [] };
+  // Each passage is split into words once per question, then scored for the
+  // question's words. The model is asked for Malay/English search words only
+  // when that first pass finds fewer than 4 good passages (it costs a call).
+  var toked = rows.map(function (r) { return toks(r[3]); });
+  var score = function (terms) {
+    var N = rows.length, df = {}, docs = rows.map(function (r, i) { var tf = {}; toked[i].forEach(function (w) { if (terms[w]) tf[w] = (tf[w] || 0) + 1; }); Object.keys(tf).forEach(function (w) { df[w] = (df[w] || 0) + 1; }); return { r: r, tf: tf, len: toked[i].length }; });
+    var avg = docs.reduce(function (s, d) { return s + d.len; }, 0) / N;
+    docs.forEach(function (d) {
+      var sc = 0;
+      Object.keys(d.tf).forEach(function (w) { var idf = Math.log(1 + (N - df[w] + 0.5) / (df[w] + 0.5)); var f = d.tf[w]; sc += terms[w] * idf * (f * 2.2) / (f + 1.2 * (0.25 + 0.75 * d.len / avg)); });
+      d.score = sc;
+    });
+    return { docs: docs, ranked: docs.filter(function (d) { return d.score > 0; }).sort(function (x, y) { return y.score - x.score; }) };
+  };
+  var terms = {};
+  toks(q).forEach(function (w) { terms[w] = 1; (SYN[w] || []).forEach(function (x) { if (!terms[x]) terms[x] = 0.7; }); });
+  var res = score(terms);
+  var good = res.ranked.length ? res.ranked.filter(function (d) { return d.score >= res.ranked[0].score * 0.35; }).length : 0;
+  if (good < 4) {
+    var more = expandQuery(q), added = 0;
+    more.forEach(function (w) { if (!terms[w]) { terms[w] = 0.8; added++; } });
+    if (added) res = score(terms);
+  }
+  var docs = res.docs, ranked = res.ranked;
+  var top = ranked.slice(0, k), have = {};
+  top.forEach(function (d) { have[d.r[0]] = 1; });
+  ranked.slice(0, 3).forEach(function (d) {
+    var m = String(d.r[0]).match(/^(.*-)(\d+)$/); if (!m) return;
+    var next = m[1] + (Number(m[2]) + 1);
+    if (have[next]) return;
+    var nd = docs.filter(function (x) { return String(x.r[0]) === next; })[0];
+    if (nd) { top.push(nd); have[next] = 1; }
+  });
+  return { indexed: true, passages: top.map(function (d, i) { var ref = refs[d.r[1]]; return { n: i + 1, ref_id: d.r[1], page: String(d.r[2]), title: ref.title + (ref.edition ? ' (' + ref.edition + ')' : ''), text: String(d.r[3]).slice(0, 1200) }; }) };
+}
+
 function askReferences(b) {
   var t0 = Date.now();
   var q = String(b.question || '').trim().slice(0, 600);
@@ -1016,40 +1128,13 @@ function askReferences(b) {
   var hit = cache.get(key);
   if (hit) { var h = JSON.parse(hit); h.cached = true; h.ms = Date.now() - t0; return h; }
 
-  // Retrieve: BM25-style score over every passage, question terms widened
-  // with their Malay/English pair.
-  var qt = toks(q), terms = {};
-  qt.forEach(function (w) { terms[w] = 1; (SYN[w] || []).forEach(function (x) { if (!terms[x]) terms[x] = 0.7; }); });
-  // Cross-language: the references are mostly in Malay, questions come in
-  // either language. The fast model lists the search words in both.
-  expandQuery(q).forEach(function (w) { if (!terms[w]) terms[w] = 0.8; });
-  var refs = {}; readTab('References').forEach(function (r) { if (r.status === 'indexed') refs[r.id] = r; });
-  var rows = sheet('RefChunks').getDataRange().getValues().slice(1).filter(function (r) { return refs[r[1]]; });
-  if (!rows.length) return { ok: true, layman: '', details: '', citations: [], none: true, message: 'No references have been indexed yet.', ms: Date.now() - t0 };
-  var N = rows.length, df = {}, docs = rows.map(function (r) { var tk = toks(r[3]); var tf = {}; tk.forEach(function (w) { if (terms[w]) tf[w] = (tf[w] || 0) + 1; }); Object.keys(tf).forEach(function (w) { df[w] = (df[w] || 0) + 1; }); return { r: r, tf: tf, len: tk.length }; });
-  var avg = docs.reduce(function (s, d) { return s + d.len; }, 0) / N;
-  docs.forEach(function (d) {
-    var sc = 0;
-    Object.keys(d.tf).forEach(function (w) { var idf = Math.log(1 + (N - df[w] + 0.5) / (df[w] + 0.5)); var f = d.tf[w]; sc += terms[w] * idf * (f * 2.2) / (f + 1.2 * (0.25 + 0.75 * d.len / avg)); });
-    d.score = sc;
-  });
-  var ranked = docs.filter(function (d) { return d.score > 0; }).sort(function (x, y) { return y.score - x.score; });
-  // Ten best passages, plus the passage right after each of the best three,
-  // so a requirement that runs over a passage break reaches the model whole.
-  var top = ranked.slice(0, 10), have = {};
-  top.forEach(function (d) { have[d.r[0]] = 1; });
-  ranked.slice(0, 3).forEach(function (d) {
-    var m = String(d.r[0]).match(/^(.*-)(\d+)$/); if (!m) return;
-    var next = m[1] + (Number(m[2]) + 1);
-    if (have[next]) return;
-    var nd = docs.filter(function (x) { return String(x.r[0]) === next; })[0];
-    if (nd) { top.push(nd); have[next] = 1; }
-  });
-  if (!top.length) {
+  var found = retrievePassages(q, 7);
+  if (!found.indexed) return { ok: true, layman: '', details: '', citations: [], none: true, message: 'No references have been indexed yet.', ms: Date.now() - t0 };
+  if (!found.passages.length) {
     var none = { ok: true, none: true, layman: '', details: '', citations: [], message: lang === 'bm' ? 'Tiada petikan dalam rujukan yang sepadan dengan soalan ini.' : 'Nothing in the references matches this question.', ms: Date.now() - t0 };
     return none;
   }
-  var passages = top.map(function (d, i) { var ref = refs[d.r[1]]; return { n: i + 1, ref_id: d.r[1], page: String(d.r[2]), title: ref.title + (ref.edition ? ' (' + ref.edition + ')' : ''), text: String(d.r[3]).slice(0, 1600) }; });
+  var passages = found.passages;
   var langRule = lang === 'bm' ? 'Bahasa Malaysia (Malaysian register: boleh, ubat, syarikat, kualiti; never Indonesian)' : lang === 'en' ? 'English' : 'the same language as the question (Bahasa Malaysia or English; Malaysian register, never Indonesian)';
   var sys = 'You answer questions from halal executives in Malaysia using ONLY the numbered passages from official references. ' +
     'Return JSON: {"layman":"2-4 short sentences anyone can follow","details":"precise answer naming the requirement, conditions and exceptions, 3-8 sentences","citations":[{"n":<passage number>,"quote":"exact words from that passage, max 25 words"}],"confidence":"high|medium|low"}. ' +
@@ -1057,7 +1142,7 @@ function askReferences(b) {
     'If the passages do not answer the question, say so plainly in "layman", leave "details" empty and cite nothing. If they answer only part of it, answer that part and say which part the references do not cover. Never use outside knowledge, never invent a number, clause or page. Always finish every sentence.';
   var user = 'Passages:\n' + passages.map(function (p) { return '[' + p.n + '] ' + p.title + ', page ' + p.page + '\n' + p.text; }).join('\n\n') + '\n\nQuestion: ' + q;
   var r;
-  try { r = complete([{ role: 'system', content: sys }, { role: 'user', content: user }], { max_tokens: 2500, json: true, fast: true, temperature: 0.1, whole: true }); }
+  try { r = complete([{ role: 'system', content: sys }, { role: 'user', content: user }], { max_tokens: 1800, json: true, fast: true, temperature: 0.1, whole: true }); }
   catch (e) { return { ok: false, error: 'The AI did not answer: ' + String(e.message || e).slice(0, 200) }; }
   var j = r.json || {};
   var byN = {}; passages.forEach(function (p) { byN[p.n] = p; });

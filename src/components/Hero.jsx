@@ -18,8 +18,10 @@ export default function Hero({ lang, settings }) {
             <a href={safeUrl(settings.hero_cta_url, { allowHash: true }) || '#faq'} className="btn-brand mt-4">{settings.hero_cta}</a>
           )}
         </div>
+        {/* The picture fills the height of the text beside it (it never sets
+            the height itself), cropped to fit; on phones a 16:9 strip. */}
         {img && !bad
-          ? <img src={img} alt="" referrerPolicy="no-referrer" onError={() => setBad(true)} className="h-full w-full object-cover max-h-64 md:max-h-none bg-brand-600" />
+          ? <div className="relative aspect-[16/9] md:aspect-auto bg-brand-600"><img src={img} alt="" referrerPolicy="no-referrer" onError={() => setBad(true)} className="absolute inset-0 h-full w-full object-cover" /></div>
           : <div className="hidden md:block bg-brand-600" />}
       </div>
     </section>
