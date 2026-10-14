@@ -24,9 +24,12 @@ web app is the only door to the Sheet and Drive.
    GitHub Actions (the workflow cannot do this itself). Then Actions → "Deploy
    site" → Run workflow; the first run after enabling publishes the page.
 7. DNS at the `kkmhalalconsultant.com` zone: `CNAME halalexecutive →
-   wanshah07.github.io`. Pages → Custom domain shows
-   `halalexecutive.kkmhalalconsultant.com` from `public/CNAME`; tick
-   Enforce HTTPS once the certificate is issued.
+   wanshah07.github.io` (already pointing at GitHub on 14 Oct 2026). With the
+   Actions source, Pages does NOT read `public/CNAME`: type
+   `halalexecutive.kkmhalalconsultant.com` into Settings → Pages → Custom
+   domain and Save, wait for the DNS check, then tick Enforce HTTPS. Until
+   then the page is at https://wanshah07.github.io/halal-executive/ (the
+   build uses relative paths, so it works at both).
 8. Logo files are in `public/brand/` (from Wan's artwork, 14 Oct 2026). Replace
    them there if the artwork changes; nothing else references the path.
 

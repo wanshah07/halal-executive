@@ -15,8 +15,8 @@ export default function Header({ lang, setLang, tab, setTab, onRefresh, onExport
             <button className="md:hidden btn px-2.5" onClick={onMenu} aria-label={t(lang, 'menu')}>☰</button>
             <a href="#overview" onClick={() => setTab('overview')} className="flex items-center gap-3 min-w-0">
               <img
-                src="/brand/jakim-halal-logo.png"
-                onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = '/brand/halal-logo.svg' }}
+                src="./brand/jakim-halal-logo.png"
+                onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = './brand/halal-logo.svg' }}
                 alt="Halal Malaysia logo"
                 className="h-11 w-11 object-contain"
               />
