@@ -1,19 +1,15 @@
 name: Pipeline
-# Scheduled jobs. Each one runs until its queue is empty and logs the provider
-# that answered (MIRELD or AFIQ) to the Runs tab. Times are UTC; the 30-minute
-# pass starts at 00:10 so it never collides with the Facebook pass at
-# 18:40 UTC (02:40 MYT).
+# Pipeline jobs. Each one runs until its queue is empty and logs the provider
+# that answered (MIRELD or AFIQ) to the Runs tab. Started by Apps Script's
+# timer or by Admin → Run the AI now; overlapping starts queue (concurrency).
 #
 # Repository secrets: HE_API_URL, HE_INGEST_TOKEN, MIRELD_API_KEY, AFIQ_API_KEY
 # Repository variables (all optional): MIRELD_MODEL, AFIQ_MODEL (empty = auto), NEWS_FEEDS
 on:
-  schedule:
-    # Every 30 min while the collectors bed in (Wan, 14 Oct 2026); back to
-    # '10 */2 * * *' once stable. Public repo: Actions minutes are free.
-    - cron: '10,40 * * * *'   # whatsapp + telegram + admin uploads + new references, every 30 min
-    - cron: '55 18 * * *'     # facebook, once a day (off the :10/:40 slots)
-    - cron: '25 */6 * * *'    # news sweep
-    - cron: '50 19 * * *'     # drive organiser
+  # No GitHub cron: on this repo it fired twice in ten hours. Apps Script's
+  # time-driven triggers start every run through workflow_dispatch
+  # (apps-script/Code.gs, installTriggers): process_whatsapp every 30 min,
+  # news every 6 h, facebook ~2 am and organise ~3 am MYT. CLAUDE.md rule 14.
   workflow_dispatch:
     inputs:
       job:

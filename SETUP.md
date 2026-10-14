@@ -114,3 +114,7 @@ for the next :10 / :40 slot. It needs a GitHub token kept only in Apps Script:
 4. Generate, copy the token.
 5. Apps Script → Project Settings → Script Properties → Add property
    `GITHUB_TOKEN` = the token → Save.
+6. In the Apps Script editor choose **installTriggers** and press **Run**
+   (allow access when asked). This is the pipeline's clock: every 30 minutes,
+   news every 6 hours, Facebook ~2 am, Drive organiser ~3 am. Check under
+   Triggers (clock icon) that four triggers are listed.

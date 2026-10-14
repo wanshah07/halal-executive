@@ -45,6 +45,9 @@
 13. **Every link from the Sheet goes through `safeUrl`** (src/lib/safe.js) and
     links from the model through `safe_url` in the pipeline. Sheet text can
     come from a WhatsApp message.
-14. **Pipeline cadence is 30 minutes for now** (`10,40 * * * *`, Wan,
-    14 Oct 2026), going back to 2 hours (`10 */2 * * *`) once the collectors
-    are stable. Change the cron and the `Pick job` case together.
+14. **Pipeline cadence is 30 minutes for now** (Wan, 14 Oct 2026), going back
+    to 2 hours once the collectors are stable. The clock is Apps Script, not
+    GitHub cron (it fired twice in ten hours on this repo): `installTriggers()`
+    in Code.gs dispatches `pipeline.yml` with GITHUB_TOKEN. Change the times
+    there and run `installTriggers()` again; do not add a cron back to
+    pipeline.yml, or runs double.

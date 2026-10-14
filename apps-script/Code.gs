@@ -30,7 +30,7 @@
  */
 
 var TABS = {
-  Raw:        ['id','source','group','msg_id','sender_hash','ts','text','attachments','status','processed_at','model','notes'],
+  Raw:        ['id','source','group','msg_id','sender_hash','ts','text','attachments','status','processed_at','model','notes','fp'],
   FAQ:        ['id','category','subcategory','question_en','question_bm','answer_formal_en','answer_layman_en','answer_formal_bm','answer_layman_bm','source_refs','confidence','status','created_at','updated_at','model','verify_notes','verified_at'],
   Guidelines: ['id','category','title','title_bm','summary_en','summary_bm','link','issuer','effective_date','updated_at','status','source'],
   Documents:  ['id','title','kind','category','drive_file_id','drive_url','content_hash','version','supersedes_id','source_msg_id','received_at','updated_at','status','notes'],
@@ -378,6 +378,13 @@ function runNow(b) {
   var token = props().getProperty('GITHUB_TOKEN');
   if (!token) throw new Error('Run now is not set up yet: add a GitHub token as the Script Property GITHUB_TOKEN (see SETUP.md).');
   if (!rate('run_now', 1, 120)) throw new Error('A run was started less than 2 minutes ago. It is on its way.');
+  dispatchRun(job, token);
+  return { ok: true, job: job, message: 'Started. Results show here in 2-4 minutes.' };
+}
+
+function dispatchRun(job, token) {
+  token = token || props().getProperty('GITHUB_TOKEN');
+  if (!token) throw new Error('GITHUB_TOKEN is not set in Script Properties.');
   var r = UrlFetchApp.fetch('https://api.github.com/repos/' + GH_REPO + '/actions/workflows/pipeline.yml/dispatches', {
     method: 'post', contentType: 'application/json', muteHttpExceptions: true,
     headers: { Authorization: 'Bearer ' + token, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' },
@@ -385,7 +392,27 @@ function runNow(b) {
   });
   var code = r.getResponseCode();
   if (code !== 204) throw new Error('GitHub refused the run (' + code + '): ' + r.getContentText().slice(0, 160));
-  return { ok: true, job: job, message: 'Started. Results show here in 2-4 minutes.' };
+  props().setProperty('last_dispatch', JSON.stringify({ job: job, ts: new Date().toISOString() }));
+}
+
+// ---------- The clock ----------
+// GitHub's own cron for this repo fired only twice in its first ten hours, so
+// Apps Script's time-driven triggers start the Pipeline instead (through
+// dispatchRun and the same GITHUB_TOKEN). Run installTriggers() once from the
+// editor; run it again after changing the times here. Pipeline cadence is
+// rule 14 in CLAUDE.md.
+function tickPipeline() { dispatchRun('process_whatsapp'); }
+function tickNews() { dispatchRun('news'); }
+function tickOrganise() { dispatchRun('organise'); }
+function tickFacebook() { dispatchRun('process_facebook'); }
+function installTriggers() {
+  var mine = ['tickPipeline', 'tickNews', 'tickOrganise', 'tickFacebook'];
+  ScriptApp.getProjectTriggers().forEach(function (t) { if (mine.indexOf(t.getHandlerFunction()) >= 0) ScriptApp.deleteTrigger(t); });
+  ScriptApp.newTrigger('tickPipeline').timeBased().everyMinutes(30).create();   // messages, uploads, references, facts
+  ScriptApp.newTrigger('tickNews').timeBased().everyHours(6).create();          // halal news
+  ScriptApp.newTrigger('tickOrganise').timeBased().atHour(3).everyDays(1).create(); // Drive organiser, ~3 am MYT
+  ScriptApp.newTrigger('tickFacebook').timeBased().atHour(2).everyDays(1).create(); // Facebook pass, ~2 am MYT
+  Logger.log('Triggers installed: every 30 min, every 6 h, daily 2 am and 3 am.');
 }
 
 // ---------- Certificate thumbnails ----------
@@ -455,19 +482,34 @@ function writeSettings(obj) {
 
 // Collectors post rows {source, group, msg_id, sender_hash, ts, text, attachments:[{name, mime, b64, sha256}]}.
 // Duplicate (source, msg_id) is skipped so a re-run never doubles the queue.
+// The same message can arrive twice under different ids: once from a chat
+// export (import.js) and once from the live collector, or after a re-link.
+// Besides the id, each text message gets a fingerprint (source + minute +
+// normalised text); a second copy within a minute either side is skipped.
+// Texts under 12 characters ("ok", "terima kasih") are not fingerprinted,
+// since different people send those in the same minute.
+function rawFp(r) {
+  var t = String(r.text || '').toLowerCase().replace(/\s+/g, ' ').replace(/[^\p{L}\p{N} ]/gu, '').trim();
+  var ms = Date.parse(r.ts);
+  if (t.length < 12 || isNaN(ms)) return [];
+  var h = sha256(Utilities.newBlob(r.source + '|' + t).getBytes()).slice(0, 20), m = Math.floor(ms / 60000);
+  return [h + '@' + m, h + '@' + (m - 1), h + '@' + (m + 1)];
+}
+
 function ingest(rows) {
-  var sh = sheet('Raw'), have = {};
-  readTab('Raw').forEach(function (r) { have[r.source + ':' + r.msg_id] = 1; });
+  var sh = sheet('Raw'), have = {}, fps = {};
+  ensureHeader(sh, TABS.Raw);
+  readTab('Raw').forEach(function (r) { have[r.source + ':' + r.msg_id] = 1; if (r.fp) fps[r.fp] = 1; });
   var added = 0, skipped = 0;
   rows.forEach(function (r) {
-    var key = r.source + ':' + r.msg_id;
-    if (have[key]) { skipped++; return; }
+    var key = r.source + ':' + r.msg_id, fp = rawFp(r);
+    if (have[key] || (fp.length && (fps[fp[0]] || fps[fp[1]] || fps[fp[2]]))) { skipped++; return; }
     var att = (r.attachments || []).map(function (a) {
       if (a.b64) { var f = saveToInbox(a, r); return { name: f.name, drive_file_id: f.id, drive_url: f.url, mime: a.mime, sha256: a.sha256 || '' }; }
       return a;
     });
-    sh.appendRow([r.source + '-' + r.msg_id, r.source, r.group || '', String(r.msg_id), r.sender_hash || '', r.ts || new Date().toISOString(), r.text || '', JSON.stringify(att), 'new', '', '', '']);
-    have[key] = 1; added++;
+    sh.appendRow([r.source + '-' + r.msg_id, r.source, r.group || '', String(r.msg_id), r.sender_hash || '', r.ts || new Date().toISOString(), r.text || '', JSON.stringify(att), 'new', '', '', '', fp[0] || '']);
+    have[key] = 1; if (fp.length) fps[fp[0]] = 1; added++;
   });
   return { ok: true, added: added, skipped: skipped };
 }
