@@ -13,6 +13,7 @@ import datetime as dt
 import hashlib
 import json
 import os
+import re
 import sys
 import time
 
@@ -23,12 +24,22 @@ import llm_router
 from prompts import NEWS_SYSTEM
 
 TTL_H = int(os.environ.get("NEWS_TTL_HOURS", "72"))
+# Google News sorts a search by relevance, so without "when:3d" a halal
+# search returns 100 old stories and nothing from the last 72 hours
+# (measured 14 Oct 2026). Each query below returned fresh items that day.
+def _gn(q, lang):
+    hl, ceid = ("en-MY", "MY:en") if lang == "en" else ("ms-MY", "MY:ms")
+    return f"https://news.google.com/rss/search?q={q}+when:3d&hl={hl}&gl=MY&ceid={ceid}"
+
+
 DEFAULT_FEEDS = [
-    "https://news.google.com/rss/search?q=halal+JAKIM&hl=en-MY&gl=MY&ceid=MY:en",
-    "https://news.google.com/rss/search?q=sijil+halal+Malaysia&hl=ms-MY&gl=MY&ceid=MY:ms",
-    "https://news.google.com/rss/search?q=halal+Malaysia+industry&hl=en-MY&gl=MY&ceid=MY:en",
-    "https://news.google.com/rss/search?q=NPRA+kosmetik&hl=ms-MY&gl=MY&ceid=MY:ms",
-    "https://news.google.com/rss/search?q=Kementerian+Kesihatan+makanan+keselamatan&hl=ms-MY&gl=MY&ceid=MY:ms",
+    _gn("halal+Malaysia", "en"), _gn("halal+Malaysia", "ms"),
+    _gn("halal+JAKIM", "en"), _gn("halal+JAKIM", "ms"),
+    _gn("sijil+halal", "ms"), _gn("logo+halal", "en"), _gn("logo+halal", "ms"),
+    _gn("halal+industri", "ms"), _gn("produk+halal+Malaysia", "ms"),
+    _gn("HDC+halal+OR+MIHAS", "en"), _gn("halal+certification+Malaysia", "en"),
+    _gn("NPRA+kosmetik", "ms"), _gn("KKM+keselamatan+makanan+Malaysia", "ms"),
+    _gn("halal+cosmetics+Malaysia", "en"),
 ]
 
 
@@ -44,14 +55,18 @@ def run():
     if expired:
         he_api.delete("News", expired); print("expired", len(expired))
     have = {r["id"] for r in existing}
-    fresh = []
+    fresh, seen_titles = [], {re.sub(r"\s+-\s+[^-]+$", "", r.get("title", "")).strip().lower() for r in existing}
     for url in feeds:
         try:
-            for e in feedparser.parse(url).entries[:30]:
+            for e in feedparser.parse(url).entries[:40]:
                 nid = "NEWS-" + hashlib.sha1(e.link.encode()).hexdigest()[:10]
                 pub = iso(getattr(e, "published_parsed", None))
                 if nid in have or (pub and dt.datetime.fromisoformat(pub) < now - dt.timedelta(hours=TTL_H)):
                     continue
+                tkey = re.sub(r"\s+-\s+[^-]+$", "", e.title).strip().lower()
+                if tkey in seen_titles:
+                    continue
+                seen_titles.add(tkey)
                 have.add(nid)
                 fresh.append({"id": nid, "title": e.title, "url": e.link, "source": getattr(getattr(e, "source", None), "title", "") or url.split("/")[2], "published_at": pub or now.isoformat()})
         except Exception as ex:  # noqa: BLE001
