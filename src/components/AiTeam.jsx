@@ -39,9 +39,10 @@ export default function AiTeam({ lang, runs, sample }) {
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
         {cards.map((c) => {
-          const p = st && st.providers ? st.providers[c.key] : null
-          const state = st ? stateOf(p) : 'standby'
           const run = fromRuns(c.key)
+          // Older Code.gs has no status route: judge from the pipeline's runs.
+          const p = st && st.providers ? st.providers[c.key] : (run ? { key: true, reachable: true, model: run.model, last_used: run.ts } : null)
+          const state = st && st.providers ? stateOf(p) : run ? stateOf(p) : 'standby'
           const chip = { active: 'bg-brand-100 text-brand-700', standby: 'bg-amber-100 text-amber-800', offline: 'bg-red-100 text-red-700' }[state]
           return (
             <div key={c.key} className="flex items-center gap-4 rounded-xl border border-line p-4 bg-gradient-to-br from-paper to-white">
