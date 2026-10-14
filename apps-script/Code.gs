@@ -23,6 +23,9 @@
  *                      itself if that model is withdrawn; or set an exact id
  *                      (or a comma list, first one available wins).
  *
+ *   ADMIN_EMAILS       comma list of emails allowed into the Admin tab;
+ *                      setup() starts it with your own Google account.
+ *
  * Run setup() once. Run showSecrets() any time to print the tokens again.
  */
 
@@ -63,6 +66,7 @@ function setup() {
     var f = it.hasNext() ? it.next() : DriveApp.createFolder('Halal Executive');
     P.setProperty('DRIVE_ROOT_ID', f.getId());
   }
+  if (!P.getProperty('ADMIN_EMAILS')) P.setProperty('ADMIN_EMAILS', Session.getEffectiveUser().getEmail().toLowerCase());
   showSecrets();
 }
 
@@ -75,6 +79,7 @@ function showSecrets() {
   Logger.log('ADMIN_TOKEN   = ' + P.getProperty('ADMIN_TOKEN'));
   Logger.log('INGEST_TOKEN  = ' + P.getProperty('INGEST_TOKEN'));
   Logger.log('DRIVE_ROOT_ID = ' + f.getId() + '   (' + f.getUrl() + ')');
+  Logger.log('ADMIN_EMAILS  = ' + P.getProperty('ADMIN_EMAILS'));
   Logger.log('MIRELD key ' + (P.getProperty('MIRELD_API_KEY') ? 'set' : 'MISSING') + ', model ' + (P.getProperty('MIRELD_MODEL') || 'auto'));
   Logger.log('AFIQ key   ' + (P.getProperty('AFIQ_API_KEY') ? 'set' : 'MISSING') + ', model ' + (P.getProperty('AFIQ_MODEL') || 'auto'));
 }
@@ -102,6 +107,7 @@ function doGet(e) {
   var a = (e.parameter.action || 'data');
   if (a === 'data') return json(publicData());
   if (a === 'ping') return json({ ok: true, ts: new Date().toISOString() });
+  if (a === 'thumb') return json(certThumb(String(e.parameter.id || '')));
   return json({ ok: false, error: 'unknown action' });
 }
 
@@ -130,13 +136,21 @@ function doPost(e) {
   var a = body.action;
   try {
     if (a === 'chat') return json(chat(body));
+    if (a === 'login_request') return json(loginRequest(body.email));
+    if (a === 'login_verify') return json(loginVerify(body.email, body.code));
+    if (a === 'logout') { if (body.session) CacheService.getScriptCache().remove('sess_' + body.session); return json({ ok: true }); }
     var P = props();
-    var isAdmin = body.token && body.token === P.getProperty('ADMIN_TOKEN');
-    var isIngest = body.token && (body.token === P.getProperty('INGEST_TOKEN') || isAdmin);
+    var sessEmail = sessionEmail(body.session);
+    if (a === 'whoami') return json(sessEmail ? { ok: true, email: sessEmail } : { ok: false, error: 'unauthorised' });
+    if (a === 'admins_get') return json(sessEmail ? { ok: true, emails: adminEmails(), owner: Session.getEffectiveUser().getEmail().toLowerCase() } : { ok: false, error: 'unauthorised' });
+    if (a === 'admins_set') return json(sessEmail ? setAdminEmails(body.emails || []) : { ok: false, error: 'unauthorised' });
+    // Admin = a signed-in registered email, or ADMIN_TOKEN for scripts.
+    var isAdmin = !!sessEmail || (body.token && body.token === P.getProperty('ADMIN_TOKEN'));
+    var isIngest = isAdmin || (body.token && body.token === P.getProperty('INGEST_TOKEN'));
     if (!isIngest) return json({ ok: false, error: 'unauthorised' });
     var lock = LockService.getScriptLock(); lock.waitLock(20000);
     try {
-      if (a === 'settings')     { if (!isAdmin) throw new Error('admin token required'); return json(writeSettings(body.settings || {})); }
+      if (a === 'settings')     { if (!isAdmin) throw new Error('Sign in with a registered email first.'); return json(writeSettings(body.settings || {})); }
       if (a === 'ingest')       return json(ingest(body.rows || []));
       if (a === 'raw_list')     return json({ ok: true, rows: readTab('Raw').filter(function (r) { return (!body.status || r.status === body.status) && (!body.source || r.source === body.source); }).slice(0, body.limit || 50) });
       if (a === 'raw_update')   return json(updateByIds('Raw', body.ids || [], body.patch || {}));
@@ -152,6 +166,88 @@ function doPost(e) {
       return json({ ok: false, error: 'unknown action ' + a });
     } finally { lock.releaseLock(); }
   } catch (err) { return json({ ok: false, error: String(err && err.message || err) }); }
+}
+
+// ---------- Admin sign-in: one-time code to a registered email ----------
+function adminEmails() {
+  return String(props().getProperty('ADMIN_EMAILS') || '').toLowerCase().split(/[\s,;]+/).filter(String);
+}
+
+function setAdminEmails(list) {
+  var owner = Session.getEffectiveUser().getEmail().toLowerCase();
+  var clean = list.map(function (x) { return String(x).trim().toLowerCase(); }).filter(function (x) { return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x); });
+  if (clean.indexOf(owner) < 0) clean.unshift(owner); // the owner can never lock themselves out
+  props().setProperty('ADMIN_EMAILS', clean.join(','));
+  return { ok: true, emails: clean };
+}
+
+// The answer is the same whether or not the email is registered, so the
+// form cannot be used to discover who the admins are.
+function loginRequest(email) {
+  email = String(email || '').trim().toLowerCase();
+  var generic = { ok: true, message: 'If this email is registered, a 6-digit code has been sent. It works for 10 minutes.' };
+  if (adminEmails().indexOf(email) < 0) return generic;
+  var c = CacheService.getScriptCache();
+  if (c.get('otp_rl_' + email)) return generic; // one code a minute
+  var code = String(Math.floor(100000 + Math.random() * 900000));
+  c.put('otp_' + email, code + '|0', 600);
+  c.put('otp_rl_' + email, '1', 60);
+  MailApp.sendEmail({ to: email, subject: 'Halal Executive admin code: ' + code,
+    body: 'Your sign-in code for the Halal Executive admin panel is ' + code + '.\n\nIt works for 10 minutes. If you did not ask for it, ignore this email.\n\nhalalexecutive.kkmhalalconsultant.com' });
+  return generic;
+}
+
+function loginVerify(email, code) {
+  email = String(email || '').trim().toLowerCase();
+  var c = CacheService.getScriptCache(), v = c.get('otp_' + email);
+  if (!v) return { ok: false, error: 'The code has expired. Ask for a new one.' };
+  var parts = v.split('|'), tries = parseInt(parts[1], 10) + 1;
+  if (String(code || '').trim() !== parts[0]) {
+    if (tries >= 5) { c.remove('otp_' + email); return { ok: false, error: 'Too many wrong codes. Ask for a new one.' }; }
+    c.put('otp_' + email, parts[0] + '|' + tries, 600);
+    return { ok: false, error: 'That code is not right. Check the latest email.' };
+  }
+  c.remove('otp_' + email);
+  var session = newToken();
+  c.put('sess_' + session, email, 21600); // 6 hours, the cache maximum
+  return { ok: true, session: session, email: email, expires_in: 21600 };
+}
+
+function sessionEmail(session) {
+  if (!session) return null;
+  var email = CacheService.getScriptCache().get('sess_' + session);
+  return email && adminEmails().indexOf(email) >= 0 ? email : null; // removed from the list = signed out
+}
+
+// ---------- Certificate thumbnails ----------
+// Drive's own preview of the certificate, read with the owner's rights and
+// handed back as a data URI, so the file itself never has to be shared.
+function certThumb(id) {
+  var cert = readTab('Certificates').filter(function (r) { return String(r.id) === id && r.status !== 'hidden'; })[0];
+  if (!cert) return { ok: false, error: 'not found' };
+  var m = String(cert.drive_url || '').match(/\/d\/([\w-]{10,})/), fileId = m && m[1];
+  if (!fileId && cert.doc_id) {
+    var doc = readTab('Documents').filter(function (d) { return String(d.id) === String(cert.doc_id); })[0];
+    fileId = doc && doc.drive_file_id;
+  }
+  if (!fileId) return { ok: false, error: 'no file' };
+  var cache = CacheService.getScriptCache(), hit = cache.get('thumb_' + fileId);
+  if (hit) return { ok: true, data: hit };
+  var data = null;
+  try {
+    var meta = Drive.Files.get(fileId, { fields: 'thumbnailLink,mimeType' });
+    if (meta.thumbnailLink) {
+      var r = UrlFetchApp.fetch(meta.thumbnailLink.replace(/=s\d+$/, '=s480'), { headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }, muteHttpExceptions: true });
+      if (r.getResponseCode() === 200) data = 'data:' + (r.getHeaders()['Content-Type'] || 'image/png') + ';base64,' + Utilities.base64Encode(r.getContent());
+    }
+    if (!data && /^image\//.test(meta.mimeType)) {
+      var b = DriveApp.getFileById(fileId).getBlob();
+      if (b.getBytes().length < 70000) data = 'data:' + b.getContentType() + ';base64,' + Utilities.base64Encode(b.getBytes());
+    }
+  } catch (e) { return { ok: false, error: String(e.message || e) }; }
+  if (!data) return { ok: false, error: 'no preview yet' };
+  if (data.length < 95000) cache.put('thumb_' + fileId, data, 21600);
+  return { ok: true, data: data };
 }
 
 function writeSettings(obj) {

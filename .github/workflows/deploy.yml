@@ -21,11 +21,15 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm }
       - run: npm ci
+      - name: Say which Sheet the build reads
+        run: if [ -n "$VITE_API_URL" ]; then echo "Building against the live Sheet"; else echo "::warning::VITE_API_URL is empty, the page will run on sample data"; fi
+        env:
+          VITE_API_URL: ${{ vars.VITE_API_URL || secrets.VITE_API_URL || secrets.HE_API_URL }}
       - run: npm run build
         env:
-          VITE_API_URL: ${{ vars.VITE_API_URL }}
-          VITE_SHEET_URL: ${{ vars.VITE_SHEET_URL }}
-          VITE_DRIVE_FOLDER_URL: ${{ vars.VITE_DRIVE_FOLDER_URL }}
+          VITE_API_URL: ${{ vars.VITE_API_URL || secrets.VITE_API_URL || secrets.HE_API_URL }}
+          VITE_SHEET_URL: ${{ vars.VITE_SHEET_URL || secrets.VITE_SHEET_URL }}
+          VITE_DRIVE_FOLDER_URL: ${{ vars.VITE_DRIVE_FOLDER_URL || secrets.VITE_DRIVE_FOLDER_URL }}
       - uses: actions/upload-pages-artifact@v3
         with: { path: dist }
   deploy:

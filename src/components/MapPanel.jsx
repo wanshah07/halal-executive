@@ -35,7 +35,8 @@ export default function MapPanel({ lang, byState }) {
     <div className="card p-5">
       <h3 className="font-semibold mb-1">{t(lang, 'by_state')}</h3>
       <p className="text-xs text-ink-400 mb-3">{t(lang, 'map_hint')}</p>
-      <div ref={ref} className="h-64 rounded-lg overflow-hidden border border-line" />
+      {/* isolate: Leaflet panes use z-index 400-1000 and would sit over the assistant panel */}
+      <div ref={ref} className="relative z-0 isolate h-64 rounded-lg overflow-hidden border border-line" />
       {!list.length && <div className="text-sm text-ink-400 mt-3">{t(lang, 'no_data')}</div>}
       {!!list.length && <div className="mt-3 flex flex-wrap gap-2">{list.map(([k, v]) => <span key={k} className="chip bg-paper border border-line">{k} <b className="ml-1">{v}</b></span>)}</div>}
     </div>

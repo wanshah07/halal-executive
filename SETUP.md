@@ -53,8 +53,19 @@ web app is the only door to the Sheet and Drive.
 12. Facebook: read `collectors/README.md` first. `cd collectors/facebook &&
     npm install && npm run login`, then a daily scheduled `npm start`.
 
+## Admin sign-in
+The Admin tab is locked. Enter a registered email, receive a 6-digit code
+from your own Gmail (sent by the Apps Script), type it in. The session lasts
+6 hours in that browser. `setup()` registers the Sheet owner's email; add or
+remove others in Admin → Registered admin emails, or edit the
+`ADMIN_EMAILS` script property. After pasting a new `Code.gs`, use Deploy →
+Manage deployments → edit → Version: New version, so the same `/exec` URL
+serves the new code, and run any function once to approve the email
+permission.
+
 ## Checks
 * Page shows "Google Sheet" (not "sample data") under Overview.
-* Admin → save a notice → reload: popup appears, Settings tab updated.
+* Admin → sign in with the code → save a notice → reload: popup appears,
+  Settings tab updated.
 * Runs tab alternates MIRELD / AFIQ; a forced failure (wrong key on one)
   shows the other answering with `fallback` in the log.

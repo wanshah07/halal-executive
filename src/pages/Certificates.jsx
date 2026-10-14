@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { certThumb } from '../lib/api'
 import Segment from '../components/Segment'
 import CategoryFilter, { catChip } from '../components/CategoryFilter'
 import { t } from '../lib/i18n'
@@ -19,6 +20,22 @@ export const splitProducts = (p) => {
   try { const j = JSON.parse(p); if (Array.isArray(j)) return j } catch { /* plain text */ }
   return String(p).split(/\s*[;\n]\s*/).filter(Boolean)
 }
+// Thumbnail of the certificate itself. Drive renders the preview, Apps Script
+// reads it with the owner's rights, so the file never has to be made public.
+// A sample row or a file Drive has not previewed yet shows a labelled tile.
+export function CertThumb({ c, lang, size = 'card' }) {
+  const [src, setSrc] = useState(c.thumb || null)
+  useEffect(() => { let live = true; if (!c.thumb) certThumb(c.id).then((d) => live && d && setSrc(d)); return () => { live = false } }, [c.id, c.thumb])
+  const box = size === 'card' ? 'w-full aspect-[4/3]' : 'w-12 h-16'
+  const inner = src
+    ? <img src={src} alt={`${t(lang, 'certificates')} ${c.company}`} loading="lazy" className={`${box} object-cover object-top rounded-lg border border-line bg-white`} />
+    : <div className={`${box} rounded-lg border border-line bg-paper flex flex-col items-center justify-center gap-1 text-ink-400`}>
+        <img src="./brand/jakim-halal-logo.png" alt="" className={size === 'card' ? 'h-12 w-12 opacity-30' : 'h-6 w-6 opacity-30'} />
+        {size === 'card' && <span className="text-xs">{t(lang, 'no_preview')}</span>}
+      </div>
+  return c.drive_url ? <a href={c.drive_url} target="_blank" rel="noreferrer" className="block" title="Drive ↗">{inner}</a> : inner
+}
+
 const tone = { valid: 'bg-brand-100 text-brand-700', expiring: 'bg-amber-100 text-amber-800', expired: 'bg-red-100 text-red-700' }
 
 export default function Certificates({ lang, data }) {
@@ -47,6 +64,7 @@ export default function Certificates({ lang, data }) {
   return (
     <Segment id="certificates" lang={lang} title={t(lang, 'certificates')} rows={rows} filters={filters}
       columns={[
+        { key: '_thumb', label: '', render: (c) => <CertThumb c={c} lang={lang} size="row" /> },
         { key: '_status', label: t(lang, 'validity'), render: badge },
         { key: 'company', label: t(lang, 'company'), render: (c) => <span className="font-medium">{c.company}</span> },
         { key: 'cert_no', label: t(lang, 'cert_no') },
@@ -63,6 +81,7 @@ export default function Certificates({ lang, data }) {
       ]}
       renderCard={(c) => (
         <article key={c.id} className="card p-4">
+          <div className="mb-3"><CertThumb c={c} lang={lang} /></div>
           <div className="flex items-center justify-between gap-2 mb-2">{badge(c)}{catChip(c.category, lang)}</div>
           <button className="text-left w-full" onClick={() => toggle(c.id)}>
             <div className="font-semibold leading-snug">{c.company}</div>

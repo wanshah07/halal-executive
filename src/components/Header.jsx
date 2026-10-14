@@ -40,7 +40,7 @@ export default function Header({ lang, setLang, tab, setTab, onRefresh, onExport
               )}
             </div>
             <button className="btn" onClick={onRefresh} disabled={loading}>{loading ? '…' : '⟳'} {t(lang, 'refresh')}</button>
-            <a className="btn-dark" href="#admin" onClick={() => setTab('admin')}>+ {t(lang, 'admin')}</a>
+            <a className="btn-dark" href="#admin" onClick={() => setTab('admin')}><span aria-hidden="true">🔒</span> {t(lang, 'admin')}</a>
           </div>
         </div>
         <nav className="flex gap-6 overflow-x-auto -mb-px">

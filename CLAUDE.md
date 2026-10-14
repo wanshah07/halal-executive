@@ -22,8 +22,14 @@
    serves the repo root (the 05 Sep 2026 Cloudflare Pages exposure in
    malaysian-regulatory-affairs is why).
 8. **Logo.** The JAKIM Halal Malaysia mark is a certification mark under the
-   Trade Descriptions (Certification and Marking of Halal) Order 2011. The
-   files are not committed; Wan drops them in `public/brand/` after clearing
-   the use.
+   Trade Descriptions (Certification and Marking of Halal) Order 2011. Wan
+   supplied the artwork and chose to use it (14 Oct 2026); the files are in
+   `public/brand/`. Clearance with JAKIM is Wan's to settle.
 9. `kkm-targets`, Hermes, ws.regulab Studio and the KKM Complaints system are
    other repos. Do not recreate any of them here.
+10. **Admin is locked to registered emails.** Sign-in is a 6-digit code
+    mailed by Apps Script to an address in `ADMIN_EMAILS`. Never add a
+    shared password or put a token in the page.
+11. **Current references** (checked 14 Oct 2026): MPPHM (Domestik) 2020,
+    MHMS 2020, MS 1500:2019, MS 2634:2019. MS 2200-1:2008 is withdrawn;
+    never cite it as current.
