@@ -81,6 +81,7 @@ permission.
 
 ## Checks
 * Page shows "Google Sheet" (not "sample data") under Overview.
+* Admin → Drafts to review: publish the FAQ the pipeline was unsure about.
 * Admin → sign in with the code → save a notice → reload: popup appears,
   Settings tab updated.
 * Runs tab alternates MIRELD / AFIQ; a forced failure (wrong key on one)

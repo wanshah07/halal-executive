@@ -120,10 +120,10 @@ function publicData() {
   return {
     settings: settings,
     faq: readTab('FAQ').filter(function (r) { return r.status === 'published'; }),
-    guidelines: readTab('Guidelines').filter(function (r) { return r.status !== 'hidden'; }),
+    guidelines: readTab('Guidelines').filter(function (r) { return r.status !== 'hidden' && r.status !== 'draft'; }),
     documents: readTab('Documents'),
     certificates: readTab('Certificates').filter(function (r) { return r.status !== 'hidden'; }),
-    events: readTab('Events').filter(function (r) { return r.status !== 'hidden'; }),
+    events: readTab('Events').filter(function (r) { return r.status !== 'hidden' && r.status !== 'draft'; }),
     news: readTab('News').filter(function (r) { return !r.expires_at || Date.parse(r.expires_at) > now; }),
     runs: runs, raw_stats: stats, generated_at: new Date().toISOString(),
   };
@@ -151,6 +151,8 @@ function doPost(e) {
     var lock = LockService.getScriptLock(); lock.waitLock(20000);
     try {
       if (a === 'manual_upload') { if (!isAdmin) throw new Error('Sign in with a registered email first.'); return json(manualUpload(body, sessEmail || 'token')); }
+      if (a === 'review_list')  { if (!isAdmin) throw new Error('Sign in with a registered email first.'); return json(reviewList()); }
+      if (a === 'review_set')   { if (!isAdmin) throw new Error('Sign in with a registered email first.'); return json(reviewSet(body.tab, body.id, body.status)); }
       if (a === 'settings')     { if (!isAdmin) throw new Error('Sign in with a registered email first.'); return json(writeSettings(body.settings || {})); }
       if (a === 'ingest')       return json(ingest(body.rows || []));
       if (a === 'raw_list')     return json({ ok: true, rows: readTab('Raw').filter(function (r) { return (!body.status || r.status === body.status) && (!body.source || r.source === body.source); }).slice(0, body.limit || 50) });
@@ -249,6 +251,22 @@ function certThumb(id) {
   if (!data) return { ok: false, error: 'no preview yet' };
   if (data.length < 95000) cache.put('thumb_' + fileId, data, 21600);
   return { ok: true, data: data };
+}
+
+// Drafts written by the pipeline wait here for an admin to publish or hide.
+var REVIEW_TABS = ['FAQ', 'Events', 'Guidelines', 'Certificates'];
+function reviewList() {
+  var out = {};
+  REVIEW_TABS.forEach(function (t) { out[t] = readTab(t).filter(function (r) { return r.status === 'draft'; }); });
+  return { ok: true, drafts: out };
+}
+function reviewSet(tab, id, status) {
+  if (REVIEW_TABS.indexOf(tab) < 0) throw new Error('unknown tab');
+  if (['published', 'hidden', 'draft', 'current'].indexOf(status) < 0) throw new Error('unknown status');
+  if (tab === 'Certificates' && status === 'published') status = 'current';
+  var patch = { status: status };
+  if (TABS[tab].indexOf('updated_at') >= 0) patch.updated_at = new Date().toISOString();
+  return updateByIds(tab, [id], patch);
 }
 
 function writeSettings(obj) {

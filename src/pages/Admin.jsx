@@ -103,6 +103,42 @@ function UploadBox({ lang }) {
   )
 }
 
+// Drafts from the pipeline. Nothing the AI writes with less than high
+// confidence reaches the public page until an admin publishes it here.
+function ReviewBox({ lang, onChanged }) {
+  const [drafts, setDrafts] = useState(null)
+  const [msg, setMsg] = useState('')
+  const load = () => adminPost('review_list').then((r) => setDrafts(r.drafts)).catch((e) => setMsg(e.message))
+  useEffect(() => { load() }, [])
+  async function set(tab, id, status) {
+    try { await adminPost('review_set', { tab, id, status }); await load(); onChanged && onChanged() } catch (e) { setMsg(e.message) }
+  }
+  const items = drafts ? Object.entries(drafts).flatMap(([tab, rows]) => rows.map((r) => ({ tab, r }))) : []
+  const title = ({ tab, r }) => tab === 'FAQ' ? (r.question_en || r.question_bm) : tab === 'Certificates' ? r.company : r.title
+  const body = ({ tab, r }) => tab === 'FAQ' ? (r.answer_formal_en || r.answer_layman_en) : tab === 'Events' ? `${r.date_start || ''} ${r.venue || ''} ${r.description || ''}` : tab === 'Certificates' ? `${r.scheme || ''} · ${r.valid_from || ''} → ${r.valid_to || ''}` : (r.summary_en || '')
+  return (
+    <div className="card p-5 mb-4 space-y-3">
+      <div className="flex items-center justify-between"><h3 className="font-semibold">{t(lang, 'review_title')} {drafts && <span className="text-ink-400 font-normal">({items.length})</span>}</h3><button className="btn" onClick={load}>⟳</button></div>
+      <p className="text-sm text-ink-600">{t(lang, 'review_sub')}</p>
+      {!drafts && !msg && <div className="text-sm text-ink-400">{t(lang, 'loading')}</div>}
+      {drafts && !items.length && <div className="text-sm text-ink-400">{t(lang, 'review_empty')}</div>}
+      <ul className="divide-y divide-line">
+        {items.map((it) => (
+          <li key={it.tab + it.r.id} className="py-3 flex flex-col sm:flex-row sm:items-start gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="text-xs text-ink-400">{it.tab} · {it.r.id}{it.r.category ? ` · ${it.r.category}` : ''}{it.r.confidence ? ` · ${it.r.confidence}` : ''}</div>
+              <div className="font-medium">{title(it)}</div>
+              <div className="text-sm text-ink-600 line-clamp-3 whitespace-pre-wrap">{body(it)}</div>
+            </div>
+            <div className="flex gap-2 shrink-0"><button className="btn-brand" onClick={() => set(it.tab, it.r.id, 'published')}>{t(lang, 'publish')}</button><button className="btn" onClick={() => set(it.tab, it.r.id, 'hidden')}>{t(lang, 'hide')}</button></div>
+          </li>
+        ))}
+      </ul>
+      {msg && <div className="text-sm text-red-600">{msg}</div>}
+    </div>
+  )
+}
+
 export default function Admin({ lang, data, onSaved, onSession }) {
   const [sess, setSess] = useState(() => { const s = getSession(); return s && s.until > Date.now() ? s : null })
   const [s, setS] = useState({})
@@ -146,6 +182,7 @@ export default function Admin({ lang, data, onSaved, onSession }) {
       </div>
       <p className="text-sm text-ink-600 mb-4">{t(lang, 'admin_intro')}</p>
 
+      <ReviewBox lang={lang} onChanged={onSaved} />
       <UploadBox lang={lang} />
 
       <div className="card p-5 mb-4 space-y-3">
