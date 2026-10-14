@@ -1,0 +1,1 @@
+Run the Halal Executive daily Facebook pass: `cd pipeline && python process_raw.py --source facebook`. It runs until the Facebook queue is empty (up to the 5-hour job limit). Report count, provider and any fallback in one line. On "all providers failed" leave the queue and report the error.

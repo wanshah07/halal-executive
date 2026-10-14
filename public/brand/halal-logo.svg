@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Halal Executive placeholder mark">
+  <circle cx="64" cy="64" r="60" fill="#0b6b3a"/>
+  <circle cx="64" cy="64" r="52" fill="none" stroke="#ffffff" stroke-width="3"/>
+  <polygon points="64,20 76,52 108,52 82,72 92,104 64,84 36,104 46,72 20,52 52,52" fill="#ffffff" opacity="0.92"/>
+  <text x="64" y="71" text-anchor="middle" font-family="Georgia, serif" font-size="20" font-weight="700" fill="#0b6b3a">HALAL</text>
+</svg>

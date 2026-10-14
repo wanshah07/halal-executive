@@ -1,0 +1,7 @@
+{
+  "name": "he-collector-whatsapp",
+  "private": true,
+  "type": "module",
+  "scripts": { "start": "node collect.js", "backfill": "node collect.js --backfill" },
+  "dependencies": { "whatsapp-web.js": "^1.26.0", "qrcode-terminal": "^0.12.0" }
+}

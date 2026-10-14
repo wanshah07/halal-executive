@@ -1,0 +1,36 @@
+@import "tailwindcss";
+
+/* Theme tokens. Primary is the JAKIM green family; the layout is the KKM
+   Complaints dashboard (white cards, slate text, thin borders). */
+@theme {
+  --color-brand-50:  #ecf8f1;
+  --color-brand-100: #d2efdf;
+  --color-brand-200: #a6dfbf;
+  --color-brand-300: #6fc99a;
+  --color-brand-500: #1a8a4e;
+  --color-brand-600: #0b6b3a;
+  --color-brand-700: #08542e;
+  --color-brand-900: #04301a;
+  --color-ink-900:   #0f172a;
+  --color-ink-600:   #475569;
+  --color-ink-400:   #94a3b8;
+  --color-line:      #e2e8f0;
+  --color-paper:     #f8fafc;
+  --color-gold-500:  #c9a227;
+}
+
+html { scroll-behavior: smooth; }
+body { @apply bg-paper text-ink-900 antialiased; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+
+.card { @apply bg-white border border-line rounded-xl; }
+.btn { @apply inline-flex items-center gap-1.5 rounded-lg border border-line bg-white px-3.5 py-2 text-sm font-medium text-ink-900 hover:bg-paper transition; }
+.btn-dark { @apply inline-flex items-center gap-1.5 rounded-lg bg-ink-900 px-3.5 py-2 text-sm font-semibold text-white hover:bg-black transition; }
+.btn-brand { @apply inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-3.5 py-2 text-sm font-semibold text-white hover:bg-brand-700 transition; }
+.tab { @apply pb-3 pt-1 text-sm font-medium text-ink-600 border-b-2 border-transparent hover:text-ink-900 whitespace-nowrap; }
+.tab-active { @apply text-ink-900 border-ink-900; }
+.chip { @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium; }
+.input { @apply w-full rounded-lg border border-line bg-white px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100; }
+.label { @apply block text-xs font-medium text-ink-600 mb-1; }
+.table { @apply w-full text-sm; }
+.table th { @apply text-left text-xs font-semibold text-ink-600 uppercase tracking-wide py-2 px-3 border-b border-line bg-paper; }
+.table td { @apply py-2.5 px-3 border-b border-line align-top; }

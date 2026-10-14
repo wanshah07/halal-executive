@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.env
+.env.local
+collectors/whatsapp/.wwebjs_auth/
+collectors/whatsapp/.wwebjs_cache/
+collectors/facebook/.fb-session/
+collectors/**/state.json
+pipeline/__pycache__/
+pipeline/.state/
+*.log
