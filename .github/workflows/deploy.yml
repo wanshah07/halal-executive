@@ -8,6 +8,10 @@ on:
     branches: [main]
     paths: ['src/**', 'public/**', 'index.html', 'package*.json', 'vite.config.js', '.github/workflows/deploy.yml']
   workflow_dispatch:
+  # Refresh the data snapshot (dist/data.json) after every pipeline run.
+  workflow_run:
+    workflows: [Pipeline]
+    types: [completed]
 permissions:
   contents: read
   pages: write
@@ -30,6 +34,18 @@ jobs:
           VITE_API_URL: ${{ vars.VITE_API_URL || secrets.VITE_API_URL || secrets.HE_API_URL }}
           VITE_SHEET_URL: ${{ vars.VITE_SHEET_URL || secrets.VITE_SHEET_URL }}
           VITE_DRIVE_FOLDER_URL: ${{ vars.VITE_DRIVE_FOLDER_URL || secrets.VITE_DRIVE_FOLDER_URL }}
+      - name: Snapshot the public feed next to the page
+        # The page shows this at once on a first visit while the live feed
+        # (Apps Script, a few seconds) loads. Same content as action=data.
+        run: |
+          [ -n "$VITE_API_URL" ] || exit 0
+          if curl -sfL --max-time 60 "$VITE_API_URL?action=data" -o dist/data.json && python3 -c "import json,sys; d=json.load(open('dist/data.json')); sys.exit(0 if isinstance(d.get('faq'), list) else 1)"; then
+            echo "snapshot: $(wc -c < dist/data.json) bytes"
+          else
+            rm -f dist/data.json; echo "::warning::could not snapshot the feed; the page will wait for the live feed"
+          fi
+        env:
+          VITE_API_URL: ${{ vars.VITE_API_URL || secrets.VITE_API_URL || secrets.HE_API_URL }}
       - uses: actions/upload-pages-artifact@v3
         with: { path: dist }
   deploy:

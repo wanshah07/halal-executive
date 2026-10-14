@@ -1,4 +1,3 @@
-import { safeUrl } from '../lib/safe'
 import StatCard from '../components/StatCard'
 import Bars from '../components/Bars'
 import Hero from '../components/Hero'
@@ -6,13 +5,19 @@ import { CATEGORIES } from '../lib/config'
 import { t } from '../lib/i18n'
 import { count, daysAgo, fmtDateTime } from '../lib/util'
 import { catChip } from '../components/CategoryFilter'
-import MonthlyChart, { monthlySeries } from '../components/MonthlyChart'
-import MapPanel from '../components/MapPanel'
+import { lazy, Suspense } from 'react'
+import { monthlySeries } from '../lib/series'
 import { guessState } from '../lib/config'
-import { certStatus } from './Certificates'
+import { certStatus } from '../lib/certs'
 import AiTeam from '../components/AiTeam'
 import NewsCarousel from '../components/NewsCarousel'
 import UpcomingEvents from '../components/UpcomingEvents'
+
+// Leaflet and the chart library are the heaviest code on the page; they load
+// after the sections above them are already on screen.
+const MonthlyChart = lazy(() => import('../components/MonthlyChart'))
+const MapPanel = lazy(() => import('../components/MapPanel'))
+const Slot = ({ h = 'h-72' }) => <div className={`card ${h} animate-pulse bg-paper`} />
 
 export default function Overview({ lang, data, setTab }) {
   const faq = data.faq || [], docs = data.documents || [], events = data.events || [], news = data.news || [], gl = data.guidelines || []
@@ -29,64 +34,61 @@ export default function Overview({ lang, data, setTab }) {
   src.forEach((x) => { const st = x.state || guessState(x.venue || x.company); if (st) byState[st] = (byState[st] || 0) + 1 })
   const certStat = count(certs.map((c) => ({ s: certStatus(c) })), 's')
 
+  const recentList = [...faq].sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at)).slice(0, 6)
+
+  // Order (Wan, 14 Oct 2026): hero → recently added FAQ → news → upcoming
+  // events with posters → map → overview figures and charts → AI team.
   return (
     <div>
       <Hero lang={lang} settings={data.settings || {}} />
-      <div className="flex flex-wrap items-end justify-between gap-3 mb-4">
-        <div>
-          <h2 className="text-xl font-bold">{t(lang, 'overview')}</h2>
-          <p className="text-sm text-ink-600">{t(lang, 'updated')} {fmtDateTime(data._fetched, lang)} · {data._source === 'sample' ? 'sample data' : 'Google Sheet'}</p>
-        </div>
-        <a href="#faq" onClick={() => setTab('faq')} className="btn">{t(lang, 'open_faq')}</a>
-      </div>
 
-      <div className="grid gap-4 grid-cols-2 md:grid-cols-3 xl:grid-cols-6 mb-4">
-        <StatCard label={t(lang, 'total_faq')} value={faq.length} hint={`${gl.length} ${t(lang, 'guidelines').toLowerCase()}`} />
-        <StatCard label={t(lang, 'last_7')} value={recent.length} tone="blue" hint="FAQ" />
-        <StatCard label={t(lang, 'current_docs')} value={docs.filter((d) => d.status === 'current').length} tone="green" hint={t(lang, 'documents')} />
-        <StatCard label={t(lang, 'archived_docs')} value={docs.filter((d) => d.status === 'archived').length} tone="grey" hint={t(lang, 'documents')} />
-        <StatCard label={t(lang, 'upcoming')} value={upcoming.length} tone="amber" hint={t(lang, 'events')} />
-        <StatCard label={t(lang, 'live_news')} value={news.length} tone="ink" hint="auto-expires" />
-      </div>
-
-      <div className="grid gap-4 grid-cols-3 mb-4">
-        <StatCard label={t(lang, 'certificates') + ' · ' + t(lang, 'valid')} value={certStat.valid || 0} tone="green" />
-        <StatCard label={t(lang, 'expiring')} value={certStat.expiring || 0} tone="amber" />
-        <StatCard label={t(lang, 'expired')} value={certStat.expired || 0} tone="red" />
-      </div>
-
-      <AiTeam lang={lang} runs={data.runs} sample={data.ai_status} />
+      <section className="card p-5 mb-4">
+        <div className="flex items-center justify-between mb-3"><h3 className="font-semibold">{t(lang, 'recent_faq')}</h3><a href="#faq" onClick={() => setTab('faq')} className="text-sm text-brand-600 hover:underline">{t(lang, 'open_faq')} →</a></div>
+        {!faq.length && <div className="text-sm text-ink-400">{t(lang, 'no_data')}</div>}
+        <ul className="divide-y divide-line">
+          {recentList.map((f) => (
+            <li key={f.id} className="py-2.5 flex gap-3 items-start">
+              {catChip(f.category, lang)}
+              <a href="#faq" onClick={() => setTab('faq', f.id)} className="text-sm hover:underline min-w-0">{lang === 'bm' ? f.question_bm || f.question_en : f.question_en || f.question_bm}</a>
+              <span className="ml-auto shrink-0 text-xs text-ink-400 hidden sm:inline">{fmtDateTime(f.created_at, lang)}</span>
+            </li>
+          ))}
+        </ul>
+      </section>
 
       <NewsCarousel lang={lang} news={news} />
 
-      <UpcomingEvents lang={lang} events={events} setTab={setTab} />
+      <UpcomingEvents lang={lang} events={events} posters={posters} setTab={setTab} />
 
-      <div className="grid gap-4 lg:grid-cols-[3fr_2fr] mb-4">
-        <MonthlyChart lang={lang} title={t(lang, 'per_month')} data={monthly} />
-        <MapPanel lang={lang} byState={byState} />
-      </div>
+      <div className="mb-4"><Suspense fallback={<Slot />}><MapPanel lang={lang} byState={byState} /></Suspense></div>
 
-
-
-      <div className="grid gap-4 lg:grid-cols-[2fr_1fr] mb-4">
-        <div className="card p-5">
-          <h3 className="font-semibold mb-3">{t(lang, 'recent_faq')}</h3>
-          {!faq.length && <div className="text-sm text-ink-400">{t(lang, 'no_data')}</div>}
-          <ul className="divide-y divide-line">
-            {[...faq].sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at)).slice(0, 6).map((f) => (
-              <li key={f.id} className="py-2.5 flex gap-3 items-start">
-                {catChip(f.category, lang)}
-                <a href="#faq" onClick={() => setTab('faq', f.id)} className="text-sm hover:underline">{lang === 'bm' ? f.question_bm : f.question_en}</a>
-              </li>
-            ))}
-          </ul>
+      <section className="card p-5 mb-4">
+        <div className="mb-4">
+          <h2 className="text-xl font-bold">{t(lang, 'overview')}</h2>
+          <p className="text-sm text-ink-600">{t(lang, 'updated')} {fmtDateTime(data._fetched, lang)} · {data._source === 'sample' ? 'sample data' : 'Google Sheet'}</p>
         </div>
-        <Bars lang={lang} title={t(lang, 'by_category')} rows={CATEGORIES.map((c) => ({ label: c[lang] || c.en, value: byCat[c.id] || 0, pct: faq.length ? Math.round(((byCat[c.id] || 0) / faq.length) * 100) : 0 }))} />
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-3 mb-4">
-        <div className="space-y-4">
+        <div className="grid gap-3 grid-cols-2 md:grid-cols-3 xl:grid-cols-5 mb-4">
+          <StatCard label={t(lang, 'total_faq')} value={faq.length} hint={`${gl.length} ${t(lang, 'guidelines').toLowerCase()}`} />
+          <StatCard label={t(lang, 'last_7')} value={recent.length} tone="blue" hint="FAQ" />
+          <StatCard label={t(lang, 'current_docs')} value={docs.filter((d) => d.status === 'current').length} tone="green" hint={t(lang, 'documents')} />
+          <StatCard label={t(lang, 'archived_docs')} value={docs.filter((d) => d.status === 'archived').length} tone="grey" hint={t(lang, 'documents')} />
+          <StatCard label={t(lang, 'upcoming')} value={upcoming.length} tone="amber" hint={t(lang, 'events')} />
+          <StatCard label={t(lang, 'live_news')} value={news.length} tone="ink" hint="auto-expires" />
+          <StatCard label={t(lang, 'certificates') + ' · ' + t(lang, 'valid')} value={certStat.valid || 0} tone="green" />
+          <StatCard label={t(lang, 'expiring')} value={certStat.expiring || 0} tone="amber" />
+          <StatCard label={t(lang, 'expired')} value={certStat.expired || 0} tone="red" />
+        </div>
+        <div className="grid gap-4 lg:grid-cols-[3fr_2fr] mb-4">
+          <Suspense fallback={<Slot />}><MonthlyChart lang={lang} title={t(lang, 'per_month')} data={monthly} /></Suspense>
+          <Bars lang={lang} title={t(lang, 'by_category')} rows={CATEGORIES.map((c) => ({ label: c[lang] || c.en, value: byCat[c.id] || 0, pct: faq.length ? Math.round(((byCat[c.id] || 0) / faq.length) * 100) : 0 }))} />
+        </div>
+        <div className="grid gap-4 md:grid-cols-3">
           <Bars lang={lang} title={t(lang, 'by_source')} rows={['whatsapp', 'facebook', 'telegram', 'manual'].map((s) => ({ label: s === 'manual' ? t(lang, 'admin') : s, value: bySource[s] || 0 }))} />
+          <div className="card p-5">
+            <h3 className="font-semibold mb-3">{t(lang, 'top_topics')}</h3>
+            {!topics.length && <div className="text-sm text-ink-400">{t(lang, 'no_data')}</div>}
+            <div className="flex flex-wrap gap-2">{topics.map(([k, v]) => <span key={k} className="chip bg-paper border border-line">{k} <b className="ml-1">{v}</b></span>)}</div>
+          </div>
           <div className="card p-5">
             <h3 className="font-semibold mb-3">{t(lang, 'collectors')}</h3>
             {['whatsapp', 'telegram', 'facebook'].map((s) => {
@@ -98,17 +100,10 @@ export default function Overview({ lang, data, setTab }) {
             <p className="text-xs text-ink-400 mt-2">{t(lang, 'collectors_hint')}</p>
           </div>
         </div>
-        <div className="card p-5">
-          <h3 className="font-semibold mb-3">{t(lang, 'top_topics')}</h3>
-          {!topics.length && <div className="text-sm text-ink-400">{t(lang, 'no_data')}</div>}
-          <div className="flex flex-wrap gap-2">{topics.map(([k, v]) => <span key={k} className="chip bg-paper border border-line">{k} <b className="ml-1">{v}</b></span>)}</div>
-        </div>
-        <div className="card p-5">
-          <h3 className="font-semibold mb-3">{t(lang, 'posters')}</h3>
-          {!posters.length && <div className="text-sm text-ink-400">{t(lang, 'no_data')}</div>}
-          <div className="grid grid-cols-2 gap-2">{posters.map((p, i) => <a key={i} href={safeUrl(p.link) || safeUrl(p.url) || undefined} target="_blank" rel="noreferrer"><img src={safeUrl(p.url)} alt={p.title || ''} className="rounded-lg border border-line object-cover aspect-[4/5]" /></a>)}</div>
-        </div>
-      </div>
+      </section>
+
+      <AiTeam lang={lang} runs={data.runs} sample={data.ai_status} />
+
       <p className="text-xs text-ink-400">{t(lang, 'sources_note')}</p>
     </div>
   )

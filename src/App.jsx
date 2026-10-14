@@ -1,20 +1,24 @@
-import { useCallback, useEffect, useState } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useState } from 'react'
 import Header from './components/Header'
 import Sidebar, { NAV } from './components/Sidebar'
 import Notice from './components/Notice'
 import SearchBar from './components/SearchBar'
 import Chatbot from './components/Chatbot'
 import Overview from './pages/Overview'
-import FAQ from './pages/FAQ'
-import Certificates, { certStatus, splitProducts } from './pages/Certificates'
-import Guidelines from './pages/Guidelines'
-import References from './pages/References'
-import Documents from './pages/Documents'
-import Events from './pages/Events'
-import News from './pages/News'
-import Admin from './pages/Admin'
-import { loadData } from './lib/api'
+import { certStatus, splitProducts } from './lib/certs'
+import { loadData, savedData, snapshotData } from './lib/api'
 import { t } from './lib/i18n'
+
+// Pages other than Overview load on first visit, so the first screen only
+// downloads what it shows.
+const FAQ = lazy(() => import('./pages/FAQ'))
+const Certificates = lazy(() => import('./pages/Certificates'))
+const Guidelines = lazy(() => import('./pages/Guidelines'))
+const References = lazy(() => import('./pages/References'))
+const Documents = lazy(() => import('./pages/Documents'))
+const Events = lazy(() => import('./pages/Events'))
+const News = lazy(() => import('./pages/News'))
+const Admin = lazy(() => import('./pages/Admin'))
 
 const TABS = NAV.map(([k]) => k)
 const fromHash = () => { const h = location.hash.replace('#', '').split('/')[0]; return TABS.includes(h) ? h : 'overview' }
@@ -35,7 +39,7 @@ export default function App() {
   const setLang = (l) => { setLangState(l); try { localStorage.setItem('he:lang', l) } catch { /* ignore */ } }
   const [tab, setTabState] = useState(fromHash)
   const [focus, setFocus] = useState(null)
-  const [data, setData] = useState(null)
+  const [data, setData] = useState(savedData)
   const [err, setErr] = useState('')
   const [loading, setLoading] = useState(true)
   const [chatOpen, setChatOpen] = useState(false)
@@ -51,7 +55,12 @@ export default function App() {
     setLoading(true); setErr('')
     try { setData(await loadData({ force })) } catch (e) { setErr(String(e.message || e)) } finally { setLoading(false) }
   }, [])
-  useEffect(() => { refresh(false) }, [refresh])
+  useEffect(() => {
+    // First visit on this browser: show the deploy's snapshot while the live
+    // feed loads, instead of a blank "Loading".
+    if (!savedData()) snapshotData().then((d) => d && setData((cur) => cur || d))
+    refresh(false)
+  }, [refresh])
 
   const doExport = async (kind) => {
     if (!data) return
@@ -76,6 +85,7 @@ export default function App() {
         <main className="w-full flex-1 max-w-7xl mx-auto px-4 sm:px-6 py-6">
           {err && <div className="card p-3 mb-4 text-sm bg-red-50 border-red-200">{err}</div>}
           <div className="mb-6"><SearchBar lang={lang} data={data} onOpen={(type, id) => setTab(type, id)} onAsk={(q) => setSeed({ q, n: Date.now() })} /></div>
+          <Suspense fallback={<div className="text-sm text-ink-400 p-4">{t(lang, 'loading')}</div>}>
           {tab === 'overview' && <Overview lang={lang} data={data} setTab={setTab} />}
           {tab === 'faq' && <FAQ lang={lang} data={data} focusId={focus} />}
           {tab === 'certificates' && <Certificates lang={lang} data={data} />}
@@ -85,6 +95,7 @@ export default function App() {
           {tab === 'events' && <Events lang={lang} data={data} />}
           {tab === 'news' && <News lang={lang} data={data} />}
           {tab === 'admin' && <Admin lang={lang} data={data} onSaved={() => refresh(true)} />}
+          </Suspense>
         </main>
         <footer className="border-t border-line bg-white">
           {/* right padding keeps the floating Assistant button off the text */}

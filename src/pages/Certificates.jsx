@@ -5,22 +5,13 @@ import Segment from '../components/Segment'
 import CategoryFilter, { catChip } from '../components/CategoryFilter'
 import { t } from '../lib/i18n'
 import { fmtDate, fmtDateTime } from '../lib/util'
+import { certStatus, splitProducts } from '../lib/certs'
 
 // Halal certificates picked out of the groups: holder, certificate number,
 // scheme, validity and the product list. Each entry folds; the product list
 // unfolds on demand. Status is computed from valid_to on the day of viewing:
 // valid / expiring (≤ 90 days) / expired.
-export const certStatus = (c) => {
-  if (!c.valid_to) return c.status || 'valid'
-  const d = (Date.parse(c.valid_to) - Date.now()) / 864e5
-  return d < 0 ? 'expired' : d <= 90 ? 'expiring' : 'valid'
-}
-export const splitProducts = (p) => {
-  if (!p) return []
-  if (Array.isArray(p)) return p
-  try { const j = JSON.parse(p); if (Array.isArray(j)) return j } catch { /* plain text */ }
-  return String(p).split(/\s*[;\n]\s*/).filter(Boolean)
-}
+export { certStatus, splitProducts }
 // Thumbnail of the certificate itself. Drive renders the preview, Apps Script
 // reads it with the owner's rights, so the file never has to be made public.
 // A sample row or a file Drive has not previewed yet shows a labelled tile.

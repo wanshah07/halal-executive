@@ -159,7 +159,7 @@ function json(o) { return ContentService.createTextOutput(JSON.stringify(o)).set
 // ---------- GET: public feed ----------
 function doGet(e) {
   var a = (e.parameter.action || 'data');
-  if (a === 'data') return json(publicData());
+  if (a === 'data') return json(cachedPublicData());
   if (a === 'ping') return json({ ok: true, ts: new Date().toISOString() });
   if (a === 'thumb') return json(certThumb(String(e.parameter.id || '')));
   if (a === 'status') return json(aiStatus());
@@ -172,11 +172,51 @@ function noMarks(rows) {
   return rows.map(function (r) { Object.keys(r).forEach(function (k) { if (typeof r[k] === 'string' && r[k].indexOf('[') >= 0) r[k] = r[k].replace(/\s*\[SAHKAN[^\]]*\]/gi, '').trim(); }); return r; });
 }
 
+// The public feed is built from eight tabs, which took 5-7 s per visit.
+// It is kept in CacheService for 5 minutes, split into 90 KB pieces (the
+// per-value limit is 100 KB), and dropped the moment anything is written
+// through this script. Collector heartbeats are read fresh each time, so the
+// Live chip never waits for the cache. Edits typed straight into the Sheet
+// show within 5 minutes.
+var PUB_TTL = 300, PUB_PIECE = 90000;
+function pubBust() { props().setProperty('pub_v', String(Date.now())); }
+function cachedPublicData() {
+  var cache = CacheService.getScriptCache(), v = props().getProperty('pub_v') || '0', base = 'pub_' + v + '_';
+  var head = cache.get(base + 'n'), body = null;
+  if (head) {
+    var keys = []; for (var i = 0; i < Number(head); i++) keys.push(base + i);
+    var got = cache.getAll(keys), parts = [];
+    for (var j = 0; j < keys.length; j++) { if (got[keys[j]] == null) { parts = null; break; } parts.push(got[keys[j]]); }
+    if (parts) { try { body = JSON.parse(parts.join('')); } catch (e) { body = null; } }
+  }
+  if (!body) {
+    body = publicData();
+    try {
+      var str = JSON.stringify(body), put = {}, n = Math.ceil(str.length / PUB_PIECE);
+      for (var k = 0; k < n; k++) put[base + k] = str.slice(k * PUB_PIECE, (k + 1) * PUB_PIECE);
+      put[base + 'n'] = String(n);
+      cache.putAll(put, PUB_TTL);
+    } catch (e) { /* too large to cache: serve uncached */ }
+  }
+  body.collectors = collectorStatus();
+  var now = Date.now();
+  body.news = (body.news || []).filter(function (r) { return !r.expires_at || Date.parse(r.expires_at) > now; });
+  return body;
+}
+
+// Counts per status and source without loading the message text.
+function rawStats() {
+  var stats = { new: 0, processed: 0, skipped: 0, by_source: {} }, sh = sheet('Raw'), n = sh.getLastRow() - 1;
+  if (n < 1) return stats;
+  var cols = TABS.Raw, src = sh.getRange(2, cols.indexOf('source') + 1, n, 1).getValues(), st = sh.getRange(2, cols.indexOf('status') + 1, n, 1).getValues();
+  for (var i = 0; i < n; i++) { if (!src[i][0] && !st[i][0]) continue; stats[st[i][0]] = (stats[st[i][0]] || 0) + 1; stats.by_source[src[i][0]] = (stats.by_source[src[i][0]] || 0) + 1; }
+  return stats;
+}
+
 function publicData() {
   var settings = readSettings(); delete settings.llm_turn;
   var now = Date.now();
-  var raw = readTab('Raw'), stats = { new: 0, processed: 0, skipped: 0, by_source: {} };
-  raw.forEach(function (r) { stats[r.status] = (stats[r.status] || 0) + 1; stats.by_source[r.source] = (stats.by_source[r.source] || 0) + 1; });
+  var stats = rawStats();
   var runs = readTab('Runs').sort(function (a, b) { return Date.parse(b.ts) - Date.parse(a.ts); }).slice(0, 20);
   return {
     settings: settings,
@@ -190,7 +230,6 @@ function publicData() {
     references: readTab('References').filter(function (r) { return r.status === 'indexed'; }).map(function (r) {
       return { id: r.id, title: r.title, issuer: r.issuer, edition: r.edition, category: r.category, pages: r.pages, summary_en: r.summary_en, summary_bm: r.summary_bm, key_points: r.key_points, indexed_at: r.indexed_at };
     }),
-    collectors: collectorStatus(),
     runs: runs, raw_stats: stats, generated_at: new Date().toISOString(),
   };
 }
@@ -367,6 +406,7 @@ function reviewSet(tab, id, status) {
 }
 
 function writeSettings(obj) {
+  pubBust();
   var sh = sheet('Settings'), v = sh.getDataRange().getValues(), idx = {};
   v.forEach(function (r, i) { if (i) idx[r[0]] = i + 1; });
   Object.keys(obj).forEach(function (k) {
@@ -487,7 +527,7 @@ function sha256(bytes) {
 
 function upsert(tab, rows) {
   var cols = TABS[tab]; if (!cols) throw new Error('unknown tab ' + tab);
-  var sh = sheet(tab); ensureHeader(sh, cols);
+  var sh = sheet(tab); ensureHeader(sh, cols); pubBust();
   var v = sh.getDataRange().getValues(), idx = {};
   v.forEach(function (r, i) { if (i) idx[String(r[0])] = i + 1; });
   var ins = 0, upd = 0;
@@ -500,7 +540,7 @@ function upsert(tab, rows) {
 }
 
 function updateByIds(tab, ids, patch) {
-  var cols = TABS[tab], sh = sheet(tab), v = sh.getDataRange().getValues(), n = 0;
+  var cols = TABS[tab], sh = sheet(tab), v = sh.getDataRange().getValues(), n = 0; pubBust();
   var want = {}; ids.forEach(function (i) { want[String(i)] = 1; });
   v.forEach(function (r, i) {
     if (!i || !want[String(r[0])]) return;
@@ -511,7 +551,7 @@ function updateByIds(tab, ids, patch) {
 }
 
 function deleteByIds(tab, ids) {
-  var sh = sheet(tab), v = sh.getDataRange().getValues(), want = {}, n = 0;
+  var sh = sheet(tab), v = sh.getDataRange().getValues(), want = {}, n = 0; pubBust();
   ids.forEach(function (i) { want[String(i)] = 1; });
   for (var i = v.length - 1; i >= 1; i--) if (want[String(v[i][0])]) { sh.deleteRow(i + 1); n++; }
   return { ok: true, deleted: n };
@@ -634,7 +674,7 @@ function chat(b) {
   b.context = (b.context || []).slice(0, 8).map(function (c) { return { type: String(c.type || '').slice(0, 20), id: String(c.id || '').slice(0, 40), title: String(c.title || '').slice(0, 300), body: String(c.body || '').slice(0, 1500) }; });
   var lang = b.lang === 'bm' ? 'Bahasa Malaysia (Malaysian register: boleh, ubat, syarikat, kualiti; never Indonesian)' : 'English';
   var ctx = (b.context || []).map(function (c, i) { return '[' + (i + 1) + '] (' + c.type + ' ' + c.id + ') ' + c.title + '\n' + c.body; }).join('\n\n');
-  var sys = 'You are the Halal Executive assistant for halal executives in Malaysia. Answer ONLY from the numbered context entries. Cite entries like [1]. If the context does not answer, say so in one sentence and suggest which tab to check (FAQ, Guidelines, Documents). Keep regulatory terms original (Notifikasi Kosmetik, Garis Panduan, Borang). Never invent a limit, entry number or date; if a number is not in the context, say it is not in the site's sources yet. Reply in ' + lang + '. Be brief.';
+  var sys = 'You are the Halal Executive assistant for halal executives in Malaysia. Answer ONLY from the numbered context entries. Cite entries like [1]. If the context does not answer, say so in one sentence and suggest which tab to check (FAQ, Guidelines, Documents). Keep regulatory terms original (Notifikasi Kosmetik, Garis Panduan, Borang). Never invent a limit, entry number or date; if a number is not in the context, say it is not in the site sources yet. Reply in ' + lang + '. Be brief.';
   try {
     var r = complete([{ role: 'system', content: sys }, { role: 'user', content: 'Context:\n' + (ctx || '(none)') + '\n\nQuestion: ' + b.question }], { max_tokens: 600, fast: true });
     return { ok: true, answer: r.text, provider: r.provider, model: r.model };
@@ -700,7 +740,7 @@ function refChunks(b) {
   return { ok: true, written: rows.length };
 }
 
-function bumpAnswerVersion() { props().setProperty('ans_v', String(Date.now())); }
+function bumpAnswerVersion() { props().setProperty('ans_v', String(Date.now())); pubBust(); }
 
 // Malay <-> English terms so a question in either language finds passages
 // written in the other. Lower-case, single words.

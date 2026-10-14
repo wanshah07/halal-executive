@@ -23,6 +23,26 @@ export async function loadData({ force = false } = {}) {
   return data
 }
 
+// What the page can show before the live feed answers: the copy this browser
+// saved last time (any age), else the snapshot the deploy wrote next to the
+// page (data.json, refreshed after every pipeline run). Both are replaced as
+// soon as Apps Script answers, which takes a few seconds.
+export function savedData() {
+  try { const c = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null'); if (c && c.faq) return { ...c, _stale: true } } catch { /* ignore */ }
+  return null
+}
+export async function snapshotData() {
+  if (!API_URL) return null
+  try {
+    const r = await fetch(`./data.json?t=${Math.floor(Date.now() / 60000)}`)
+    if (!r.ok) return null
+    const d = stripMarks(await r.json())
+    if (!d || !Array.isArray(d.faq)) return null
+    d._source = 'sheet'; d._fetched = d.generated_at || new Date().toISOString(); d._stale = true
+    return d
+  } catch { return null }
+}
+
 // A [SAHKAN: …] marker is a note for the pipeline, not for readers: the
 // pipeline fills it from the references library or takes it out (Code.gs does
 // the same before sending). This catches any that slip through.

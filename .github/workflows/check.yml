@@ -1,0 +1,22 @@
+name: Check
+# Catches a broken Code.gs or pipeline script before it is pasted or run:
+# Apps Script refuses to save a file with a syntax error.
+on:
+  push:
+    paths: ['apps-script/**', 'pipeline/**', '.github/workflows/check.yml']
+  pull_request:
+  workflow_dispatch:
+permissions: { contents: read }
+jobs:
+  syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Code.gs parses
+        run: node -e "require('vm').createScript(require('fs').readFileSync('apps-script/Code.gs','utf8'), {filename:'Code.gs'}); console.log('Code.gs ok')"
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - name: Pipeline compiles
+        run: python -m py_compile pipeline/*.py && echo "pipeline ok"
