@@ -101,3 +101,16 @@ permission.
   Settings tab updated.
 * Runs tab alternates MIRELD / AFIQ; a forced failure (wrong key on one)
   shows the other answering with `fallback` in the log.
+
+## Run the AI now (Admin button)
+
+Admin → **Run the AI now** starts the Pipeline straight away instead of waiting
+for the next :10 / :40 slot. It needs a GitHub token kept only in Apps Script:
+
+1. GitHub → Settings → Developer settings → Personal access tokens →
+   **Fine-grained tokens** → Generate new token.
+2. Repository access: **Only select repositories** → `wanshah07/halal-executive`.
+3. Permissions → Repository permissions → **Actions: Read and write**. Nothing else.
+4. Generate, copy the token.
+5. Apps Script → Project Settings → Script Properties → Add property
+   `GITHUB_TOKEN` = the token → Save.

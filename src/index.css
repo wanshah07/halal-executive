@@ -3,6 +3,15 @@
 /* Theme tokens. Primary is the JAKIM green family; the layout is the KKM
    Complaints dashboard (white cards, slate text, thin borders). */
 @theme {
+  /* shadcn colour names used by src/components/ui (IconBar sets the actual
+     values on its own element; these are the fallbacks). */
+  --color-background: #ffffff;
+  --color-foreground: #111111;
+  --color-muted: #f5f7fa;
+  --color-muted-foreground: #6d7480;
+  --color-accent: #f3f5f8;
+  --color-accent-foreground: #111111;
+  --color-ring: rgba(17, 17, 17, 0.16);
   --color-brand-50:  #ecf8f1;
   --color-brand-100: #d2efdf;
   --color-brand-200: #a6dfbf;

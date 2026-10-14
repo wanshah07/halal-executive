@@ -246,7 +246,7 @@ function doPost(e) {
     if (a === 'ask') { if (!rate('ask', 40, 60)) return json({ ok: false, error: 'Busy, try again in a minute.' }); return json(askReferences(body)); }
     if (a === 'login_request') return json(loginRequest(body.email));
     if (a === 'login_verify') return json(loginVerify(body.email, body.code));
-    if (a === 'logout') { if (body.session) CacheService.getScriptCache().remove('sess_' + body.session); return json({ ok: true }); }
+    if (a === 'logout') { if (body.session) props().deleteProperty(sessKey(body.session)); return json({ ok: true }); }
     var P = props();
     var sessEmail = sessionEmail(body.session);
     if (a === 'whoami') return json(sessEmail ? { ok: true, email: sessEmail } : { ok: false, error: 'unauthorised' });
@@ -277,6 +277,7 @@ function doPost(e) {
       if (a === 'ref_upload')    { needAdmin(); return json(refUpload(body, sessEmail || 'token')); }
       if (a === 'ref_set')       { needAdmin(); return json(refSet(body.id, body.status)); }
       if (a === 'event_save')    { needAdmin(); return json(eventSave(body)); }
+      if (a === 'run_now')       { needAdmin(); return json(runNow(body)); }
       if (a === 'poster_upload') { needAdmin(); return json(posterUpload(body)); }
       if (a === 'ingest')        return json(ingest(body.rows || []));
       if (a === 'raw_update')    return json(updateByIds('Raw', body.ids || [], body.patch || {}));
@@ -340,15 +341,51 @@ function loginVerify(email, code) {
     return { ok: false, error: 'That code is not right. Check the latest email.' };
   }
   c.remove('otp_' + email);
-  var session = newToken();
-  c.put('sess_' + session, email, 21600); // 6 hours, the cache maximum
-  return { ok: true, session: session, email: email, expires_in: 21600 };
+  var session = newToken(), P = props(), now = Date.now();
+  // Drop expired sessions while we are here.
+  var all = P.getProperties();
+  Object.keys(all).forEach(function (k) { if (k.indexOf('sess_') === 0) { try { if (JSON.parse(all[k]).x < now) P.deleteProperty(k); } catch (e) { P.deleteProperty(k); } } });
+  P.setProperty(sessKey(session), JSON.stringify({ e: email, x: now + SESSION_MS }));
+  return { ok: true, session: session, email: email, expires_in: SESSION_MS / 1000 };
 }
 
+// Admin sessions live in Script Properties, not the cache: the cache may drop
+// an entry early, which signed people out of Admin (and out of a second tab)
+// at random. A session lasts 7 days from its last use, so a working admin stays
+// signed in on that browser until they press Sign out or stop using it for a
+// week. Only a hash of the session id is stored.
+var SESSION_MS = 7 * 24 * 3600 * 1000;
+function sessKey(session) { return 'sess_' + sha256(Utilities.newBlob(String(session)).getBytes()).slice(0, 40); }
 function sessionEmail(session) {
   if (!session) return null;
-  var email = CacheService.getScriptCache().get('sess_' + session);
-  return email && adminEmails().indexOf(email) >= 0 ? email : null; // removed from the list = signed out
+  var P = props(), k = sessKey(session), raw = P.getProperty(k);
+  if (!raw) return null;
+  var s; try { s = JSON.parse(raw); } catch (e) { return null; }
+  var now = Date.now();
+  if (!s.e || s.x < now) { P.deleteProperty(k); return null; }
+  if (adminEmails().indexOf(s.e) < 0) return null; // removed from the list = signed out
+  if (s.x - now < SESSION_MS - 3600 * 1000) P.setProperty(k, JSON.stringify({ e: s.e, x: now + SESSION_MS })); // slide, at most hourly
+  return s.e;
+}
+
+// "Run the AI now" from Admin: asks GitHub to start the Pipeline at once
+// instead of waiting for the next :10 / :40 slot. Needs a fine-grained GitHub
+// token with Actions: read and write on this repository, saved as the Script
+// Property GITHUB_TOKEN (never in the page).
+var GH_REPO = 'wanshah07/halal-executive';
+function runNow(b) {
+  var job = ['process_whatsapp', 'references', 'news', 'organise', 'sahkan', 'process_facebook'].indexOf(b.job) >= 0 ? b.job : 'process_whatsapp';
+  var token = props().getProperty('GITHUB_TOKEN');
+  if (!token) throw new Error('Run now is not set up yet: add a GitHub token as the Script Property GITHUB_TOKEN (see SETUP.md).');
+  if (!rate('run_now', 1, 120)) throw new Error('A run was started less than 2 minutes ago. It is on its way.');
+  var r = UrlFetchApp.fetch('https://api.github.com/repos/' + GH_REPO + '/actions/workflows/pipeline.yml/dispatches', {
+    method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+    headers: { Authorization: 'Bearer ' + token, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' },
+    payload: JSON.stringify({ ref: 'main', inputs: { job: job } }),
+  });
+  var code = r.getResponseCode();
+  if (code !== 204) throw new Error('GitHub refused the run (' + code + '): ' + r.getContentText().slice(0, 160));
+  return { ok: true, job: job, message: 'Started. Results show here in 2-4 minutes.' };
 }
 
 // ---------- Certificate thumbnails ----------

@@ -24,7 +24,7 @@ export default function Sidebar({ lang, tab, setTab, counts, mobileOpen, setMobi
   return (
     <>
       <aside onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)} onFocus={() => setHover(true)} onBlur={() => setHover(false)}
-        className={`hidden md:flex fixed left-0 top-[105px] bottom-0 z-20 flex-col gap-1 border-r border-line bg-white p-2 transition-[width] duration-200 ${open ? 'w-[232px] shadow-lg' : 'w-14'}`}>
+        className={`hidden md:flex fixed left-0 top-[117px] bottom-0 z-20 flex-col gap-1 border-r border-line bg-white p-2 transition-[width] duration-200 ${open ? 'w-[232px] shadow-lg' : 'w-14'}`}>
         {items}
         <button onClick={() => setPinned(!pinned)} title={t(lang, pinned ? 'unpin' : 'pin')} className="mt-auto flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm text-ink-400 hover:bg-paper">
           <span className="w-6 flex justify-center">{pinned ? <PanelLeftClose {...ICON} /> : <PanelLeftOpen {...ICON} />}</span><span className={`whitespace-nowrap overflow-hidden ${open ? 'opacity-100' : 'opacity-0 w-0'}`}>{t(lang, pinned ? 'unpin' : 'pin')}</span>

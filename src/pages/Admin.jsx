@@ -2,9 +2,10 @@ import { useEffect, useState } from 'react'
 import { adminPost, post, getSession, setSession } from '../lib/api'
 import { API_URL } from '../lib/config'
 import { t } from '../lib/i18n'
+import { fmtDateTime } from '../lib/util'
 import { RefAdmin, EventsAdmin } from '../components/AdminExtra'
 import { POSTER_ACCEPT, POSTER_MAX } from '../components/Poster'
-import { ICON, Lock, RefreshCw, Upload, X } from '../components/Icon'
+import { ICON, Lock, RefreshCw, Upload, X, Play } from '../components/Icon'
 
 // Admin panel, locked. A registered email asks for a code, the code arrives
 // by email from the Sheet's Apps Script, and the session lasts 6 hours.
@@ -108,6 +109,33 @@ function UploadBox({ lang }) {
 
 // Drafts from the pipeline. Nothing the AI writes with less than high
 // confidence reaches the public page until an admin publishes it here.
+// Start the pipeline now instead of waiting for the next :10 / :40 slot.
+const RUN_JOBS = ['process_whatsapp', 'references', 'sahkan', 'news', 'organise', 'process_facebook']
+function RunNow({ lang, runs }) {
+  const [job, setJob] = useState('process_whatsapp')
+  const [msg, setMsg] = useState('')
+  const [busy, setBusy] = useState(false)
+  const last = (runs || [])[0]
+  async function go() {
+    setBusy(true); setMsg('')
+    try { const r = await adminPost('run_now', { job }); setMsg(r.message) } catch (e) { setMsg(e.message) } finally { setBusy(false) }
+  }
+  return (
+    <div className="card p-5 mb-4 space-y-3">
+      <h3 className="font-semibold">{t(lang, 'run_now_title')}</h3>
+      <p className="text-sm text-ink-600">{t(lang, 'run_now_sub')}</p>
+      <div className="flex flex-wrap items-center gap-2">
+        <select className="input w-auto" value={job} onChange={(e) => setJob(e.target.value)} aria-label={t(lang, 'run_now_title')}>
+          {RUN_JOBS.map((j) => <option key={j} value={j}>{t(lang, 'job_' + j)}</option>)}
+        </select>
+        <button className="btn-brand" onClick={go} disabled={busy}><Play {...ICON} size={16} />{busy ? '…' : t(lang, 'run_now')}</button>
+        {msg && <span className="text-sm text-ink-600">{msg}</span>}
+      </div>
+      {last && <p className="text-xs text-ink-400">{t(lang, 'last_run')}: {last.job} · {fmtDateTime(last.ts, lang)} · {last.ok === false || last.ok === 'FALSE' ? '✕' : '✓'} {last.provider || ''}</p>}
+    </div>
+  )
+}
+
 function ReviewBox({ lang, onChanged }) {
   const [drafts, setDrafts] = useState(null)
   const [open, setOpen] = useState([])
@@ -157,6 +185,11 @@ function ReviewBox({ lang, onChanged }) {
 
 export default function Admin({ lang, data, onSaved, onSession }) {
   const [sess, setSess] = useState(() => { const s = getSession(); return s && s.until > Date.now() ? s : null })
+  // Signing in or out in another tab applies here too.
+  useEffect(() => {
+    const h = (e) => { if (e.key === 'he:session') { const s = getSession(); setSess(s && s.until > Date.now() ? s : null) } }
+    addEventListener('storage', h); return () => removeEventListener('storage', h)
+  }, [])
   const [s, setS] = useState({})
   const [posters, setPosters] = useState([])
   const [upIdx, setUpIdx] = useState(-1)
@@ -208,6 +241,7 @@ export default function Admin({ lang, data, onSaved, onSession }) {
       </div>
       <p className="text-sm text-ink-600 mb-4">{t(lang, 'admin_intro')}</p>
 
+      <RunNow lang={lang} runs={data && data.runs} />
       <ReviewBox lang={lang} onChanged={onSaved} />
       <UploadBox lang={lang} />
       <RefAdmin lang={lang} />

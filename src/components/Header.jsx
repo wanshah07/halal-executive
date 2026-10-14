@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { SITE_NAME, SITE_SUB, SHEET_URL, DRIVE_FOLDER_URL } from '../lib/config'
 import { t } from '../lib/i18n'
 import { NAV } from './Sidebar'
+import { IconBar, IconBarItem } from '@/components/ui/icon-bar'
 import { ICON, Menu, ExternalLink, ChevronDown, RefreshCw, Lock } from './Icon'
 
 export default function Header({ lang, setLang, tab, setTab, onRefresh, onExport, counts, loading, onMenu }) {
@@ -46,13 +47,17 @@ export default function Header({ lang, setLang, tab, setTab, onRefresh, onExport
             <a className="btn-dark px-2.5 sm:px-3.5" href="#admin" onClick={() => setTab('admin')} aria-label={t(lang, 'admin')} title={t(lang, 'admin')}><Lock {...ICON} size={17} /><span className="hidden sm:inline">{t(lang, 'admin')}</span></a>
           </div>
         </div>
-        <nav className="flex gap-6 overflow-x-auto -mb-px">
-          {NAV.map(([k]) => (
-            <a key={k} href={`#${k}`} onClick={() => setTab(k)} className={`tab ${tab === k ? 'tab-active' : ''}`}>
-              {t(lang, k)}
-              {counts && counts[k] != null && <span className="ml-1 text-ink-400">({counts[k]})</span>}
-            </a>
-          ))}
+        {/* Main navigation: IconBar (src/components/ui/icon-bar.tsx). The open
+            tab shows its name; the others show it on hover or keyboard focus.
+            Selected colour is the site green instead of the component's grey. */}
+        <nav aria-label={t(lang, 'menu')} className="pb-3 -mx-1 px-1 overflow-x-auto">
+          <IconBar value={tab} onValueChange={(v) => v && setTab(v)}
+            className="flex-nowrap [--ic-accent:#d2efdf] [--ic-accent-foreground:#08542e] [--ic-muted:#f8fafc] [--ic-muted-foreground:#475569]">
+            {NAV.map(([k, Icon]) => (
+              <IconBarItem key={k} value={k} icon={Icon}
+                label={t(lang, k) + (counts && counts[k] != null ? ` (${counts[k]})` : '')} />
+            ))}
+          </IconBar>
         </nav>
       </div>
     </header>

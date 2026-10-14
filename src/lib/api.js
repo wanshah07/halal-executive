@@ -69,15 +69,20 @@ export async function post(action, payload = {}) {
   return j
 }
 
-// Admin session: a one-time code sent to a registered email gives a 6-hour
-// session id, kept only in this browser.
+// Admin session: a one-time code sent to a registered email gives a session
+// id kept in this browser's localStorage, so every tab shares it. It lasts 7
+// days from the last use (the server slides it too), until Sign out.
+export const SESSION_MS = 7 * 24 * 3600 * 1000
 const SKEY = 'he:session'
 export const getSession = () => { try { return JSON.parse(localStorage.getItem(SKEY) || 'null') } catch { return null } }
 export const setSession = (s) => { try { s ? localStorage.setItem(SKEY, JSON.stringify(s)) : localStorage.removeItem(SKEY) } catch { /* ignore */ } }
 export async function adminPost(action, payload = {}) {
   const s = getSession()
-  try { return await post(action, { ...payload, session: s && s.session }) }
-  catch (e) { if (e.code === 'unauthorised' || /Sign in/.test(e.message)) setSession(null); throw e }
+  try {
+    const r = await post(action, { ...payload, session: s && s.session })
+    if (s) setSession({ ...s, until: Date.now() + SESSION_MS })
+    return r
+  } catch (e) { if (e.code === 'unauthorised' || /Sign in/.test(e.message)) setSession(null); throw e }
 }
 
 // Certificate preview, read by Apps Script with the owner's Drive rights.
