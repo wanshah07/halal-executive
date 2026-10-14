@@ -8,7 +8,7 @@ web app is the only door to the Sheet and Drive.
    `Code.gs` with `apps-script/Code.gs`; set the manifest from
    `apps-script/appsscript.json` (Project Settings → show manifest). Enable
    the Drive advanced service (Services → Drive API v3) for OCR.
-2. Create Drive folder "Halal Executive"; copy its folder id.
+2. No Drive step: `setup()` in step 4 creates the "Halal Executive" folder.
 3. Script properties (Project Settings → Script properties): add only
    `MIRELD_API_KEY` and `AFIQ_API_KEY`. Model properties are optional:
    leave them out (or write `auto`) and the model is picked from each
