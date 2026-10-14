@@ -3,6 +3,7 @@ import { adminPost, post, getSession, setSession, dropLocal, refreshAll } from '
 import { API_URL } from '../lib/config'
 import { t } from '../lib/i18n'
 import { fmtDateTime } from '../lib/util'
+import { safeUrl } from '../lib/safe'
 import { RefAdmin, EventsAdmin, ContentManager, deleteForGood } from '../components/AdminExtra'
 import { POSTER_ACCEPT, POSTER_MAX } from '../components/Poster'
 import { ICON, Lock, RefreshCw, Upload, X, Play } from '../components/Icon'
@@ -252,6 +253,7 @@ function ProgressBox({ lang }) {
 function ReviewBox({ lang, onChanged }) {
   const [drafts, setDrafts] = useState(null)
   const [open, setOpen] = useState([])
+  const [shown, setShown] = useState({})
   const [msg, setMsg] = useState('')
   const load = () => adminPost('review_list').then((r) => { setDrafts(r.drafts); setOpen(r.to_confirm || []) }).catch((e) => setMsg(e.message))
   useEffect(() => { load() }, [])
@@ -263,6 +265,13 @@ function ReviewBox({ lang, onChanged }) {
   }
   const items = drafts ? Object.entries(drafts).flatMap(([tab, rows]) => rows.map((r) => ({ tab, r }))) : []
   const title = ({ tab, r }) => tab === 'FAQ' ? (r.question_en || r.question_bm) : tab === 'Certificates' ? r.company : r.title
+  // Every field the draft carries, so it can be read in full before publishing.
+  const FULL = {
+    FAQ: [['question_en', 'Question (EN)'], ['question_bm', 'Soalan (BM)'], ['answer_formal_en', 'Answer, formal (EN)'], ['answer_layman_en', 'Answer, simple (EN)'], ['answer_formal_bm', 'Jawapan, rasmi (BM)'], ['answer_layman_bm', 'Jawapan, mudah (BM)'], ['subcategory', 'Subcategory']],
+    Events: [['title', 'Title'], ['title_bm', 'Tajuk (BM)'], ['date_start', 'Date'], ['venue', 'Venue'], ['link', 'Link'], ['description', 'Description']],
+    Guidelines: [['title', 'Title'], ['title_bm', 'Tajuk (BM)'], ['issuer', 'Issuer'], ['summary_en', 'Summary (EN)'], ['summary_bm', 'Ringkasan (BM)'], ['link', 'Link']],
+    Certificates: [['company', 'Company'], ['cert_no', 'Certificate no.'], ['scheme', 'Scheme'], ['state', 'State'], ['valid_from', 'Valid from'], ['valid_to', 'Valid to'], ['products', 'Products'], ['drive_url', 'File']],
+  }
   const body = ({ tab, r }) => tab === 'FAQ' ? (r.answer_formal_en || r.answer_layman_en) : tab === 'Events' ? `${r.date_start || ''} ${r.venue || ''} ${r.description || ''}` : tab === 'Certificates' ? `${r.scheme || ''} · ${r.valid_from || ''} → ${r.valid_to || ''}` : (r.summary_en || '')
   return (
     <div className="card p-5 mb-4 space-y-3">
@@ -275,8 +284,17 @@ function ReviewBox({ lang, onChanged }) {
           <li key={it.tab + it.r.id} className="py-3 flex flex-col sm:flex-row sm:items-start gap-3">
             <div className="min-w-0 flex-1">
               <div className="text-xs text-ink-400">{it.tab} · {it.r.id}{it.r.category ? ` · ${it.r.category}` : ''}{it.r.confidence ? ` · ${it.r.confidence}` : ''}</div>
-              <div className="font-medium">{title(it)}</div>
-              <div className="text-sm text-ink-600 line-clamp-3 whitespace-pre-wrap">{body(it)}</div>
+              <button type="button" className="font-medium text-left hover:underline" aria-expanded={!!shown[it.tab + it.r.id]} onClick={() => setShown((x) => ({ ...x, [it.tab + it.r.id]: !x[it.tab + it.r.id] }))}>{title(it)}</button>
+              {shown[it.tab + it.r.id] ? (
+                <dl className="mt-2 space-y-2 text-sm">
+                  {(FULL[it.tab] || []).filter(([k]) => it.r[k]).map(([k, label]) => (
+                    <div key={k}><dt className="text-xs text-ink-400">{label}</dt>
+                      <dd className="whitespace-pre-wrap break-words text-ink-900">{/^https?:\/\//.test(String(it.r[k])) ? <a className="underline text-brand-700" href={safeUrl(it.r[k])} target="_blank" rel="noopener noreferrer">{it.r[k]}</a> : String(it.r[k])}</dd></div>
+                  ))}
+                </dl>
+              ) : (
+                <button type="button" className="w-full text-left text-sm text-ink-600 line-clamp-3 whitespace-pre-wrap" onClick={() => setShown((x) => ({ ...x, [it.tab + it.r.id]: true }))}>{body(it)} <span className="text-brand-700">{t(lang, 'read_full')}</span></button>
+              )}
             </div>
             <div className="flex gap-2 shrink-0"><button className="btn-brand" onClick={() => set(it.tab, it.r.id, 'published')}>{t(lang, 'publish')}</button><button className="btn" onClick={() => set(it.tab, it.r.id, 'hidden')}>{t(lang, 'hide')}</button><button className="btn text-red-700" onClick={() => deleteForGood(lang, it.tab, it.r.id, title(it), () => without(it.tab, it.r.id)).catch((e) => { setMsg(e.message); load() })}>{t(lang, 'delete')}</button></div>
           </li>
