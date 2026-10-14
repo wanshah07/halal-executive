@@ -67,7 +67,45 @@ function setup() {
     P.setProperty('DRIVE_ROOT_ID', f.getId());
   }
   if (!P.getProperty('ADMIN_EMAILS')) P.setProperty('ADMIN_EMAILS', Session.getEffectiveUser().getEmail().toLowerCase());
+  seedReferences();
   showSecrets();
+}
+
+// The core references every halal executive needs, checked 14 Oct 2026.
+// Adds only the ones whose id is not in the Guidelines tab yet, so running it
+// again never duplicates; edit or hide rows in the Sheet as editions change.
+var REFERENCES = [
+  ['GL-REF-01', 'halal', 'Manual Prosedur Pensijilan Halal Malaysia (Domestik) 2020', 'Manual Prosedur Pensijilan Halal Malaysia (Domestik) 2020',
+   'MPPHM 2020: application, audit, certification, monitoring and enforcement of the Malaysian halal certificate. Listed as the current manual on the Halal Malaysia portal.',
+   'MPPHM 2020: permohonan, audit, pensijilan, pemantauan dan penguatkuasaan Sijil Pengesahan Halal Malaysia. Disenaraikan sebagai manual semasa di Portal Halal Malaysia.',
+   'https://www.halal.gov.my/', 'JAKIM', '2020'],
+  ['GL-REF-02', 'halal', 'Malaysian Halal Management System (MHMS) 2020', 'Sistem Pengurusan Halal Malaysia (MHMS) 2020',
+   'Internal halal control: Internal Halal Control System for micro and small firms, Halal Assurance System for large firms. Replaced the Guideline for Halal Assurance Management System.',
+   'Kawalan halal dalaman: Sistem Kawalan Halal Dalaman untuk syarikat mikro dan kecil, Sistem Jaminan Halal untuk syarikat besar. Menggantikan Garis Panduan Sistem Pengurusan Jaminan Halal.',
+   'https://www.halal.gov.my/', 'JAKIM', '2020'],
+  ['GL-REF-03', 'food', 'MS 1500:2019 Halal food – General requirements (Third revision)', 'MS 1500:2019 Makanan halal – Keperluan umum (Semakan ketiga)',
+   'Manufacturing and handling of halal food, including nutrient supplements. Reconfirmed by Standards Malaysia in 2024.',
+   'Pengeluaran dan pengendalian makanan halal, termasuk suplemen nutrien. Disahkan semula oleh Jabatan Standard Malaysia pada 2024.',
+   'https://mysol.jsm.gov.my/', 'Standards Malaysia', '2019'],
+  ['GL-REF-04', 'cosmetic', 'MS 2634:2019 Halal cosmetics – General requirements (First revision)', 'MS 2634:2019 Kosmetik halal – Keperluan umum (Semakan pertama)',
+   'Manufacturing and handling of halal cosmetics. Replaced MS 2200-1:2008, which is withdrawn.',
+   'Pengeluaran dan pengendalian kosmetik halal. Menggantikan MS 2200-1:2008 yang telah ditarik balik.',
+   'https://mysol.jsm.gov.my/', 'Standards Malaysia', '2019'],
+  ['GL-REF-05', 'cosmetic', 'Guidelines for Control of Cosmetic Products in Malaysia', 'Garis Panduan Kawalan Produk Kosmetik di Malaysia',
+   'NPRA requirements for Notifikasi Kosmetik, ingredient annexes, labelling and claims. Check the NPRA site for the current revision.',
+   'Keperluan NPRA untuk Notifikasi Kosmetik, lampiran bahan, pelabelan dan dakwaan. Semak laman NPRA untuk semakan terkini.',
+   'https://www.npra.gov.my/', 'NPRA', '']
+];
+function seedReferences() {
+  var have = {}; readTab('Guidelines').forEach(function (r) { have[String(r.id)] = 1; });
+  var now = new Date().toISOString(), rows = [];
+  REFERENCES.forEach(function (x) {
+    if (have[x[0]]) return;
+    rows.push({ id: x[0], category: x[1], title: x[2], title_bm: x[3], summary_en: x[4], summary_bm: x[5], link: x[6], issuer: x[7], effective_date: x[8], updated_at: now, status: 'published', source: 'reference' });
+  });
+  if (rows.length) upsert('Guidelines', rows);
+  Logger.log('References added: ' + rows.length);
+  return rows.length;
 }
 
 function newToken() { return Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, ''); }

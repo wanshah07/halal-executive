@@ -10,24 +10,26 @@ export default function Header({ lang, setLang, tab, setTab, onRefresh, onExport
   return (
     <header className="bg-white border-b border-line sticky top-0 z-30">
       <div className="max-w-7xl mx-auto px-4 sm:px-6">
-        <div className="flex items-center justify-between gap-4 py-3">
-          <div className="flex items-center gap-3 min-w-0">
-            <button className="md:hidden btn px-2.5" onClick={onMenu} aria-label={t(lang, 'menu')}>☰</button>
-            <a href="#overview" onClick={() => setTab('overview')} className="flex items-center gap-3 min-w-0">
+        <div className="flex items-center justify-between gap-2 sm:gap-4 py-3">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+            <button className="md:hidden btn px-2.5 shrink-0" onClick={onMenu} aria-label={t(lang, 'menu')}>☰</button>
+            <a href="#overview" onClick={() => setTab('overview')} className="flex items-center gap-2 sm:gap-3 min-w-0">
               <img
                 src="./brand/jakim-halal-logo.png"
                 onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = './brand/halal-logo.svg' }}
                 alt="Halal Malaysia logo"
-                className="h-11 w-11 object-contain"
+                className="h-10 w-10 sm:h-11 sm:w-11 object-contain shrink-0"
               />
               <div className="min-w-0">
-                <div className="text-lg font-bold tracking-wide leading-tight uppercase">{SITE_NAME}</div>
+                {/* Phones: the name on two short lines so it never runs under the buttons */}
+                <div className="sm:hidden text-[13px] font-bold tracking-wide leading-[1.1] uppercase"><div>Halal</div><div>Executive</div></div>
+                <div className="hidden sm:block text-lg font-bold tracking-wide leading-tight uppercase truncate">{SITE_NAME}</div>
                 <div className="text-xs text-ink-600 truncate hidden sm:block">{SITE_SUB}</div>
               </div>
             </a>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <button className="btn" onClick={() => setLang(lang === 'en' ? 'bm' : 'en')} title="Language">{lang === 'en' ? 'BM' : 'EN'}</button>
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+            <button className="btn px-2.5 sm:px-3.5" onClick={() => setLang(lang === 'en' ? 'bm' : 'en')} title="Language">{lang === 'en' ? 'BM' : 'EN'}</button>
             <a className="btn hidden md:inline-flex" href="#faq" onClick={() => setTab('faq')}>{t(lang, 'faq')}</a>
             {SHEET_URL && <a className="btn hidden md:inline-flex" href={SHEET_URL} target="_blank" rel="noreferrer">{t(lang, 'sheet')} ↗</a>}
             {DRIVE_FOLDER_URL && <a className="btn hidden lg:inline-flex" href={DRIVE_FOLDER_URL} target="_blank" rel="noreferrer">{t(lang, 'drive')} ↗</a>}
@@ -39,8 +41,8 @@ export default function Header({ lang, setLang, tab, setTab, onRefresh, onExport
                 </div>
               )}
             </div>
-            <button className="btn" onClick={onRefresh} disabled={loading}>{loading ? '…' : '⟳'} {t(lang, 'refresh')}</button>
-            <a className="btn-dark" href="#admin" onClick={() => setTab('admin')}><span aria-hidden="true">🔒</span> {t(lang, 'admin')}</a>
+            <button className="btn px-2.5 sm:px-3.5" onClick={onRefresh} disabled={loading} aria-label={t(lang, 'refresh')} title={t(lang, 'refresh')}>{loading ? '…' : '⟳'}<span className="hidden sm:inline">{t(lang, 'refresh')}</span></button>
+            <a className="btn-dark px-2.5 sm:px-3.5" href="#admin" onClick={() => setTab('admin')} aria-label={t(lang, 'admin')} title={t(lang, 'admin')}><span aria-hidden="true">🔒</span><span className="hidden sm:inline">{t(lang, 'admin')}</span></a>
           </div>
         </div>
         <nav className="flex gap-6 overflow-x-auto -mb-px">
