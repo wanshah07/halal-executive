@@ -74,6 +74,7 @@ def run():
                 cand_text.append({"id": c["id"], "title": c["title"], "version": c.get("version"), "text": t})
             out = llm_router.complete_json([{"role": "system", "content": CLASSIFY}, {"role": "user", "content": json.dumps({"new": {"name": f["name"], "text": f["text"][:6000]}, "current": cand_text}, ensure_ascii=False)}], max_tokens=800)
             provider, model, j = out["provider"], out["model"], out["json"]
+            j = j if isinstance(j, dict) else {}  # a list or text reply is treated as "no answer"
             title = safe(j.get("title") or d["title"] or f["name"])
             date = (j.get("doc_date") or d.get("received_at") or "")[:10] or dt.date.today().isoformat()
             ext = os.path.splitext(f["name"])[1] or ""
@@ -88,11 +89,15 @@ def run():
             d.update(content_hash=h, version=version, status="current", title=title); current.append(d); by_hash[h] = d
             cert = j.get("certificate")
             if cert and cert.get("company"):
-                prev = next((c for c in certs if c.get("doc_id") == (old["id"] if old else None)), None)
+                cno = str(cert.get("cert_no") or "").strip().upper()
+                # The same certificate number is one row, however many times it is posted.
+                prev = next((c for c in certs if (old and c.get("doc_id") == old["id"]) or (cno and str(c.get("cert_no") or "").strip().upper() == cno)), None)
                 cid = prev["id"] if prev else ids_cert()
                 he_api.upsert("Certificates", [{"id": cid, "company": cert.get("company", ""), "cert_no": cert.get("cert_no", ""), "scheme": cert.get("scheme", ""), "category": d.get("category", "halal"),
                                                  "state": cert.get("state", ""), "valid_from": cert.get("valid_from", ""), "valid_to": cert.get("valid_to", ""), "products": "; ".join(cert.get("products") or []),
                                                  "drive_url": moved["url"], "doc_id": d["id"], "status": "current", "updated_at": moved["modified"], "notes": f"{provider}:{model} {j.get('confidence', '')}"}])
+                if not prev:
+                    certs.append({"id": cid, "cert_no": cert.get("cert_no", ""), "doc_id": d["id"]})
                 print("  certificate", cid, cert.get("company"), cert.get("valid_to"))
             print(d["id"], "filed as", moved["name"], "(supersedes %s)" % old["id"] if old else "")
             n += 1

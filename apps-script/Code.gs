@@ -236,7 +236,7 @@ function publicData() {
     // number): admin only, like the open points to confirm.
     faq: noMarks(readTab('FAQ').filter(function (r) { return r.status === 'published'; }).map(function (r) { delete r.verify_notes; delete r.source_refs; return r; })),
     guidelines: noMarks(readTab('Guidelines').filter(function (r) { return r.status !== 'hidden' && r.status !== 'draft'; })),
-    documents: noMarks(readTab('Documents')),
+    documents: noMarks(readTab('Documents').filter(function (r) { return r.status !== 'hidden' && r.status !== 'duplicate'; })),
     certificates: noMarks(readTab('Certificates').filter(function (r) { return r.status !== 'hidden'; })),
     events: noMarks(readTab('Events').filter(function (r) { return r.status !== 'hidden' && r.status !== 'draft' && !eventOver(r, now); })),
     news: readTab('News').filter(function (r) { return !r.expires_at || Date.parse(r.expires_at) > now; }),
@@ -723,7 +723,7 @@ function ingest(rows) {
     var key = r.source + ':' + r.msg_id, fp = rawFp(r);
     if (have[key] || (fp.length && (fps[fp[0]] || fps[fp[1]] || fps[fp[2]]))) { skipped++; return; }
     var att = (r.attachments || []).map(function (a) {
-      if (a.b64) { var f = saveToInbox(a, r); return { name: f.name, drive_file_id: f.id, drive_url: f.url, mime: a.mime, sha256: a.sha256 || '' }; }
+      if (a.b64) { var f = saveToInbox(a, r); return { name: f.name, drive_file_id: f.id, drive_url: f.url, mime: a.mime, sha256: a.sha256 || sha256(Utilities.base64Decode(a.b64)) }; }
       return a;
     });
     var keep = rawRelevant(r.text, att);
