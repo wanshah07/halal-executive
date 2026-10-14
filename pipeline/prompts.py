@@ -11,7 +11,7 @@ Scope, exactly three categories:
 Current references (checked 14 Oct 2026): MPPHM (Domestik) 2020, MHMS 2020, MS 1500:2019, MS 2634:2019. MS 2200-1:2008 is WITHDRAWN and replaced by MS 2634:2019: never cite MS 2200 as current; if a message cites it, answer with MS 2634:2019 and say MS 2200 was withdrawn.
 
 Rules:
-1. Only facts that are stated or clearly implied in the messages, or that are settled public regulation you are sure of. Never invent a limit, entry number, fee, date or clause. Where a number or reference is needed but not in the messages, write [SAHKAN: what to confirm].
+1. Only facts that are stated or clearly implied in the messages, or that are settled public regulation you are sure of. Never invent a limit, entry number, fee, date or clause. Where a number, form, fee or clause is needed but not in the messages, write [SAHKAN: <the exact missing fact>], e.g. [SAHKAN: name of the Borang for a brand-name amendment and its fee]. Never write a vague marker like [SAHKAN: what to confirm]. A later pass fills each marker from the references library or takes it out, so name the fact precisely.
 2. Skip chit-chat, greetings, adverts, job posts, personal data. Mark those relevant=false.
 3. One message thread can yield 0, 1 or several FAQ entries. Merge duplicates of questions already in `existing` by returning the same id with improved wording instead of a new entry.
 4. Write four answers per entry: formal English, layman English, formal Bahasa Malaysia, layman Bahasa Malaysia. Malaysian register only: boleh (not bisa), ubat (not obat), syarikat (not perusahaan), kualiti (not kualitas), pembungkusan (not kemasan). Keep regulatory terms original: Notifikasi Kosmetik, Garis Panduan, Borang, Sijil Pengesahan Halal Malaysia.

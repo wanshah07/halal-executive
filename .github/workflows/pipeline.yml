@@ -15,7 +15,7 @@ on:
   workflow_dispatch:
     inputs:
       job:
-        description: process_whatsapp | process_facebook | news | organise | references
+        description: process_whatsapp | process_facebook | news | organise | references | sahkan
         default: process_whatsapp
 permissions: { contents: read }
 concurrency: { group: pipeline, cancel-in-progress: false }
@@ -62,10 +62,11 @@ jobs:
         working-directory: pipeline
         run: |
           case "${{ steps.pick.outputs.job }}" in
-            process_whatsapp) python process_raw.py --source whatsapp,telegram,manual; a=$?; python drive_organiser.py; b=$?; python index_references.py; c=$?; exit $(( a || b || c )) ;;
-            process_facebook) python process_raw.py --source facebook ;;
+            process_whatsapp) python process_raw.py --source whatsapp,telegram,manual; a=$?; python drive_organiser.py; b=$?; python index_references.py; c=$?; python resolve_sahkan.py; d=$?; exit $(( a || b || c || d )) ;;
+            process_facebook) python process_raw.py --source facebook; a=$?; python resolve_sahkan.py; b=$?; exit $(( a || b )) ;;
             news)             python news_sweep.py ;;
             organise)         python drive_organiser.py ;;
-            references)       python index_references.py ;;
+            references)       python index_references.py; a=$?; python resolve_sahkan.py; b=$?; exit $(( a || b )) ;;
+            sahkan)           python resolve_sahkan.py ;;
             *) echo "unknown job"; exit 1 ;;
           esac

@@ -2,6 +2,7 @@ import { safeUrl } from '../lib/safe'
 import Segment from '../components/Segment'
 import { t } from '../lib/i18n'
 import { fmtDateTime } from '../lib/util'
+import Poster from '../components/Poster'
 
 export default function Events({ lang, data }) {
   const rows = (data.events || []).filter((e) => e.status !== 'hidden').sort((a, b) => Date.parse(a.date_start) - Date.parse(b.date_start))
@@ -12,7 +13,7 @@ export default function Events({ lang, data }) {
       {!!posters.length && (
         <section className="mb-6">
           <h2 className="text-xl font-bold mb-3">{t(lang, 'posters')}</h2>
-          <div className="grid gap-4 grid-cols-2 md:grid-cols-4">{posters.map((p, i) => <a key={i} href={safeUrl(p.link) || safeUrl(p.url) || undefined} target="_blank" rel="noreferrer" className="card overflow-hidden"><img src={safeUrl(p.url)} alt={p.title || ''} className="w-full object-cover aspect-[4/5]" />{p.title && <div className="p-2 text-sm font-medium">{p.title}</div>}</a>)}</div>
+          <div className="grid gap-4 grid-cols-2 md:grid-cols-4">{posters.map((p, i) => <a key={i} href={safeUrl(p.link) || safeUrl(p.file) || safeUrl(p.url) || undefined} target="_blank" rel="noreferrer" className="card overflow-hidden"><img src={safeUrl(p.url)} alt={p.title || ''} className="w-full object-cover aspect-[4/5]" />{p.title && <div className="p-2 text-sm font-medium">{p.title}</div>}</a>)}</div>
         </section>
       )}
       <Segment id="events" lang={lang} title={t(lang, 'events')} rows={rows}
@@ -24,7 +25,7 @@ export default function Events({ lang, data }) {
         ]}
         renderCard={(e) => (
           <article key={e.id} className="card overflow-hidden">
-            {safeUrl(e.poster_url) && <img src={safeUrl(e.poster_url)} alt="" className="w-full object-cover aspect-[16/9]" />}
+            {safeUrl(e.poster_url) && <Poster url={e.poster_url} file={e.poster_file} title={title(e)} />}
             <div className="p-4">
               <div className="text-xs text-ink-400">{fmtDateTime(e.date_start, lang)}{e.venue && ` · ${e.venue}`}</div>
               <div className="font-semibold mt-1">{title(e)}</div>

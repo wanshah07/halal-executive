@@ -16,10 +16,22 @@ export async function loadData({ force = false } = {}) {
   }
   const r = await fetch(`${API_URL}?action=data&t=${Date.now()}`, { redirect: 'follow' })
   if (!r.ok) throw new Error(`Sheet feed ${r.status}`)
-  const data = await r.json()
+  const data = stripMarks(await r.json())
   data._source = 'sheet'
   data._fetched = new Date().toISOString()
   try { localStorage.setItem(CACHE_KEY, JSON.stringify(data)) } catch { /* ignore */ }
+  return data
+}
+
+// A [SAHKAN: …] marker is a note for the pipeline, not for readers: the
+// pipeline fills it from the references library or takes it out (Code.gs does
+// the same before sending). This catches any that slip through.
+const MARK = /\s*\[SAHKAN[^\]]*\]/gi
+export function stripMarks(data) {
+  for (const k of ['faq', 'guidelines', 'events', 'documents', 'certificates', 'news']) {
+    if (!Array.isArray(data[k])) continue
+    data[k] = data[k].map((r) => { const o = { ...r }; for (const f in o) if (typeof o[f] === 'string' && o[f].includes('[')) o[f] = o[f].replace(MARK, '').trim(); return o })
+  }
   return data
 }
 

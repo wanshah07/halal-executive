@@ -3,6 +3,7 @@ import { adminPost, post, getSession, setSession } from '../lib/api'
 import { API_URL } from '../lib/config'
 import { t } from '../lib/i18n'
 import { RefAdmin, EventsAdmin } from '../components/AdminExtra'
+import { POSTER_ACCEPT, POSTER_MAX } from '../components/Poster'
 
 // Admin panel, locked. A registered email asks for a code, the code arrives
 // by email from the Sheet's Apps Script, and the session lasts 6 hours.
@@ -108,8 +109,9 @@ function UploadBox({ lang }) {
 // confidence reaches the public page until an admin publishes it here.
 function ReviewBox({ lang, onChanged }) {
   const [drafts, setDrafts] = useState(null)
+  const [open, setOpen] = useState([])
   const [msg, setMsg] = useState('')
-  const load = () => adminPost('review_list').then((r) => setDrafts(r.drafts)).catch((e) => setMsg(e.message))
+  const load = () => adminPost('review_list').then((r) => { setDrafts(r.drafts); setOpen(r.to_confirm || []) }).catch((e) => setMsg(e.message))
   useEffect(() => { load() }, [])
   async function set(tab, id, status) {
     try { await adminPost('review_set', { tab, id, status }); await load(); onChanged && onChanged() } catch (e) { setMsg(e.message) }
@@ -135,6 +137,18 @@ function ReviewBox({ lang, onChanged }) {
           </li>
         ))}
       </ul>
+      {!!open.length && (
+        <div className="pt-3 border-t border-line">
+          <h4 className="font-semibold text-sm">{t(lang, 'to_confirm')} <span className="text-ink-400 font-normal">({open.reduce((n, r) => n + r.notes.length, 0)})</span></h4>
+          <p className="text-sm text-ink-600 mb-2">{t(lang, 'to_confirm_sub')}</p>
+          <ul className="space-y-2 text-sm">
+            {open.map((r) => (
+              <li key={r.id}><div className="font-medium">{lang === 'bm' ? r.question_bm || r.question_en : r.question_en || r.question_bm}</div>
+                <ul className="list-disc pl-5 text-ink-600">{r.notes.map((n, i) => <li key={i}>{n}</li>)}</ul></li>
+            ))}
+          </ul>
+        </div>
+      )}
       {msg && <div className="text-sm text-red-600">{msg}</div>}
     </div>
   )
@@ -144,6 +158,16 @@ export default function Admin({ lang, data, onSaved, onSession }) {
   const [sess, setSess] = useState(() => { const s = getSession(); return s && s.until > Date.now() ? s : null })
   const [s, setS] = useState({})
   const [posters, setPosters] = useState([])
+  const [upIdx, setUpIdx] = useState(-1)
+  // A poster file goes to Drive straight away; the row keeps its preview
+  // image and the original file, and Save writes the list to the Sheet.
+  async function uploadPoster(i, f) {
+    if (!f) return
+    if (f.size > POSTER_MAX) { setMsg(t(lang, 'too_big_10')); return }
+    setUpIdx(i); setMsg('')
+    try { const r = await adminPost('poster_upload', { name: f.name, mime: f.type || '', b64: await toB64(f) }); setPosters((ps) => ps.map((x, j) => j === i ? { ...x, url: r.url, file: r.file } : x)); setMsg(t(lang, 'poster_uploaded')) }
+    catch (er) { setMsg(er.message) } finally { setUpIdx(-1) }
+  }
   const [admins, setAdmins] = useState([])
   const [owner, setOwner] = useState('')
   const [newAdmin, setNewAdmin] = useState('')
@@ -210,10 +234,11 @@ export default function Admin({ lang, data, onSaved, onSession }) {
       <div className="card p-5 mb-4 space-y-3">
         <div className="flex justify-between items-center"><h3 className="font-semibold">{t(lang, 'posters')}</h3><button className="btn" onClick={() => setPosters((p) => [...p, { title: '', url: '', link: '' }])}>+ {t(lang, 'add_poster')}</button></div>
         {posters.map((p, i) => (
-          <div key={i} className="grid md:grid-cols-[1fr_2fr_2fr_auto] gap-2 items-start">
+          <div key={i} className="grid md:grid-cols-[1fr_2fr_2fr_auto_auto] gap-2 items-start">
             <input className="input" placeholder="Title" value={p.title} onChange={(e) => setPosters((ps) => ps.map((x, j) => j === i ? { ...x, title: e.target.value } : x))} />
-            <input className="input" placeholder="Image URL" value={p.url} onChange={(e) => setPosters((ps) => ps.map((x, j) => j === i ? { ...x, url: e.target.value } : x))} />
+            <input className="input" placeholder="Image URL" value={p.url} onChange={(e) => setPosters((ps) => ps.map((x, j) => j === i ? { ...x, url: e.target.value, file: '' } : x))} />
             <input className="input" placeholder="Click-through link" value={p.link} onChange={(e) => setPosters((ps) => ps.map((x, j) => j === i ? { ...x, link: e.target.value } : x))} />
+            <label className="btn cursor-pointer whitespace-nowrap" title={t(lang, 'poster_formats')}>{upIdx === i ? '…' : `⬆ ${t(lang, 'upload')}`}<input type="file" accept={POSTER_ACCEPT} className="sr-only" disabled={upIdx >= 0} onChange={(e) => { uploadPoster(i, e.target.files[0]); e.target.value = '' }} /></label>
             <button className="btn" onClick={() => setPosters((ps) => ps.filter((_, j) => j !== i))}>✕</button>
           </div>
         ))}

@@ -3,6 +3,7 @@ import { adminPost } from '../lib/api'
 import { CATEGORIES } from '../lib/config'
 import { t } from '../lib/i18n'
 import { fmtDateTime } from '../lib/util'
+import { POSTER_ACCEPT, POSTER_MAX } from './Poster'
 
 const toB64 = (file) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1] || ''); r.onerror = () => rej(r.error); r.readAsDataURL(file) })
 
@@ -54,8 +55,9 @@ export function RefAdmin({ lang }) {
   )
 }
 
-// Events added by hand, with an optional poster image.
-const EMPTY = { id: '', title: '', title_bm: '', date_start: '', date_end: '', venue: '', link: '', description: '', poster_url: '' }
+// Events added by hand, with an optional poster: a picture, PDF, PowerPoint or
+// Word file, or a link (a Google Drive share link works too).
+const EMPTY = { id: '', title: '', title_bm: '', date_start: '', date_end: '', venue: '', link: '', description: '', poster_url: '', poster_file: '' }
 export function EventsAdmin({ lang, onChanged }) {
   const [rows, setRows] = useState(null)
   const [e, setE] = useState(EMPTY)
@@ -69,7 +71,7 @@ export function EventsAdmin({ lang, onChanged }) {
     ev.preventDefault(); setBusy(true); setMsg('')
     try {
       const payload = { event: { ...e, date_start: e.date_start ? new Date(e.date_start).toISOString() : '', date_end: e.date_end ? new Date(e.date_end).toISOString() : '' } }
-      if (poster) { if (poster.size > 5 * 1024 * 1024) throw new Error(t(lang, 'too_big_5')); Object.assign(payload, { poster_b64: await toB64(poster), poster_name: poster.name, poster_mime: poster.type }) }
+      if (poster) { if (poster.size > POSTER_MAX) throw new Error(t(lang, 'too_big_10')); Object.assign(payload, { poster_b64: await toB64(poster), poster_name: poster.name, poster_mime: poster.type }) }
       await adminPost('event_save', payload); setMsg(t(lang, 'saved')); setE(EMPTY); setPoster(null); const i = document.getElementById('ev-poster'); if (i) i.value = ''; load(); onChanged && onChanged()
     } catch (er) { setMsg(er.message) } finally { setBusy(false) }
   }
@@ -85,8 +87,8 @@ export function EventsAdmin({ lang, onChanged }) {
         <div><label className="label" htmlFor="ev-v">{t(lang, 'venue')}</label><input id="ev-v" className="input" value={e.venue} onChange={(x) => setE({ ...e, venue: x.target.value })} placeholder="Online / Shah Alam" /></div>
         <div><label className="label" htmlFor="ev-l">{t(lang, 'register')} (https://…)</label><input id="ev-l" type="url" className="input" value={e.link} onChange={(x) => setE({ ...e, link: x.target.value })} /></div>
         <div className="sm:col-span-2"><label className="label" htmlFor="ev-d">{t(lang, 'description')}</label><textarea id="ev-d" rows={3} className="input" value={e.description} onChange={(x) => setE({ ...e, description: x.target.value })} /></div>
-        <div><label className="label" htmlFor="ev-poster">{t(lang, 'poster')} (JPG/PNG · 5 MB)</label><input id="ev-poster" type="file" accept="image/*" className="input" onChange={(x) => setPoster(x.target.files[0] || null)} /></div>
-        <div><label className="label" htmlFor="ev-pu">{t(lang, 'poster')} URL</label><input id="ev-pu" type="url" className="input" value={e.poster_url} onChange={(x) => setE({ ...e, poster_url: x.target.value })} placeholder="https://…" /></div>
+        <div><label className="label" htmlFor="ev-poster">{t(lang, 'poster')} ({t(lang, 'poster_formats')})</label><input id="ev-poster" type="file" accept={POSTER_ACCEPT} className="input" onChange={(x) => setPoster(x.target.files[0] || null)} /></div>
+        <div><label className="label" htmlFor="ev-pu">{t(lang, 'poster')} URL</label><input id="ev-pu" type="url" className="input" value={e.poster_url} onChange={(x) => setE({ ...e, poster_url: x.target.value, poster_file: '' })} placeholder="https://… / Google Drive link" /></div>
         <div className="sm:col-span-2 flex items-center gap-3"><button className="btn-brand" disabled={busy}>{busy ? '…' : e.id ? t(lang, 'save_changes') : t(lang, 'add_event')}</button>{e.id && <button type="button" className="btn" onClick={() => setE(EMPTY)}>{t(lang, 'cancel')}</button>}{msg && <span className="text-sm text-ink-600">{msg}</span>}</div>
       </form>
       <ul className="divide-y divide-line">

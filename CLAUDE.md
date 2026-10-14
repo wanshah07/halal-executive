@@ -9,7 +9,12 @@
    processed when both failed.
 3. **Nothing private is published.** `Raw` never reaches the page. Names,
    phone numbers, member company names and case details stay out of FAQ,
-   Documents titles, Events and News. Unverified numbers are `[SAHKAN: …]`.
+   Documents titles, Events and News. A fact the messages left unstated is
+   written `[SAHKAN: <the exact missing fact>]`, a working note only:
+   `pipeline/resolve_sahkan.py` fills it from the references library with
+   the page cited (quote checked word for word, no new numbers) or takes it
+   out and keeps it in `FAQ.verify_notes` for the admin. The page and
+   `publicData()` never show a marker.
 4. **Language.** Bahasa Malaysia, never Bahasa Indonesia: boleh not bisa,
    ubat not obat, syarikat not perusahaan, kualiti not kualitas,
    pembungkusan not kemasan. Regulatory terms stay original.

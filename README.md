@@ -9,6 +9,7 @@ in the **Halal Executive** WhatsApp, Facebook and Telegram groups.
 |---|---|---|
 | Overview | counts, certificate validity tiles, FAQ-per-month chart, Malaysia map of certificates by state, recent FAQ, category and source bars, pipeline status, event posters, popup notice | Sheet feed |
 | References | ask in Malay or English; plain answer, details and page citations from uploaded manuals and standards | `RefChunks` tab, built by `pipeline/index_references.py` |
+| FAQ facts | a fact the group left unstated is filled from the references library with the page cited, or left out until a reference states it (Admin lists those) | `pipeline/resolve_sahkan.py`, after every 2-hourly run |
 | Halal Certificates | holder, certificate number, scheme, state, validity (valid / expiring ≤ 90 d / expired), product list that folds and unfolds; cards or table | Certificates tab, filled by `pipeline/drive_organiser.py` from certificate documents |
 | FAQ | questions by category (Halal, Food, Cosmetic), four answers each: formal / layman × EN / BM; cards or table | `pipeline/process_raw.py` from group messages |
 | Guidelines | instrument list with issuer, summary EN/BM, link; cards or table | Guidelines tab (pipeline + hand-typed) |

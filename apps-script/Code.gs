@@ -31,11 +31,11 @@
 
 var TABS = {
   Raw:        ['id','source','group','msg_id','sender_hash','ts','text','attachments','status','processed_at','model','notes'],
-  FAQ:        ['id','category','subcategory','question_en','question_bm','answer_formal_en','answer_layman_en','answer_formal_bm','answer_layman_bm','source_refs','confidence','status','created_at','updated_at','model'],
+  FAQ:        ['id','category','subcategory','question_en','question_bm','answer_formal_en','answer_layman_en','answer_formal_bm','answer_layman_bm','source_refs','confidence','status','created_at','updated_at','model','verify_notes','verified_at'],
   Guidelines: ['id','category','title','title_bm','summary_en','summary_bm','link','issuer','effective_date','updated_at','status','source'],
   Documents:  ['id','title','kind','category','drive_file_id','drive_url','content_hash','version','supersedes_id','source_msg_id','received_at','updated_at','status','notes'],
   Certificates: ['id','company','cert_no','scheme','category','state','valid_from','valid_to','products','drive_url','doc_id','status','updated_at','notes'],
-  Events:     ['id','title','title_bm','date_start','date_end','venue','poster_url','link','description','status','source'],
+  Events:     ['id','title','title_bm','date_start','date_end','venue','poster_url','link','description','status','source','poster_file'],
   News:       ['id','title','url','source','published_at','fetched_at','expires_at','summary_en','summary_bm','category'],
   Settings:   ['key','value'],
   Runs:       ['ts','job','provider','model','processed','ok','error'],
@@ -61,6 +61,7 @@ function setup() {
   Object.keys(TABS).forEach(function (name) {
     var sh = s.getSheetByName(name) || s.insertSheet(name);
     if (sh.getLastRow() === 0) { sh.appendRow(TABS[name]); sh.setFrozenRows(1); }
+    else ensureHeader(sh, TABS[name]);
   });
   var defaults = { hero_title: 'Halal Executive', hero_subtitle: 'Answers, guidelines and documents for halal executives, in one place.', hero_cta: 'Open the FAQ', hero_cta_url: '#faq', notice_enabled: 'false', notice_level: 'info', posters: '[]', llm_turn: '0' };
   var cur = readSettings();
@@ -134,6 +135,14 @@ function rotateTokens() { props().setProperty('ADMIN_TOKEN', newToken()); props(
 
 function sheet(name) { var sh = ss().getSheetByName(name); if (!sh) throw new Error('Missing tab ' + name); return sh; }
 
+// Columns are only ever appended, so an older tab gets the new names written
+// after its last header cell and every existing value stays where it was.
+function ensureHeader(sh, cols) {
+  var have = sh.getLastColumn();
+  if (have >= cols.length) return;
+  sh.getRange(1, have + 1, 1, cols.length - have).setValues([cols.slice(have)]);
+}
+
 function readTab(name) {
   var sh = sheet(name), v = sh.getDataRange().getValues();
   if (v.length < 2) return [];
@@ -157,6 +166,12 @@ function doGet(e) {
   return json({ ok: false, error: 'unknown action' });
 }
 
+// [SAHKAN: …] is a working note for the pipeline (pipeline/resolve_sahkan.py
+// fills it from the references library or takes it out); readers never see it.
+function noMarks(rows) {
+  return rows.map(function (r) { Object.keys(r).forEach(function (k) { if (typeof r[k] === 'string' && r[k].indexOf('[') >= 0) r[k] = r[k].replace(/\s*\[SAHKAN[^\]]*\]/gi, '').trim(); }); return r; });
+}
+
 function publicData() {
   var settings = readSettings(); delete settings.llm_turn;
   var now = Date.now();
@@ -165,11 +180,12 @@ function publicData() {
   var runs = readTab('Runs').sort(function (a, b) { return Date.parse(b.ts) - Date.parse(a.ts); }).slice(0, 20);
   return {
     settings: settings,
-    faq: readTab('FAQ').filter(function (r) { return r.status === 'published'; }),
-    guidelines: readTab('Guidelines').filter(function (r) { return r.status !== 'hidden' && r.status !== 'draft'; }),
-    documents: readTab('Documents'),
-    certificates: readTab('Certificates').filter(function (r) { return r.status !== 'hidden'; }),
-    events: readTab('Events').filter(function (r) { return r.status !== 'hidden' && r.status !== 'draft'; }),
+    // Open points to confirm are for the admin only.
+    faq: noMarks(readTab('FAQ').filter(function (r) { return r.status === 'published'; }).map(function (r) { delete r.verify_notes; return r; })),
+    guidelines: noMarks(readTab('Guidelines').filter(function (r) { return r.status !== 'hidden' && r.status !== 'draft'; })),
+    documents: noMarks(readTab('Documents')),
+    certificates: noMarks(readTab('Certificates').filter(function (r) { return r.status !== 'hidden'; })),
+    events: noMarks(readTab('Events').filter(function (r) { return r.status !== 'hidden' && r.status !== 'draft'; })),
     news: readTab('News').filter(function (r) { return !r.expires_at || Date.parse(r.expires_at) > now; }),
     references: readTab('References').filter(function (r) { return r.status === 'indexed'; }).map(function (r) {
       return { id: r.id, title: r.title, issuer: r.issuer, edition: r.edition, category: r.category, pages: r.pages, summary_en: r.summary_en, summary_bm: r.summary_bm, key_points: r.key_points, indexed_at: r.indexed_at };
@@ -222,6 +238,7 @@ function doPost(e) {
       if (a === 'ref_upload')    { needAdmin(); return json(refUpload(body, sessEmail || 'token')); }
       if (a === 'ref_set')       { needAdmin(); return json(refSet(body.id, body.status)); }
       if (a === 'event_save')    { needAdmin(); return json(eventSave(body)); }
+      if (a === 'poster_upload') { needAdmin(); return json(posterUpload(body)); }
       if (a === 'ingest')        return json(ingest(body.rows || []));
       if (a === 'raw_update')    return json(updateByIds('Raw', body.ids || [], body.patch || {}));
       if (a === 'upsert')        { if (WRITABLE.indexOf(body.tab) < 0) throw new Error('tab not writable'); return json(upsert(body.tab, body.rows || [])); }
@@ -331,7 +348,14 @@ var REVIEW_TABS = ['FAQ', 'Events', 'Guidelines', 'Certificates'];
 function reviewList() {
   var out = {};
   REVIEW_TABS.forEach(function (t) { out[t] = readTab(t).filter(function (r) { return r.status === 'draft'; }); });
-  return { ok: true, drafts: out };
+  // Points the pipeline could not confirm from the references library: they
+  // were left out of the published answer and wait here until a reference
+  // that states them is uploaded.
+  var open = readTab('FAQ').filter(function (r) { return r.status !== 'hidden' && String(r.verify_notes || '').length > 2; }).map(function (r) {
+    var notes = []; try { notes = JSON.parse(r.verify_notes); } catch (e) { notes = [String(r.verify_notes)]; }
+    return { id: r.id, question_en: r.question_en, question_bm: r.question_bm, notes: notes, verified_at: r.verified_at };
+  }).filter(function (r) { return r.notes.length; });
+  return { ok: true, drafts: out, to_confirm: open };
 }
 function reviewSet(tab, id, status) {
   if (REVIEW_TABS.indexOf(tab) < 0) throw new Error('unknown tab');
@@ -463,7 +487,8 @@ function sha256(bytes) {
 
 function upsert(tab, rows) {
   var cols = TABS[tab]; if (!cols) throw new Error('unknown tab ' + tab);
-  var sh = sheet(tab), v = sh.getDataRange().getValues(), idx = {};
+  var sh = sheet(tab); ensureHeader(sh, cols);
+  var v = sh.getDataRange().getValues(), idx = {};
   v.forEach(function (r, i) { if (i) idx[String(r[0])] = i + 1; });
   var ins = 0, upd = 0;
   rows.forEach(function (r) {
@@ -609,7 +634,7 @@ function chat(b) {
   b.context = (b.context || []).slice(0, 8).map(function (c) { return { type: String(c.type || '').slice(0, 20), id: String(c.id || '').slice(0, 40), title: String(c.title || '').slice(0, 300), body: String(c.body || '').slice(0, 1500) }; });
   var lang = b.lang === 'bm' ? 'Bahasa Malaysia (Malaysian register: boleh, ubat, syarikat, kualiti; never Indonesian)' : 'English';
   var ctx = (b.context || []).map(function (c, i) { return '[' + (i + 1) + '] (' + c.type + ' ' + c.id + ') ' + c.title + '\n' + c.body; }).join('\n\n');
-  var sys = 'You are the Halal Executive assistant for halal executives in Malaysia. Answer ONLY from the numbered context entries. Cite entries like [1]. If the context does not answer, say so in one sentence and suggest which tab to check (FAQ, Guidelines, Documents). Keep regulatory terms original (Notifikasi Kosmetik, Garis Panduan, Borang). Never invent a limit, entry number or date; if a number is missing write [SAHKAN]. Reply in ' + lang + '. Be brief.';
+  var sys = 'You are the Halal Executive assistant for halal executives in Malaysia. Answer ONLY from the numbered context entries. Cite entries like [1]. If the context does not answer, say so in one sentence and suggest which tab to check (FAQ, Guidelines, Documents). Keep regulatory terms original (Notifikasi Kosmetik, Garis Panduan, Borang). Never invent a limit, entry number or date; if a number is not in the context, say it is not in the site's sources yet. Reply in ' + lang + '. Be brief.';
   try {
     var r = complete([{ role: 'system', content: sys }, { role: 'user', content: 'Context:\n' + (ctx || '(none)') + '\n\nQuestion: ' + b.question }], { max_tokens: 600, fast: true });
     return { ok: true, answer: r.text, provider: r.provider, model: r.model };
@@ -797,21 +822,49 @@ function aiStatus() {
 // Events added from Admin. A poster is stored in Drive "30 Posters" and
 // shared view-only by link so the public page can show it.
 // =====================================================================
+// Posters: any picture (JPG, PNG, WebP, GIF, HEIC from an iPhone, SVG), a PDF,
+// or a PowerPoint/Word file such as a Canva export. The file is kept in Drive
+// "30 Posters", shared by link, and shown through Drive's own preview image,
+// which renders the first page of a PDF or a slide deck as a picture.
+var POSTER_TYPES = /^(image\/(jpeg|png|webp|gif|heic|heif|svg\+xml|bmp|tiff)|application\/pdf|application\/vnd\.openxmlformats-officedocument\.(presentationml\.presentation|wordprocessingml\.document)|application\/vnd\.ms-powerpoint|application\/msword)$/;
+var POSTER_EXT = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif', heic: 'image/heic', heif: 'image/heif', svg: 'image/svg+xml', bmp: 'image/bmp', tif: 'image/tiff', tiff: 'image/tiff',
+  pdf: 'application/pdf', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation', ppt: 'application/vnd.ms-powerpoint',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', doc: 'application/msword' };
+
+function posterStore(b64, name, mime) {
+  if (!b64) throw new Error('Choose a poster file.');
+  if (b64.length > 14 * 1024 * 1024) throw new Error('Poster too large (max 10 MB).');
+  var ext = String(name || '').toLowerCase().split('.').pop();
+  mime = String(mime || '').toLowerCase();
+  if (!POSTER_TYPES.test(mime)) mime = POSTER_EXT[ext] || '';
+  if (!mime) throw new Error('Poster must be an image, PDF, PowerPoint or Word file.');
+  var f = folder('30 Posters').createFile(Utilities.newBlob(Utilities.base64Decode(b64), mime, String(name || 'poster').slice(0, 120)));
+  try { f.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); }
+  catch (er) { throw new Error('Poster saved in Drive but could not be shared publicly (' + er.message + '). Use a poster link instead.'); }
+  var id = f.getId(), web = /^image\/(jpeg|png|webp|gif)$/.test(mime);
+  return { id: id, mime: mime,
+    url: web ? 'https://lh3.googleusercontent.com/d/' + id : 'https://drive.google.com/thumbnail?id=' + id + '&sz=w1600',
+    file: 'https://drive.google.com/file/d/' + id + '/view' };
+}
+
+// A Google Drive share link pasted as the poster becomes its preview image.
+function posterFromLink(u) {
+  var m = String(u || '').match(/drive\.google\.com\/(?:file\/d\/|open\?id=|uc\?(?:export=\w+&)?id=)([\w-]{20,})/);
+  return m ? { url: 'https://drive.google.com/thumbnail?id=' + m[1] + '&sz=w1600', file: 'https://drive.google.com/file/d/' + m[1] + '/view' } : null;
+}
+
+function posterUpload(b) { var p = posterStore(b.b64, b.name, b.mime); return { ok: true, url: p.url, file: p.file }; }
+
 function eventSave(b) {
   var e = b.event || {};
   if (!e.title) throw new Error('Give the event a title.');
   var id = e.id || ('EV-M' + Utilities.formatDate(new Date(), 'Asia/Kuala_Lumpur', 'yyMMddHHmmss'));
-  var poster = e.poster_url || '';
-  if (b.poster_b64) {
-    if (b.poster_b64.length > 7 * 1024 * 1024) throw new Error('Poster too large (max 5 MB).');
-    var f = folder('30 Posters').createFile(Utilities.newBlob(Utilities.base64Decode(b.poster_b64), b.poster_mime || 'image/jpeg', b.poster_name || (id + '.jpg')));
-    try { f.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); }
-    catch (er) { throw new Error('Poster saved in Drive but could not be shared publicly (' + er.message + '). Use a poster link instead.'); }
-    poster = 'https://lh3.googleusercontent.com/d/' + f.getId();
-  }
+  var poster = e.poster_url || '', file = e.poster_file || '';
+  var fromLink = posterFromLink(poster); if (fromLink) { poster = fromLink.url; file = fromLink.file; }
+  if (b.poster_b64) { var p = posterStore(b.poster_b64, b.poster_name, b.poster_mime); poster = p.url; file = p.file; }
   var clean = function (u) { u = String(u || '').trim(); return /^https?:\/\//i.test(u) ? u.slice(0, 500) : ''; };
   upsert('Events', [{ id: id, title: String(e.title).slice(0, 200), title_bm: String(e.title_bm || '').slice(0, 200), date_start: e.date_start || '', date_end: e.date_end || '',
     venue: String(e.venue || '').slice(0, 200), poster_url: clean(poster), link: clean(e.link), description: String(e.description || '').slice(0, 2000),
-    status: e.status === 'hidden' ? 'hidden' : 'published', source: 'admin' }]);
+    status: e.status === 'hidden' ? 'hidden' : 'published', source: 'admin', poster_file: clean(file) }]);
   return { ok: true, id: id };
 }

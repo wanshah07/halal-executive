@@ -1,6 +1,7 @@
 import { t } from '../lib/i18n'
 import { safeUrl } from '../lib/safe'
 import { fmtDateTime } from '../lib/util'
+import Poster from './Poster'
 
 // Next events (from the group or added in Admin), soonest first.
 export default function UpcomingEvents({ lang, events, setTab }) {
@@ -13,7 +14,7 @@ export default function UpcomingEvents({ lang, events, setTab }) {
       <div className="grid gap-4 md:grid-cols-3">
         {up.map((e) => (
           <article key={e.id} className="rounded-xl border border-line overflow-hidden flex flex-col">
-            {safeUrl(e.poster_url) ? <img src={safeUrl(e.poster_url)} alt="" loading="lazy" className="w-full aspect-[16/9] object-cover bg-paper" /> : <div className="w-full aspect-[16/9] bg-gradient-to-br from-brand-600 to-brand-900 flex items-center justify-center text-white/80 text-sm font-semibold px-4 text-center">{lang === 'bm' ? e.title_bm || e.title : e.title}</div>}
+            <Poster url={e.poster_url} file={e.poster_file} title={lang === 'bm' ? e.title_bm || e.title : e.title} />
             <div className="p-4 flex flex-col flex-1">
               <div className="text-xs text-ink-400">{fmtDateTime(e.date_start, lang)}{e.venue && ` · ${e.venue}`}</div>
               <div className="font-semibold mt-1 leading-snug">{lang === 'bm' ? e.title_bm || e.title : e.title}</div>
