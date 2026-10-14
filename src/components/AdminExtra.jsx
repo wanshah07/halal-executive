@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { adminPost } from '../lib/api'
+import { adminPost, dropLocal, refreshAll } from '../lib/api'
 import { CATEGORIES } from '../lib/config'
 import { t } from '../lib/i18n'
 import { fmtDateTime } from '../lib/util'
@@ -7,9 +7,14 @@ import { POSTER_ACCEPT, POSTER_MAX } from './Poster'
 
 // Delete for good: the row, and its Drive file where it owns one (Code.gs
 // adminDelete). Asks first, because nothing can bring it back.
-export async function deleteForGood(lang, tab, id, label) {
+export async function deleteForGood(lang, tab, id, label, onGone) {
   if (!window.confirm(t(lang, 'delete_confirm').replace('{x}', label || id))) return false
-  await adminPost('admin_delete', { tab, id })
+  dropLocal(tab, id); onGone && onGone() // gone from every page now; the server catches up below
+  try { await adminPost('admin_delete', { tab, id }) } catch (e) {
+    if (/not found/i.test(e.message)) return true // already deleted
+    refreshAll(); throw e
+  }
+  refreshAll()
   return true
 }
 
@@ -56,7 +61,7 @@ export function RefAdmin({ lang }) {
             <div className="flex gap-2 shrink-0">
               <button className="btn" onClick={() => set(r.id, 'pending')}>{t(lang, 'reindex')}</button>
               {r.status !== 'hidden' ? <button className="btn" onClick={() => set(r.id, 'hidden')}>{t(lang, 'hide')}</button> : <button className="btn" onClick={() => set(r.id, 'pending')}>{t(lang, 'restore')}</button>}
-              <button className="btn text-red-700" onClick={() => deleteForGood(lang, 'References', r.id, r.title).then((ok) => ok && load()).catch((e) => setMsg(e.message))}>{t(lang, 'delete')}</button>
+              <button className="btn text-red-700" onClick={() => deleteForGood(lang, 'References', r.id, r.title, () => setRows((rs) => (rs || []).filter((x) => x.id !== r.id))).catch((e) => { setMsg(e.message); load() })}>{t(lang, 'delete')}</button>
             </div>
           </li>
         ))}
@@ -86,8 +91,11 @@ export function EventsAdmin({ lang, onChanged }) {
       await adminPost('event_save', payload); setMsg(t(lang, 'saved')); setE(EMPTY); setPoster(null); const i = document.getElementById('ev-poster'); if (i) i.value = ''; load(); onChanged && onChanged()
     } catch (er) { setMsg(er.message) } finally { setBusy(false) }
   }
-  async function remove(r) { try { if (await deleteForGood(lang, 'Events', r.id, r.title)) { load(); onChanged && onChanged() } } catch (er) { setMsg(er.message) } }
-  async function hide(r) { try { await adminPost('event_save', { event: { ...r, status: 'hidden' } }); load(); onChanged && onChanged() } catch (er) { setMsg(er.message) } }
+  async function remove(r) { try { if (await deleteForGood(lang, 'Events', r.id, r.title, () => setRows((rs) => (rs || []).filter((x) => x.id !== r.id)))) onChanged && onChanged() } catch (er) { setMsg(er.message); load() } }
+  async function hide(r) {
+    setRows((rs) => (rs || []).filter((x) => x.id !== r.id)); dropLocal('Events', r.id)
+    try { await adminPost('event_save', { event: { ...r, status: 'hidden' } }); onChanged && onChanged() } catch (er) { setMsg(er.message); load(); refreshAll() }
+  }
   return (
     <div className="card p-5 mb-4 space-y-3">
       <h3 className="font-semibold">{t(lang, 'events_admin')}</h3>
@@ -131,7 +139,7 @@ export function ContentManager({ lang, data, onChanged }) {
   const [, key, label] = MANAGED.find((m) => m[0] === tab)
   const rows = ((data && data[key]) || []).filter((r) => !gone[tab + r.id] && (!q || JSON.stringify(r).toLowerCase().includes(q.toLowerCase())))
   async function del(r) {
-    try { if (await deleteForGood(lang, tab, r.id, label(r, lang))) { setGone((g) => ({ ...g, [tab + r.id]: 1 })); setMsg(t(lang, 'deleted')); onChanged && onChanged() } } catch (e) { setMsg(e.message) }
+    try { if (await deleteForGood(lang, tab, r.id, label(r, lang), () => setGone((g) => ({ ...g, [tab + r.id]: 1 })))) { setMsg(t(lang, 'deleted')) } } catch (e) { setGone((g) => { const n = { ...g }; delete n[tab + r.id]; return n }); setMsg(e.message) }
   }
   return (
     <div className="card p-5 mb-4 space-y-3">

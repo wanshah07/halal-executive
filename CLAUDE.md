@@ -57,3 +57,13 @@
     until it is whole, at most 5 times; 6 h news). Change the times
     there and run `installTriggers()` again; do not add a cron back to
     pipeline.yml, or runs double.
+15. **Runs go phase by phase** (Wan, 14 Oct 2026, "like the KKM complaints
+    routine"). Each phase in `pipeline.yml` has its own time box, a failed or
+    timed-out phase never stops the next, and `process_raw.py` stops itself
+    after `--minutes 20`, so a backlog is worked through over several runs
+    and never times out. Every phase and every batch writes a line to
+    Admin → Progress (`phase.py`, `he_api.progress`, `saveProgress` in
+    Code.gs). One bad model reply marks only its own batch `error`; it never
+    stops the queue. `tickWatch` (every 10 min) emails the admins once when
+    the WhatsApp heartbeat is older than 15 minutes or not CONNECTED, or the
+    last 3 runs failed, and once when it is fixed.

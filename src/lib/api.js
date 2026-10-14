@@ -27,6 +27,20 @@ export async function loadData({ force = false } = {}) {
 // saved last time (any age), else the snapshot the deploy wrote next to the
 // page (data.json, refreshed after every pipeline run). Both are replaced as
 // soon as Apps Script answers, which takes a few seconds.
+// Delete or Hide in Admin takes the row off every page at once: this browser's
+// saved copy and the page in memory (App listens for "he:drop"), before Apps
+// Script has even answered. If the server refuses, "he:refresh" reloads.
+const TAB_KEY = { FAQ: 'faq', Guidelines: 'guidelines', Events: 'events', Certificates: 'certificates', Documents: 'documents', News: 'news', References: 'references' }
+export function dropLocal(tab, id) {
+  const key = TAB_KEY[tab] || tab
+  try {
+    const c = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null')
+    if (c && Array.isArray(c[key])) { c[key] = c[key].filter((r) => String(r.id) !== String(id)); localStorage.setItem(CACHE_KEY, JSON.stringify(c)) }
+  } catch { /* ignore */ }
+  dispatchEvent(new CustomEvent('he:drop', { detail: { key, id: String(id) } }))
+}
+export const refreshAll = () => dispatchEvent(new Event('he:refresh'))
+
 export function savedData() {
   try { const c = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null'); if (c && c.faq) return { ...c, _stale: true } } catch { /* ignore */ }
   return null

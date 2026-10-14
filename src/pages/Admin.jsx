@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
-import { adminPost, post, getSession, setSession } from '../lib/api'
+import { adminPost, post, getSession, setSession, dropLocal, refreshAll } from '../lib/api'
 import { API_URL } from '../lib/config'
 import { t } from '../lib/i18n'
 import { fmtDateTime } from '../lib/util'
 import { RefAdmin, EventsAdmin, ContentManager, deleteForGood } from '../components/AdminExtra'
 import { POSTER_ACCEPT, POSTER_MAX } from '../components/Poster'
 import { ICON, Lock, RefreshCw, Upload, X, Play } from '../components/Icon'
+import { subscribe, enqueue, retry, forget } from '../lib/uploadQueue'
 
 // Admin panel, locked. A registered email asks for a code, the code arrives
 // by email from the Sheet's Apps Script, and the session lasts 6 hours.
@@ -65,27 +66,25 @@ function UploadBox({ lang }) {
   const [kind, setKind] = useState('faq')
   const [note, setNote] = useState('')
   const [files, setFiles] = useState([])
-  const [log, setLog] = useState([])
-  const [busy, setBusy] = useState(false)
+  const [queue, setQueue] = useState([])
+  const [err, setErr] = useState('')
+  useEffect(() => subscribe(setQueue), [])
   async function send(e) {
     e.preventDefault()
     if (!files.length && !note.trim()) return
-    setBusy(true); setLog([])
-    const items = files.length ? files : [null]
-    for (const f of items) {
-      const label = f ? f.name : t(lang, 'note_only')
-      try {
-        if (f && f.size > MAX_BYTES) throw new Error(t(lang, 'too_big'))
-        const payload = { kind, note, name: f && f.name, mime: f && (f.type || ''), b64: f ? await toB64(f) : '' }
-        const r = await adminPost('manual_upload', payload)
-        const msg = r.chat
-          ? t(lang, 'chat_imported').replace('{n}', r.messages).replace('{a}', r.added).replace('{s}', r.skipped)
-          : ''
-        setLog((l) => [...l, { label, ok: true, msg: [msg, r.run === 'started' ? t(lang, 'ai_started') : ''].filter(Boolean).join(' · ') }])
-      } catch (er) { setLog((l) => [...l, { label, ok: false, msg: er.message }]) }
-    }
-    setBusy(false); setFiles([]); setNote('')
+    const big = files.find((f) => f.size > MAX_BYTES)
+    if (big) { setErr(`${big.name}: ${t(lang, 'too_big')}`); return }
+    setErr('')
+    await enqueue({ kind, note, files })
+    setFiles([]); setNote('')
     const input = document.getElementById('up-files'); if (input) input.value = ''
+  }
+  const line = (x) => {
+    if (x.state === 'sent') {
+      const r = x.result || {}
+      return [r.chat ? t(lang, 'chat_imported').replace('{n}', r.messages).replace('{a}', r.added).replace('{s}', r.skipped) : t(lang, 'q_sent'), r.run === 'started' ? t(lang, 'ai_started') : t(lang, 'q_next_run')].join(' · ')
+    }
+    return x.state === 'failed' ? x.msg : x.state === 'sending' ? t(lang, 'q_sending') : t(lang, 'q_waiting') + (x.msg ? ` (${x.msg})` : '')
   }
   return (
     <form onSubmit={send} className="card p-5 mb-4 space-y-3">
@@ -104,8 +103,20 @@ function UploadBox({ lang }) {
       </div>
       <div><label className="label" htmlFor="up-note">{t(lang, 'upload_note')}</label><textarea id="up-note" className="input" rows={3} value={note} onChange={(e) => setNote(e.target.value)} placeholder={t(lang, 'upload_note_ph')} /></div>
       {!!files.length && <div className="text-xs text-ink-600">{files.map((f) => `${f.name} (${Math.round(f.size / 1024)} KB)`).join(' · ')}</div>}
-      <div className="flex items-center gap-3"><button className="btn-brand" disabled={busy || (!files.length && !note.trim())}>{busy ? '…' : t(lang, 'upload_send')}</button><span className="text-xs text-ink-400">{t(lang, 'upload_when')}</span></div>
-      {!!log.length && <ul className="text-sm space-y-1">{log.map((x, i) => <li key={i} className={x.ok ? 'text-brand-700' : 'text-red-600'}>{x.ok ? '✓' : '✕'} {x.label}{x.msg ? ` · ${x.msg}` : ''}</li>)}</ul>}
+      <div className="flex items-center gap-3"><button className="btn-brand" disabled={!files.length && !note.trim()}>{t(lang, 'upload_send')}</button><span className="text-xs text-ink-400">{t(lang, 'q_note')}</span></div>
+      {err && <div className="text-sm text-red-600">{err}</div>}
+      {!!queue.length && (
+        <ul className="text-sm space-y-1">
+          {queue.slice().reverse().map((x) => (
+            <li key={x.id} className={`flex flex-wrap items-center gap-x-2 ${x.state === 'failed' ? 'text-red-600' : x.state === 'sent' ? 'text-brand-700' : 'text-ink-600'}`}>
+              <span>{x.state === 'sent' ? '✓' : x.state === 'failed' ? '✕' : '⏳'} {x.name || t(lang, 'note_only')} · {t(lang, 'kind_' + (x.kind === 'certificate' ? 'cert' : x.kind))}</span>
+              <span className="text-ink-400">· {line(x)}</span>
+              {x.state === 'failed' && <button type="button" className="underline" onClick={() => retry(x.id)}>{t(lang, 'q_retry')}</button>}
+              {(x.state === 'failed' || x.state === 'sent') && <button type="button" className="underline text-ink-400" onClick={() => forget(x.id)}>{t(lang, 'q_clear')}</button>}
+            </li>
+          ))}
+        </ul>
+      )}
     </form>
   )
 }
@@ -148,14 +159,107 @@ function RunNow({ lang, runs, stats }) {
   )
 }
 
+// What is running now: the live log the pipeline writes phase by phase, the
+// GitHub runs, the AI queue and whether WhatsApp is linked. Refreshes every
+// 20 seconds while the tab is open. The work itself runs on GitHub and Apps
+// Script, so it carries on with this page (or the PC) closed.
+const ago = (iso, lang) => {
+  const m = Math.round((Date.now() - Date.parse(iso)) / 60000)
+  if (!(m >= 0)) return ''
+  if (m < 1) return lang === 'bm' ? 'baru tadi' : 'just now'
+  if (m < 60) return lang === 'bm' ? `${m} min lalu` : `${m} min ago`
+  const h = Math.floor(m / 60)
+  return lang === 'bm' ? `${h} jam lalu` : `${h} h ago`
+}
+function ProgressBox({ lang }) {
+  const [st, setSt] = useState(null)
+  const [err, setErr] = useState('')
+  const load = () => adminPost('pipeline_status').then((r) => { setSt(r); setErr('') }).catch((e) => setErr(e.message))
+  useEffect(() => {
+    load()
+    const id = setInterval(() => { if (document.visibilityState === 'visible') load() }, 20000)
+    return () => clearInterval(id)
+  }, [])
+  const wa = st && st.collectors && st.collectors.whatsapp
+  const waAge = wa ? (Date.now() - Date.parse(wa.ts)) / 60000 : Infinity
+  const waOk = waAge <= 15 && (!wa.state || wa.state === 'CONNECTED')
+  const raw = (st && st.raw) || {}
+  const waiting = raw.new || 0, done = raw.processed || 0, skipped = raw.skipped || 0, failedRows = raw.error || 0, all = waiting + done + skipped + failedRows
+  const runs = (st && st.github && st.github.runs) || []
+  const running = runs.find((r) => r.status === 'in_progress')
+  const queued = runs.filter((r) => r.status === 'queued' || r.status === 'pending' || r.status === 'waiting').length
+  const watch = (st && st.watch) || {}
+  const badge = (r) => r.status !== 'completed' ? (r.status === 'in_progress' ? ['bg-amber-100 text-amber-800', t(lang, 'p_running')] : ['bg-muted text-ink-600', t(lang, 'p_queued')])
+    : r.conclusion === 'success' ? ['bg-brand-50 text-brand-700', t(lang, 'p_ok')] : r.conclusion === 'cancelled' ? ['bg-muted text-ink-600', t(lang, 'p_cancelled')] : ['bg-red-50 text-red-700', t(lang, 'p_failed')]
+  return (
+    <div className="card p-5 mb-4 space-y-4">
+      <div className="flex items-center justify-between"><h3 className="font-semibold">{t(lang, 'p_title')}</h3><button className="btn" onClick={load} aria-label="refresh"><RefreshCw {...ICON} size={16} /></button></div>
+      <p className="text-sm text-ink-600">{t(lang, 'p_sub')}</p>
+      {err && <div className="text-sm text-red-600">{err}</div>}
+      {!st && !err && <div className="text-sm text-ink-400">{t(lang, 'loading')}</div>}
+      {st && (<>
+        <div className="grid sm:grid-cols-3 gap-3 text-sm">
+          <div className={`rounded-lg border p-3 ${waOk ? 'border-brand-200 bg-brand-50' : 'border-red-200 bg-red-50'}`}>
+            <div className="text-xs text-ink-400">WhatsApp</div>
+            <div className="font-semibold">{waOk ? t(lang, 'p_wa_ok') : t(lang, 'p_wa_bad')}</div>
+            <div className="text-xs text-ink-600">{wa ? `${t(lang, 'p_heartbeat')} ${ago(wa.ts, lang)}${wa.state ? ` · ${wa.state}` : ''}` : t(lang, 'p_never')}</div>
+          </div>
+          <div className="rounded-lg border border-line p-3">
+            <div className="text-xs text-ink-400">{t(lang, 'p_now')}</div>
+            <div className="font-semibold">{running ? `#${running.n} ${t(lang, 'job_' + running.job) || running.job}` : t(lang, 'p_idle')}</div>
+            <div className="text-xs text-ink-600">{running ? `${t(lang, 'p_since')} ${ago(running.started, lang)}` : ''}{queued ? ` · ${queued} ${t(lang, 'p_in_line')}` : ''}</div>
+          </div>
+          <div className="rounded-lg border border-line p-3">
+            <div className="text-xs text-ink-400">{t(lang, 'ai_queue')}</div>
+            <div className="font-semibold">{waiting.toLocaleString()} {t(lang, 'waiting')}</div>
+            <div className="h-1.5 bg-line rounded-full mt-1 overflow-hidden"><div className="h-full bg-brand-600" style={{ width: all ? `${Math.round(((all - waiting) / all) * 100)}%` : '0%' }} /></div>
+            <div className="text-xs text-ink-600 mt-1">{done.toLocaleString()} {t(lang, 'read_done')} · {skipped.toLocaleString()} {t(lang, 'filtered')}{failedRows ? ` · ${failedRows} ${t(lang, 'p_row_errors')}` : ''}</div>
+          </div>
+        </div>
+        {(watch.whatsapp || watch.pipeline) && (
+          <ul className="text-sm text-red-700 space-y-1">{['whatsapp', 'pipeline'].filter((k) => watch[k]).map((k) => <li key={k}>⚠ {watch[k].msg} <span className="text-ink-400">({t(lang, 'p_since')} {ago(watch[k].since, lang)})</span></li>)}</ul>
+        )}
+        {!!runs.length && (
+          <div>
+            <h4 className="text-sm font-semibold mb-1">{t(lang, 'p_runs')}</h4>
+            <ul className="text-sm divide-y divide-line">
+              {runs.map((r) => { const [cls, word] = badge(r); return (
+                <li key={r.n} className="py-1.5 flex flex-wrap items-center gap-2">
+                  <span className={`text-xs px-2 py-0.5 rounded-full ${cls}`}>{word}</span>
+                  <span>#{r.n} {t(lang, 'job_' + r.job) || r.job}</span>
+                  <span className="text-ink-400 text-xs">{fmtDateTime(r.started, lang)}</span>
+                  <a className="text-xs underline text-ink-400 ml-auto" href={r.url} target="_blank" rel="noopener noreferrer">{t(lang, 'p_log')}</a>
+                </li>) })}
+            </ul>
+          </div>
+        )}
+        {st.github && st.github.error && <div className="text-xs text-ink-400">GitHub: {st.github.error}</div>}
+        <div>
+          <h4 className="text-sm font-semibold mb-1">{t(lang, 'p_live_log')}</h4>
+          <ol className="text-xs font-mono bg-muted rounded-lg p-3 max-h-72 overflow-auto space-y-0.5">
+            {(st.log || []).slice().reverse().map((l, i) => (
+              <li key={i} className={l.state === 'failed' ? 'text-red-700' : l.state === 'done' ? 'text-brand-700' : 'text-ink-900'}>
+                <span className="text-ink-400">{fmtDateTime(l.ts, lang)}</span> [{l.job}] {l.text}{l.left !== undefined && l.state === 'running' ? ` · ${l.left.toLocaleString()} ${t(lang, 'waiting')}` : ''}
+              </li>))}
+            {!(st.log || []).length && <li className="text-ink-400">{t(lang, 'p_no_log')}</li>}
+          </ol>
+        </div>
+      </>)}
+    </div>
+  )
+}
+
 function ReviewBox({ lang, onChanged }) {
   const [drafts, setDrafts] = useState(null)
   const [open, setOpen] = useState([])
   const [msg, setMsg] = useState('')
   const load = () => adminPost('review_list').then((r) => { setDrafts(r.drafts); setOpen(r.to_confirm || []) }).catch((e) => setMsg(e.message))
   useEffect(() => { load() }, [])
+  // The row leaves the list at once; the server write follows.
+  const without = (tab, id) => setDrafts((d) => (d ? { ...d, [tab]: (d[tab] || []).filter((r) => r.id !== id) } : d))
   async function set(tab, id, status) {
-    try { await adminPost('review_set', { tab, id, status }); await load(); onChanged && onChanged() } catch (e) { setMsg(e.message) }
+    without(tab, id); if (status === 'hidden') dropLocal(tab, id)
+    try { await adminPost('review_set', { tab, id, status }); onChanged && onChanged() } catch (e) { setMsg(e.message); load(); refreshAll() }
   }
   const items = drafts ? Object.entries(drafts).flatMap(([tab, rows]) => rows.map((r) => ({ tab, r }))) : []
   const title = ({ tab, r }) => tab === 'FAQ' ? (r.question_en || r.question_bm) : tab === 'Certificates' ? r.company : r.title
@@ -174,7 +278,7 @@ function ReviewBox({ lang, onChanged }) {
               <div className="font-medium">{title(it)}</div>
               <div className="text-sm text-ink-600 line-clamp-3 whitespace-pre-wrap">{body(it)}</div>
             </div>
-            <div className="flex gap-2 shrink-0"><button className="btn-brand" onClick={() => set(it.tab, it.r.id, 'published')}>{t(lang, 'publish')}</button><button className="btn" onClick={() => set(it.tab, it.r.id, 'hidden')}>{t(lang, 'hide')}</button><button className="btn text-red-700" onClick={() => deleteForGood(lang, it.tab, it.r.id, title(it)).then((ok) => ok && load()).catch((e) => setMsg(e.message))}>{t(lang, 'delete')}</button></div>
+            <div className="flex gap-2 shrink-0"><button className="btn-brand" onClick={() => set(it.tab, it.r.id, 'published')}>{t(lang, 'publish')}</button><button className="btn" onClick={() => set(it.tab, it.r.id, 'hidden')}>{t(lang, 'hide')}</button><button className="btn text-red-700" onClick={() => deleteForGood(lang, it.tab, it.r.id, title(it), () => without(it.tab, it.r.id)).catch((e) => { setMsg(e.message); load() })}>{t(lang, 'delete')}</button></div>
           </li>
         ))}
       </ul>
@@ -254,6 +358,7 @@ export default function Admin({ lang, data, onSaved, onSession }) {
       <p className="text-sm text-ink-600 mb-4">{t(lang, 'admin_intro')}</p>
 
       <RunNow lang={lang} runs={data && data.runs} stats={data && data.raw_stats} />
+      <ProgressBox lang={lang} />
       <ReviewBox lang={lang} onChanged={onSaved} />
       <ContentManager lang={lang} data={data} onChanged={onSaved} />
       <UploadBox lang={lang} />

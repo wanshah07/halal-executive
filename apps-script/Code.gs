@@ -280,6 +280,9 @@ function doPost(e) {
     if (a === 'llm_next')     return json({ ok: true, provider: nextProvider() });
     if (a === 'llm')          return json(llmProxy(body));
     if (a === 'heartbeat')    return json(heartbeat(body));
+    if (a === 'progress')     return json(saveProgress(body));
+    if (a === 'raw_stats')    { var rs0 = rawStats(); rs0.ok = true; return json(rs0); }
+    if (a === 'pipeline_status') { needAdmin(); return json(pipelineStatus()); }
 
     // A chat-export .txt can hold tens of thousands of messages: import it
     // without the write lock, so Run now, events and deletes are not blocked
@@ -482,6 +485,78 @@ function adminDelete(tab, id) {
   return { ok: true, deleted: id, file_deleted: fileGone };
 }
 
+// ---------- Progress: what is running now ----------
+// Every Pipeline phase (pipeline/phase.py) and every batch of process_raw.py
+// writes one line here. Admin → Progress shows the last 40 lines, the queue,
+// the GitHub runs and whether WhatsApp is linked, so nothing runs unseen.
+function saveProgress(b) {
+  var P = props(), log = [];
+  try { log = JSON.parse(P.getProperty('progress_log') || '[]'); } catch (e) { log = []; }
+  var line = { ts: new Date().toISOString(), job: String(b.job || '').slice(0, 40), state: String(b.state || 'running').slice(0, 10), text: String(b.text || '').slice(0, 160) };
+  if (b.done !== undefined) line.done = Number(b.done) || 0;
+  if (b.left !== undefined) line.left = Number(b.left) || 0;
+  log.push(line); log = log.slice(-40);
+  var out = JSON.stringify(log);
+  while (out.length > 8500 && log.length > 5) { log.shift(); out = JSON.stringify(log); }
+  P.setProperty('progress_log', out);
+  return { ok: true };
+}
+
+// The last GitHub runs of the Pipeline, read with the same GITHUB_TOKEN that
+// starts them (Actions: read is part of the token's Actions permission).
+function githubRuns() {
+  var token = props().getProperty('GITHUB_TOKEN');
+  if (!token) return { error: 'GITHUB_TOKEN not set' };
+  var r = UrlFetchApp.fetch('https://api.github.com/repos/' + GH_REPO + '/actions/workflows/pipeline.yml/runs?per_page=8', {
+    muteHttpExceptions: true, headers: { Authorization: 'Bearer ' + token, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' } });
+  if (r.getResponseCode() !== 200) return { error: 'GitHub ' + r.getResponseCode() };
+  return { runs: (JSON.parse(r.getContentText()).workflow_runs || []).map(function (w) {
+    return { n: w.run_number, job: w.display_title, status: w.status, conclusion: w.conclusion, started: w.run_started_at || w.created_at, updated: w.updated_at, url: w.html_url };
+  }) };
+}
+
+function pipelineStatus() {
+  var P = props(), log = [], gh = {};
+  try { log = JSON.parse(P.getProperty('progress_log') || '[]'); } catch (e) { log = []; }
+  try { gh = githubRuns(); } catch (e) { gh = { error: String(e.message || e) }; }
+  var last = null; try { last = JSON.parse(P.getProperty('last_dispatch') || 'null'); } catch (e) { /* none */ }
+  return { ok: true, now: new Date().toISOString(), log: log, github: gh, raw: rawStats(), collectors: collectorStatus(), last_dispatch: last, watch: watchState() };
+}
+
+// ---------- Watchdog ----------
+// Every 10 minutes: is the WhatsApp collector still linked and sending its
+// 5-minute heartbeat, and are the Pipeline runs passing? When something has
+// been wrong for 15 minutes (or 3 runs failed in a row) every admin email
+// gets one message; another when it is fixed. Never more than one a problem.
+var WATCH_MIN = 15;
+function watchState() { try { return JSON.parse(props().getProperty('watch') || '{}'); } catch (e) { return {}; } }
+function tickWatch() {
+  var P = props(), w = watchState(), now = Date.now(), hb = collectorStatus().whatsapp, problems = {};
+  if (!hb) problems.whatsapp = 'The WhatsApp collector has never sent a heartbeat.';
+  else {
+    var age = Math.round((now - Date.parse(hb.ts)) / 60000);
+    if (age > WATCH_MIN) problems.whatsapp = 'No WhatsApp heartbeat for ' + age + ' minutes. The VM, pm2 or the WhatsApp link is down. Check: gcloud compute ssh he-whatsapp, then pm2 logs he-whatsapp.';
+    else if (hb.state && hb.state !== 'CONNECTED') problems.whatsapp = 'WhatsApp reports state ' + hb.state + ' (not CONNECTED). The phone may have unlinked this device: Linked devices on the phone, then a new QR on the VM.';
+  }
+  var gh = {}; try { gh = githubRuns(); } catch (e) { gh = {}; }
+  var done = (gh.runs || []).filter(function (r) { return r.status === 'completed'; }).slice(0, 3);
+  if (done.length === 3 && done.every(function (r) { return r.conclusion === 'failure'; })) problems.pipeline = 'The last 3 Pipeline runs failed (#' + done.map(function (r) { return r.n; }).join(', #') + '). ' + done[0].url;
+  var mail = [];
+  ['whatsapp', 'pipeline'].forEach(function (k) {
+    var was = w[k] || null;
+    if (problems[k] && !was) { w[k] = { since: new Date(now).toISOString(), msg: problems[k] }; mail.push('PROBLEM: ' + problems[k]); }
+    else if (problems[k]) { w[k].msg = problems[k]; }
+    else if (was) { mail.push('FIXED: ' + k + ' is working again (problem started ' + was.since + ').'); delete w[k]; }
+  });
+  w.checked = new Date(now).toISOString();
+  P.setProperty('watch', JSON.stringify(w));
+  if (mail.length) {
+    try { MailApp.sendEmail({ to: (adminEmails().length ? adminEmails() : [Session.getEffectiveUser().getEmail()]).join(','), subject: 'Halal Executive watchdog: ' + (Object.keys(problems).length ? 'needs attention' : 'all working again'), body: mail.join('\n\n') + '\n\nAdmin → Progress shows the live state.' }); }
+    catch (e) { console.error('watch mail: ' + e); }
+  }
+  return w;
+}
+
 // ---------- The clock ----------
 // GitHub's own cron for this repo fired only twice in its first ten hours, so
 // Apps Script's time-driven triggers start the Pipeline instead (through
@@ -498,14 +573,15 @@ function tickOrganise() { dispatchRun('organise'); }
 function tickFacebook() { dispatchRun('process_facebook'); }
 function tickReferences() { dispatchRun('references'); }
 function installTriggers() {
-  var mine = ['tickPipeline', 'tickNews', 'tickOrganise', 'tickFacebook', 'tickReferences'];
+  var mine = ['tickPipeline', 'tickNews', 'tickOrganise', 'tickFacebook', 'tickReferences', 'tickWatch'];
   ScriptApp.getProjectTriggers().forEach(function (t) { if (mine.indexOf(t.getHandlerFunction()) >= 0) ScriptApp.deleteTrigger(t); });
   ScriptApp.newTrigger('tickPipeline').timeBased().everyMinutes(30).create();   // messages, uploads, references, facts
   ScriptApp.newTrigger('tickNews').timeBased().everyHours(6).create();          // halal news
   ScriptApp.newTrigger('tickOrganise').timeBased().atHour(3).everyDays(1).create(); // Drive organiser, ~3 am MYT
   ScriptApp.newTrigger('tickFacebook').timeBased().atHour(2).everyDays(1).create(); // Facebook pass, ~2 am MYT
   ScriptApp.newTrigger('tickReferences').timeBased().everyHours(3).create();    // review the references until complete
-  Logger.log('Triggers installed: every 30 min, every 3 h, every 6 h, daily 2 am and 3 am.');
+  ScriptApp.newTrigger('tickWatch').timeBased().everyMinutes(10).create();      // WhatsApp linked? runs passing?
+  Logger.log('Triggers installed: every 10 min (watchdog), 30 min, 3 h, 6 h, daily 2 am and 3 am.');
 }
 
 // ---------- Certificate thumbnails ----------
@@ -1161,7 +1237,7 @@ function askReferences(b) {
 function heartbeat(b) {
   var src = String(b.source || '').replace(/[^a-z]/g, '').slice(0, 20);
   if (!src) throw new Error('source required');
-  props().setProperty('hb_' + src, JSON.stringify({ ts: new Date().toISOString(), group: String(b.group || '').slice(0, 80), last_msg: b.last_msg || '', version: String(b.version || '').slice(0, 20) }));
+  props().setProperty('hb_' + src, JSON.stringify({ ts: new Date().toISOString(), group: String(b.group || '').slice(0, 80), last_msg: b.last_msg || '', version: String(b.version || '').slice(0, 20), state: String(b.state || '').slice(0, 20) }));
   return { ok: true };
 }
 

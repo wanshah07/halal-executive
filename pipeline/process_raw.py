@@ -17,6 +17,8 @@ import json
 import re
 import sys
 
+import time
+
 import he_api
 import llm_router
 from prompts import SYSTEM
@@ -28,6 +30,31 @@ RISKY = re.compile(r"(https?://|www\.|\+?6?01\d[\s-]?\d{3,4}[\s-]?\d{4}|wa\.me)"
 BATCH = 25
 CHAR_BUDGET = 40000      # per model call; rows with long attachments make smaller batches
 ATTACH_CHARS = 6000      # text kept from one attachment
+
+
+def dicts(x):
+    """Only the dict entries of a list the model returned (it sometimes puts
+    a bare string or number in one)."""
+    return [e for e in (x if isinstance(x, list) else []) if isinstance(e, dict)]
+
+
+def shape(j):
+    """The model is asked for an object {items, documents, events, guidelines}.
+    It sometimes answers with the items list alone (run 18 on 14 Oct 2026
+    crashed on exactly that and stopped every run after it)."""
+    if isinstance(j, list):
+        j = {"items": j}
+    if not isinstance(j, dict):
+        j = {}
+    return {k: dicts(j.get(k)) for k in ("items", "documents", "events", "guidelines")}
+
+
+ADMIN_CERT = "Admin upload: this is a halal certificate"
+
+
+def msg_ids(it):
+    x = it.get("source_msg_ids")
+    return [str(v) for v in (x if isinstance(x, list) else [x] if x else [])]
 
 
 def now():
@@ -112,7 +139,26 @@ def existing_faq_digest(faq):
     return [{"id": f["id"], "category": f["category"], "question_en": f["question_en"][:160]} for f in faq if f.get("status") != "hidden"][:400]
 
 
-def run(sources, max_batches, dry):
+def run(sources, max_batches, dry, minutes=20):
+    """One phase: reads batches until the queue is empty or `minutes` have
+    passed, then stops cleanly so the next 30-minute run carries on (the KKM
+    complaints routine works the same way). Nothing is lost when it stops:
+    a row is only marked once its batch is filed."""
+    start = time.time()
+    job = "process_raw:" + ",".join(sources)
+    try:
+        left0 = int(he_api.post("raw_stats").get("new", 0))
+    except Exception:
+        left0 = 0
+
+    def note(text, state="running"):
+        print(text, flush=True)
+        if not dry:
+            try:
+                he_api.progress(job, text, state=state, done=total, left=max(left0 - total, 0))
+            except Exception as e:  # progress is a nicety; never stop the run for it
+                print("progress not saved:", e, file=sys.stderr)
+
     faq = he_api.read("FAQ")
     docs = he_api.read("Documents")
     events = he_api.read("Events")
@@ -123,8 +169,13 @@ def run(sources, max_batches, dry):
     seen_events = {(norm_title(e.get("title")), str(e.get("date_start", ""))[:10]) for e in events}
     seen_guidelines = {norm_title(g.get("title")) for g in gls}
     total, batches, provider, model, err = 0, 0, "", "", ""
+    stopped = ""
+    note(f"started: {left0} messages waiting")
 
     while batches < max_batches:
+        if time.time() - start > minutes * 60:
+            stopped = f"time box of {minutes} min reached; the next run carries on"
+            break
         rows = []
         for s in sources:
             rows += he_api.raw_list(status="new", source=s, limit=BATCH)
@@ -148,106 +199,121 @@ def run(sources, max_batches, dry):
             print("LLM failed on both providers; leaving batch for next run:", err, file=sys.stderr)
             break
         provider, model = out["provider"], out["model"]
-        j = out["json"]
+        j = shape(out["json"])
         if out.get("fallback_from"):
             print(f"fallback: {out['fallback_from']} failed ({out['first_error'][:120]}), {provider} answered")
 
-        ts = now()
-        faq_rows, doc_rows, ev_rows, gl_rows = [], [], [], []
-        by_id = {f["id"]: f for f in faq}
-        for it in j.get("items", []):
-            if not it.get("relevant") or it.get("category") not in ("halal", "food", "cosmetic") or not it.get("question_en"):
-                continue
-            rid = it.get("id") if it.get("id") in by_id else (match_faq(it, list(by_id.values())) or ids["FAQ"]())
-            old = by_id.get(rid, {})
-            row = {
-                "id": rid, "category": it["category"], "subcategory": it.get("subcategory", ""),
-                "question_en": it.get("question_en", ""), "question_bm": it.get("question_bm", ""),
-                "answer_formal_en": it.get("answer_formal_en", ""), "answer_layman_en": it.get("answer_layman_en", ""),
-                "answer_formal_bm": it.get("answer_formal_bm", ""), "answer_layman_bm": it.get("answer_layman_bm", ""),
-                "source_refs": ";".join(sorted(set((old.get("source_refs", "").split(";") if old.get("source_refs") else []) + [str(x) for x in it.get("source_msg_ids", [])])))[:500],
-                "confidence": it.get("confidence", "medium"),
-                "status": old.get("status") or ("published" if it.get("confidence") == "high" and not RISKY.search(" ".join(str(it.get(k, "")) for k in ("answer_formal_en", "answer_formal_bm", "answer_layman_en", "answer_layman_bm"))) else "draft"),
-                "created_at": old.get("created_at") or ts, "updated_at": ts, "model": f"{provider}:{model}",
-            }
-            faq_rows.append(row); by_id[rid] = row
-        faq = list(by_id.values())
+        def handle():
+            nonlocal faq, total
+            ts = now()
+            faq_rows, doc_rows, ev_rows, gl_rows = [], [], [], []
+            by_id = {f["id"]: f for f in faq}
+            for it in j["items"]:
+                if not it.get("relevant") or it.get("category") not in ("halal", "food", "cosmetic") or not it.get("question_en"):
+                    continue
+                rid = it.get("id") if it.get("id") in by_id else (match_faq(it, list(by_id.values())) or ids["FAQ"]())
+                old = by_id.get(rid, {})
+                row = {
+                    "id": rid, "category": it["category"], "subcategory": it.get("subcategory", ""),
+                    "question_en": it.get("question_en", ""), "question_bm": it.get("question_bm", ""),
+                    "answer_formal_en": it.get("answer_formal_en", ""), "answer_layman_en": it.get("answer_layman_en", ""),
+                    "answer_formal_bm": it.get("answer_formal_bm", ""), "answer_layman_bm": it.get("answer_layman_bm", ""),
+                    "source_refs": ";".join(sorted(set((old.get("source_refs", "").split(";") if old.get("source_refs") else []) + msg_ids(it))))[:500],
+                    "confidence": it.get("confidence", "medium"),
+                    "status": old.get("status") or ("published" if it.get("confidence") == "high" and not RISKY.search(" ".join(str(it.get(k, "")) for k in ("answer_formal_en", "answer_formal_bm", "answer_layman_en", "answer_layman_bm"))) else "draft"),
+                    "created_at": old.get("created_at") or ts, "updated_at": ts, "model": f"{provider}:{model}",
+                }
+                faq_rows.append(row); by_id[rid] = row
+            faq = list(by_id.values())
 
-        att_index = {}
-        for r in rows:
-            for a in json.loads(r.get("attachments") or "[]"):
-                if a.get("drive_file_id"):
-                    att_index[(r["id"], a.get("name"))] = a
-        for d in j.get("documents", []):
-            a = att_index.get((d.get("source_msg_id"), d.get("attachment_name")))
-            if not a:
-                continue
-            if a["drive_file_id"] in seen_files or (a.get("sha256") and a["sha256"] in seen_hashes):
-                continue  # this file is already a Documents row
-            seen_files.add(a["drive_file_id"]); seen_hashes.add(a.get("sha256") or a["drive_file_id"])
-            doc_rows.append({"id": ids["DOC"](), "title": d.get("title") or a["name"], "kind": d.get("kind", "other"), "category": d.get("category", "halal"),
-                             "drive_file_id": a["drive_file_id"], "drive_url": a.get("drive_url", ""), "content_hash": a.get("sha256", ""), "version": "",
-                             "supersedes_id": "", "source_msg_id": d.get("source_msg_id"), "received_at": next((r["ts"] for r in rows if r["id"] == d.get("source_msg_id")), ts),
-                             "updated_at": ts, "status": "inbox", "notes": "awaiting organiser"})
-        # A halal certificate posted in the group is filed even when the model
-        # did not list it: the text read from the picture or PDF decides.
-        for m in msgs:
-            for att in m.get("attachments", []):
-                if not CERT_TEXT.search(att.get("content") or ""):
+            att_index = {}
+            for r in rows:
+                for a in json.loads(r.get("attachments") or "[]"):
+                    if a.get("drive_file_id"):
+                        att_index[(r["id"], a.get("name"))] = a
+            for d in j["documents"]:
+                a = att_index.get((d.get("source_msg_id"), d.get("attachment_name")))
+                if not a:
                     continue
-                a = att_index.get((m["id"], att.get("name")))
-                if not a or a["drive_file_id"] in seen_files:
-                    continue
-                seen_files.add(a["drive_file_id"])
-                doc_rows.append({"id": ids["DOC"](), "title": "Halal certificate", "kind": "certificate", "category": "halal",
+                if a["drive_file_id"] in seen_files or (a.get("sha256") and a["sha256"] in seen_hashes):
+                    continue  # this file is already a Documents row
+                seen_files.add(a["drive_file_id"]); seen_hashes.add(a.get("sha256") or a["drive_file_id"])
+                doc_rows.append({"id": ids["DOC"](), "title": d.get("title") or a["name"], "kind": d.get("kind", "other"), "category": d.get("category", "halal"),
                                  "drive_file_id": a["drive_file_id"], "drive_url": a.get("drive_url", ""), "content_hash": a.get("sha256", ""), "version": "",
-                                 "supersedes_id": "", "source_msg_id": m["id"], "received_at": m.get("ts") or ts,
-                                 "updated_at": ts, "status": "inbox", "notes": "certificate text found; awaiting organiser"})
-        for e in j.get("events", []):
-            ek = (norm_title(e.get("title")), str(e.get("date_start", ""))[:10])
-            if e.get("title") and ek in seen_events:
-                continue  # same event (title words + day) already on file
-            seen_events.add(ek)
-            if e.get("title"):
-                ev_rows.append({"id": ids["EV"](), "title": e["title"], "title_bm": e.get("title_bm", ""), "date_start": e.get("date_start", ""), "date_end": "", "venue": e.get("venue", ""),
-                                "poster_url": "", "link": safe_url(e.get("link")), "description": e.get("description", ""), "status": "draft", "source": e.get("source_msg_id", "")})
-        for g in j.get("guidelines", []):
-            gk = norm_title(g.get("title"))
-            if g.get("title") and gk in seen_guidelines:
-                continue  # this guideline is already listed
-            seen_guidelines.add(gk)
-            if g.get("title"):
-                gl_rows.append({"id": ids["GL"](), "category": g.get("category", "halal"), "title": g["title"], "title_bm": g.get("title_bm", ""), "summary_en": g.get("summary_en", ""),
-                                "summary_bm": g.get("summary_bm", ""), "link": safe_url(g.get("link")), "issuer": g.get("issuer", ""), "effective_date": "", "updated_at": ts, "status": "draft", "source": g.get("source_msg_id", "")})
+                                 "supersedes_id": "", "source_msg_id": d.get("source_msg_id"), "received_at": next((r["ts"] for r in rows if r["id"] == d.get("source_msg_id")), ts),
+                                 "updated_at": ts, "status": "inbox", "notes": "awaiting organiser"})
+            # A halal certificate posted in the group is filed even when the model
+            # did not list it: the text read from the picture or PDF decides.
+            for m in msgs:
+                for att in m.get("attachments", []):
+                    if not (CERT_TEXT.search(att.get("content") or "") or (m.get("text") or "").startswith(ADMIN_CERT)):
+                        continue
+                    a = att_index.get((m["id"], att.get("name")))
+                    if not a or a["drive_file_id"] in seen_files:
+                        continue
+                    seen_files.add(a["drive_file_id"])
+                    doc_rows.append({"id": ids["DOC"](), "title": "Halal certificate", "kind": "certificate", "category": "halal",
+                                     "drive_file_id": a["drive_file_id"], "drive_url": a.get("drive_url", ""), "content_hash": a.get("sha256", ""), "version": "",
+                                     "supersedes_id": "", "source_msg_id": m["id"], "received_at": m.get("ts") or ts,
+                                     "updated_at": ts, "status": "inbox", "notes": "certificate text found; awaiting organiser"})
+            for e in j["events"]:
+                ek = (norm_title(e.get("title")), str(e.get("date_start", ""))[:10])
+                if e.get("title") and ek in seen_events:
+                    continue  # same event (title words + day) already on file
+                seen_events.add(ek)
+                if e.get("title"):
+                    ev_rows.append({"id": ids["EV"](), "title": e["title"], "title_bm": e.get("title_bm", ""), "date_start": e.get("date_start", ""), "date_end": "", "venue": e.get("venue", ""),
+                                    "poster_url": "", "link": safe_url(e.get("link")), "description": e.get("description", ""), "status": "draft", "source": e.get("source_msg_id", "")})
+            for g in j["guidelines"]:
+                gk = norm_title(g.get("title"))
+                if g.get("title") and gk in seen_guidelines:
+                    continue  # this guideline is already listed
+                seen_guidelines.add(gk)
+                if g.get("title"):
+                    gl_rows.append({"id": ids["GL"](), "category": g.get("category", "halal"), "title": g["title"], "title_bm": g.get("title_bm", ""), "summary_en": g.get("summary_en", ""),
+                                    "summary_bm": g.get("summary_bm", ""), "link": safe_url(g.get("link")), "issuer": g.get("issuer", ""), "effective_date": "", "updated_at": ts, "status": "draft", "source": g.get("source_msg_id", "")})
 
-        print(f"batch {batches}: {len(rows)} msgs → faq {len(faq_rows)} docs {len(doc_rows)} events {len(ev_rows)} guidelines {len(gl_rows)} via {provider}/{model}")
-        if dry:
-            print(json.dumps({"faq": faq_rows, "documents": doc_rows, "events": ev_rows, "guidelines": gl_rows}, ensure_ascii=False, indent=1)[:4000])
-            break
-        if faq_rows: he_api.upsert("FAQ", faq_rows)
-        if doc_rows: he_api.upsert("Documents", doc_rows)
-        if ev_rows: he_api.upsert("Events", ev_rows)
-        # Guidelines mirror the references library only (index_references.py);
-        # a guideline mentioned in a group message is not added on its own.
-        relevant = {str(x) for it in j.get("items", []) if it.get("relevant") for x in it.get("source_msg_ids", [])}
-        # A message that became a document, event or guideline was used too.
-        relevant |= {str(x.get("source_msg_id")) for key in ("documents", "events", "guidelines") for x in j.get(key, []) if x.get("source_msg_id")}
-        done = [r["id"] for r in rows if r["id"] in relevant]
-        skipped = [r["id"] for r in rows if r["id"] not in relevant]
-        if done: he_api.raw_update(done, status="processed", processed_at=ts, model=f"{provider}:{model}")
-        if skipped: he_api.raw_update(skipped, status="skipped", processed_at=ts, model=f"{provider}:{model}")
-        total += len(rows)
+            print(f"batch {batches}: {len(rows)} msgs → faq {len(faq_rows)} docs {len(doc_rows)} events {len(ev_rows)} guidelines {len(gl_rows)} via {provider}/{model}")
+            if dry:
+                print(json.dumps({"faq": faq_rows, "documents": doc_rows, "events": ev_rows, "guidelines": gl_rows}, ensure_ascii=False, indent=1)[:4000])
+                return "stop"
+            if faq_rows: he_api.upsert("FAQ", faq_rows)
+            if doc_rows: he_api.upsert("Documents", doc_rows)
+            if ev_rows: he_api.upsert("Events", ev_rows)
+            # Guidelines mirror the references library only (index_references.py);
+            # a guideline mentioned in a group message is not added on its own.
+            relevant = {str(x) for it in j["items"] if it.get("relevant") for x in msg_ids(it)}
+            # A message that became a document, event or guideline was used too.
+            relevant |= {str(x.get("source_msg_id")) for key in ("documents", "events", "guidelines") for x in j[key] if x.get("source_msg_id")}
+            relevant |= {str(d["source_msg_id"]) for d in doc_rows if d.get("source_msg_id")}
+            done = [r["id"] for r in rows if r["id"] in relevant]
+            skipped = [r["id"] for r in rows if r["id"] not in relevant]
+            if done: he_api.raw_update(done, status="processed", processed_at=ts, model=f"{provider}:{model}")
+            if skipped: he_api.raw_update(skipped, status="skipped", processed_at=ts, model=f"{provider}:{model}")
+            total += len(rows)
+        try:
+            if handle() == "stop":
+                break
+        except Exception as e:  # one bad batch never stops the queue
+            print(f"batch {batches} could not be filed ({type(e).__name__}: {e}); its rows are marked error and the run goes on", file=sys.stderr)
+            if not dry:
+                he_api.raw_update([r["id"] for r in rows], status="error", processed_at=now(), notes=f"{type(e).__name__}: {e}"[:200])
+            total += len(rows)
+        note(f"batch {batches}: {total} messages read this run")
 
     if not dry:
-        he_api.run_log("process_raw:" + ",".join(sources), provider, model, total, not err, err)
-    print(f"done: {total} messages in {batches} batches" + (f"; FAILED: {err}" if err else ""))
+        he_api.run_log(job, provider, model, total, not err, err)
+    note(f"finished: {total} messages in {batches} batches" + (f"; {stopped}" if stopped else "") + (f"; FAILED: {err}" if err else ""), state="failed" if err else "done")
     return 0 if not err else 1
 
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("--source", default="whatsapp,telegram,manual")
+    # Admin uploads first: a certificate dropped in Admin is read in the next
+    # run, not after the whole chat-export backlog.
+    ap.add_argument("--source", default="manual,whatsapp,telegram")
+    ap.add_argument("--minutes", type=int, default=20)
     ap.add_argument("--max-batches", type=int, default=200)
     ap.add_argument("--dry-run", action="store_true")
     a = ap.parse_args()
-    sys.exit(run([s.strip() for s in a.source.split(",") if s.strip()], a.max_batches, a.dry_run))
+    sys.exit(run([s.strip() for s in a.source.split(",") if s.strip()], a.max_batches, a.dry_run, a.minutes))

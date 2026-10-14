@@ -1,4 +1,5 @@
 name: Pipeline
+run-name: ${{ inputs.job || 'process_whatsapp' }}
 # Pipeline jobs. Each one runs until its queue is empty and logs the provider
 # that answered (MIRELD or AFIQ) to the Runs tab. Started by Apps Script's
 # timer or by Admin → Run the AI now; overlapping starts queue (concurrency).
@@ -21,7 +22,7 @@ concurrency: { group: pipeline, cancel-in-progress: false }
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 300
+    timeout-minutes: 75
     env:
       HE_API_URL: ${{ secrets.HE_API_URL }}
       HE_INGEST_TOKEN: ${{ secrets.HE_INGEST_TOKEN }}
@@ -48,24 +49,43 @@ jobs:
         id: pick
         run: |
           j="${{ github.event.inputs.job }}"
-          if [ -z "$j" ]; then
-            case "${{ github.event.schedule }}" in
-              '10,40 * * * *') j=process_whatsapp ;;
-              '55 18 * * *')  j=process_facebook ;;
-              '25 */6 * * *') j=news ;;
-              '50 19 * * *')  j=organise ;;
-            esac
-          fi
-          echo "job=$j" >> "$GITHUB_OUTPUT"
+          echo "job=${j:-process_whatsapp}" >> "$GITHUB_OUTPUT"
+      # Phase by phase, like the KKM complaints routine: each phase has its own
+      # time box, reports to Admin → Progress when it starts and ends, and a
+      # phase that fails or runs out of time never stops the ones after it.
+      # Whatever a phase did not finish, the next 30-minute run picks up.
       - name: Run
         working-directory: pipeline
+        shell: bash
         run: |
-          case "${{ steps.pick.outputs.job }}" in
-            process_whatsapp) python process_raw.py --source whatsapp,telegram,manual; a=$?; python drive_organiser.py; b=$?; python index_references.py; c=$?; python resolve_sahkan.py; d=$?; exit $(( a || b || c || d )) ;;
-            process_facebook) python process_raw.py --source facebook; a=$?; python resolve_sahkan.py; b=$?; exit $(( a || b )) ;;
-            news)             python news_sweep.py ;;
-            organise)         python drive_organiser.py ;;
-            references)       python index_references.py --audit; a=$?; python resolve_sahkan.py; b=$?; exit $(( a || b )) ;;
-            sahkan)           python resolve_sahkan.py ;;
+          JOB="${{ steps.pick.outputs.job }}"; RC=0
+          phase() {  # phase <minutes> <name> <command...>
+            local min=$1 name=$2; shift 2
+            python phase.py "$JOB" running "$name: started" || true
+            if timeout --signal=INT --kill-after=60 "${min}m" "$@"; then
+              python phase.py "$JOB" done "$name: finished" || true
+            else
+              local c=$?; RC=1
+              if [ $c -eq 124 ] || [ $c -eq 130 ]; then msg="stopped at its ${min}-minute limit; the next run carries on"; else msg="failed (exit $c); see the GitHub log"; fi
+              python phase.py "$JOB" failed "$name: $msg" || true
+            fi
+          }
+          case "$JOB" in
+            process_whatsapp)
+              phase 24 "Read messages and uploads" python process_raw.py --minutes 20
+              phase 8  "File documents and certificates" python drive_organiser.py
+              phase 10 "Read new references" python index_references.py
+              phase 6  "Fill SAHKAN from references" python resolve_sahkan.py ;;
+            process_facebook)
+              phase 24 "Read Facebook posts" python process_raw.py --source facebook --minutes 20
+              phase 6  "Fill SAHKAN from references" python resolve_sahkan.py ;;
+            news)       phase 20 "Halal news" python news_sweep.py ;;
+            organise)   phase 30 "Drive organiser" python drive_organiser.py ;;
+            references)
+              phase 40 "Review references" python index_references.py --audit
+              phase 10 "Fill SAHKAN from references" python resolve_sahkan.py ;;
+            sahkan)     phase 20 "Fill SAHKAN from references" python resolve_sahkan.py ;;
             *) echo "unknown job"; exit 1 ;;
           esac
+          python phase.py "$JOB" $([ $RC -eq 0 ] && echo done || echo failed) "run finished" || true
+          exit $RC

@@ -7,6 +7,8 @@ import Chatbot from './components/Chatbot'
 import Overview from './pages/Overview'
 import { certStatus, splitProducts } from './lib/certs'
 import { loadData, savedData, snapshotData } from './lib/api'
+// Admin upload queue: loaded with the app so it keeps sending on every page.
+import './lib/uploadQueue'
 import { t } from './lib/i18n'
 
 // Pages other than Overview load on first visit, so the first screen only
@@ -75,6 +77,12 @@ export default function App() {
 
   const setTab = (k, id) => { setTabState(k); setFocus(id || null); if (location.hash !== `#${k}`) history.replaceState(null, '', `#${k}`); window.scrollTo({ top: 0 }) }
   useEffect(() => { const h = () => setTabState(fromHash()); addEventListener('hashchange', h); return () => removeEventListener('hashchange', h) }, [])
+  // Admin Delete / Hide: drop the row at once (lib/api.js dropLocal).
+  useEffect(() => {
+    const drop = (e) => { const { key, id } = e.detail; setData((d) => (d && Array.isArray(d[key]) ? { ...d, [key]: d[key].filter((r) => String(r.id) !== id) } : d)) }
+    addEventListener('he:drop', drop)
+    return () => removeEventListener('he:drop', drop)
+  }, [])
 
   const refresh = useCallback(async (force) => {
     setLoading(true); setErr('')
@@ -85,6 +93,9 @@ export default function App() {
     // feed loads, instead of a blank "Loading".
     if (!savedData()) snapshotData().then((d) => d && setData((cur) => cur || d))
     refresh(false)
+    const again = () => refresh(true)
+    addEventListener('he:refresh', again)
+    return () => removeEventListener('he:refresh', again)
   }, [refresh])
 
   const doExport = async (kind) => {

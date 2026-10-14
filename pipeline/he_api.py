@@ -64,6 +64,11 @@ def delete(tab, ids):
     return post("delete", tab=tab, ids=ids)
 
 
+def progress(job, text, state="running", done=0, left=0):
+    """What is running now, for Admin → Progress (Code.gs keeps the last 40 lines)."""
+    return post("progress", job=job, text=text, state=state, done=done, left=left)
+
+
 def run_log(job, provider, model, processed, ok, error=""):
     return post("run_log", job=job, provider=provider, model=model, processed=processed, ok=ok, error=error)
 

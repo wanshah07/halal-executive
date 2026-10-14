@@ -167,8 +167,20 @@ client.on('ready', async () => {
     }
     // Heartbeat every 5 minutes: the site's Overview shows "WhatsApp: live"
     // while these arrive and "offline" when they stop.
-    const beat = () => post('heartbeat', { source: 'whatsapp', group: GROUP, last_msg: state.lastTs ? new Date(state.lastTs).toISOString() : '', version: 'collector-2' })
-      .catch((e) => console.error('heartbeat failed:', e.message || e))
+    // Each beat also asks WhatsApp whether this device is still linked. Two
+    // checks in a row that are not CONNECTED: exit, and pm2 restarts the
+    // collector, which reconnects with the saved session (or prints a QR in
+    // `pm2 logs` if the phone unlinked it). Apps Script's watchdog emails the
+    // admins when beats stop or the state is wrong for 15 minutes.
+    let bad = 0
+    const beat = async () => {
+      let st = 'UNKNOWN'
+      try { st = String(await Promise.race([client.getState(), new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 30000))]) || 'UNKNOWN') } catch (e) { st = 'UNKNOWN' }
+      bad = st === 'CONNECTED' ? 0 : bad + 1
+      await post('heartbeat', { source: 'whatsapp', group: GROUP, last_msg: state.lastTs ? new Date(state.lastTs).toISOString() : '', version: 'collector-3', state: st })
+        .catch((e) => console.error('heartbeat failed:', e.message || e))
+      if (bad >= 2) { console.error(new Date().toISOString(), `WhatsApp state ${st} twice in a row; restarting`); await client.destroy().catch(() => {}); process.exit(1) }
+    }
     beat(); setInterval(beat, 5 * 60 * 1000)
     console.log('Listening for new messages… (Ctrl+C to stop)')
   } catch (e) {
