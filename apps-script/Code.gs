@@ -1160,6 +1160,16 @@ function toks(s) { return String(s || '').toLowerCase().normalize('NFKD').replac
 
 // Search words for a question in both Malay and English (the references are
 // mostly Malay; people ask in either). Cached a day per question.
+// The question's own language. The model, left to "answer in the language of
+// the question", followed the BM passages instead (14 Oct 2026: four English
+// questions answered in BM), so the server decides and says so plainly.
+var BM_WORDS = /\b(yang|dan|apa|apakah|adakah|boleh|bolehkah|bagaimana|berapa|siapa|untuk|dengan|perlu|ialah|adalah|tidak|ke|di|dari|daripada|kah|saya|kami|syarikat|sijil|tempoh|bila|mana|mengapa|kenapa|warna|jawatankuasa|dalaman|syarat|premis|produk|pembaharuan|yuran|permohonan|bahan)\b/gi;
+var EN_WORDS = /\b(the|what|who|how|is|are|can|does|do|must|should|which|when|where|why|of|for|to|a|an|my|our|company|certificate|valid|apply|colour|color|committee|internal|retailer|requirement|requirements|products?|premises?|renewal|fees?|ingredients?|labell?ing)\b/gi;
+function qLang(q) {
+  var bm = (q.match(BM_WORDS) || []).length, en = (q.match(EN_WORDS) || []).length;
+  return en > bm ? 'en' : 'bm';
+}
+
 function expandQuery(q) {
   var cache = CacheService.getScriptCache(), key = 'qx_' + sha256(Utilities.newBlob(toks(q).join(' ')).getBytes()).slice(0, 24), hit = cache.get(key);
   if (hit) return JSON.parse(hit);
@@ -1223,7 +1233,7 @@ function askReferences(b) {
   var t0 = Date.now();
   var q = String(b.question || '').trim().slice(0, 600);
   if (q.length < 3) return { ok: false, error: 'Type a question.' };
-  var lang = b.lang === 'bm' ? 'bm' : (b.lang === 'en' ? 'en' : 'auto');
+  var lang = b.lang === 'bm' ? 'bm' : (b.lang === 'en' ? 'en' : qLang(String(b.question || '')));
   var cache = CacheService.getScriptCache();
   var key = 'ans2_' + (props().getProperty('ans_v') || '0') + '_' + lang + '_' + sha256(Utilities.newBlob(toks(q).join(' ')).getBytes()).slice(0, 24);
   var hit = cache.get(key);
