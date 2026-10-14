@@ -77,3 +77,22 @@ alternative that carries no account risk: a member downloads the group's
 posts manually (Facebook → Your information → Download) and drops the
 export into `collectors/facebook/exports/`; `collect.js --import <file>`
 ingests it the same way.
+
+## Run WhatsApp in the cloud (no PC left on)
+
+The collector is a WhatsApp Web session, so it needs a machine that stays on.
+A small Debian 12 server does the job (Google Cloud e2-micro or similar).
+Open the server's SSH window and run:
+
+    curl -fsSL https://raw.githubusercontent.com/wanshah07/halal-executive/main/collectors/cloud/setup-debian.sh | bash
+
+It installs Node.js 22, Chromium and pm2, adds 2 GB of swap, asks for the
+Apps Script URL, INGEST_TOKEN and group id, shows the QR code to scan, and
+leaves the collector running under pm2 (restarts on crash and on reboot).
+Stop the PC copy afterwards (`pm2 delete he-whatsapp` on the PC): two linked
+sessions send every message twice (the Sheet de-duplicates by message id, but
+there is no reason to run both).
+
+The official WhatsApp Cloud API cannot do this job: it works for a business
+number's own conversations, not for a community group joined by a personal
+number.

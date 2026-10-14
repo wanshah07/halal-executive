@@ -43,7 +43,7 @@ export default function Overview({ lang, data, setTab }) {
       <Hero lang={lang} settings={data.settings || {}} />
 
       <section className="card p-5 mb-4">
-        <div className="flex items-center justify-between mb-3"><h3 className="font-semibold">{t(lang, 'recent_faq')}</h3><a href="#faq" onClick={() => setTab('faq')} className="text-sm text-brand-600 hover:underline">{t(lang, 'open_faq')} →</a></div>
+        <div className="flex items-center justify-between mb-3"><h3 className="font-semibold">{t(lang, 'recent_faq')}</h3><a href="#faq" onClick={() => setTab('faq')} className="text-sm text-brand-600 hover:underline">{t(lang, 'open_faq')}</a></div>
         {!faq.length && <div className="text-sm text-ink-400">{t(lang, 'no_data')}</div>}
         <ul className="divide-y divide-line">
           {recentList.map((f) => (

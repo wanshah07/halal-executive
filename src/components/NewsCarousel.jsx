@@ -3,35 +3,48 @@ import { catChip } from './CategoryFilter'
 import { safeUrl } from '../lib/safe'
 import { t } from '../lib/i18n'
 import { fmtDateTime, hoursLeft } from '../lib/util'
+import { ICON, ChevronLeft, ChevronRight, Pause, Play } from './Icon'
 
 // Halal news, one slide at a time: arrows, dots, swipe on phones, and an
-// auto-advance every 7 seconds that pauses on hover, on focus and for people
-// who ask for reduced motion.
+// auto-advance every 6 seconds with a progress bar. It keeps running after an
+// arrow, dot or swipe (the timer restarts on the new slide); it rests only
+// while a mouse is over it, and the pause button stops it for good (WCAG
+// 2.2.2). With Reduce Motion on, slides still change but without the slide
+// animation.
+const SLIDE_MS = 6000
+
 export default function NewsCarousel({ lang, news }) {
   const items = (news || []).filter((n) => !n.expires_at || Date.parse(n.expires_at) > Date.now())
     .sort((a, b) => Date.parse(b.published_at || b.fetched_at) - Date.parse(a.published_at || a.fetched_at)).slice(0, 12)
   const [i, setI] = useState(0)
-  const [paused, setPaused] = useState(false)
+  const [hover, setHover] = useState(false)
+  const [stopped, setStopped] = useState(false)
+  const still = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  const paused = hover || stopped
   const x0 = useRef(null)
   const n = items.length
   const go = (d) => setI((v) => (v + d + n) % n)
   useEffect(() => { if (i >= n) setI(0) }, [n, i])
   useEffect(() => {
-    if (n < 2 || paused || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
-    const id = setInterval(() => setI((v) => (v + 1) % n), 7000)
-    return () => clearInterval(id)
-  }, [n, paused])
+    if (n < 2 || paused) return
+    const id = setTimeout(() => setI((v) => (v + 1) % n), SLIDE_MS)
+    return () => clearTimeout(id)
+  }, [n, paused, i])
   return (
     <section className="card p-5 mb-4" aria-roledescription="carousel" aria-label={t(lang, 'news')}
-      onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)} onFocus={() => setPaused(true)} onBlur={() => setPaused(false)}>
+      onPointerEnter={(e) => { if (e.pointerType === 'mouse') setHover(true) }} onPointerLeave={() => setHover(false)}>
       <div className="flex items-center justify-between mb-3">
         <h3 className="font-semibold">{t(lang, 'news')} <span className="text-ink-400 font-normal text-sm">· {t(lang, 'live_news')}</span></h3>
-        {n > 1 && <div className="flex gap-1.5"><button className="btn px-2.5" onClick={() => go(-1)} aria-label={t(lang, 'prev')}>‹</button><button className="btn px-2.5" onClick={() => go(1)} aria-label={t(lang, 'next')}>›</button></div>}
+        {n > 1 && <div className="flex gap-1.5">
+          <button className="btn px-2" onClick={() => setStopped(!stopped)} aria-label={stopped ? t(lang, 'play') : t(lang, 'pause')} title={stopped ? t(lang, 'play') : t(lang, 'pause')}>{stopped ? <Play {...ICON} size={16} /> : <Pause {...ICON} size={16} />}</button>
+          <button className="btn px-2" onClick={() => go(-1)} aria-label={t(lang, 'prev')}><ChevronLeft {...ICON} /></button>
+          <button className="btn px-2" onClick={() => go(1)} aria-label={t(lang, 'next')}><ChevronRight {...ICON} /></button>
+        </div>}
       </div>
       {!n && <div className="text-sm text-ink-400">{t(lang, 'no_news')}</div>}
       {!!n && (
         <div className="overflow-hidden" onTouchStart={(e) => { x0.current = e.touches[0].clientX }} onTouchEnd={(e) => { if (x0.current == null) return; const dx = e.changedTouches[0].clientX - x0.current; if (Math.abs(dx) > 40) go(dx < 0 ? 1 : -1); x0.current = null }}>
-          <div className="flex transition-transform duration-500 ease-out" style={{ transform: `translateX(-${i * 100}%)` }}>
+          <div className={`flex ${still ? '' : 'transition-transform duration-500 ease-out'}`} style={{ transform: `translateX(-${i * 100}%)` }} aria-live={stopped ? 'polite' : 'off'}>
             {items.map((it, k) => (
               <article key={it.id} className="w-full shrink-0 pr-1" aria-roledescription="slide" aria-label={`${k + 1} / ${n}`} aria-hidden={k !== i}>
                 <div className="rounded-xl bg-gradient-to-br from-brand-50 to-white border border-line p-5 min-h-[150px] flex flex-col">
@@ -43,6 +56,7 @@ export default function NewsCarousel({ lang, news }) {
               </article>
             ))}
           </div>
+          {n > 1 && <div className="h-0.5 bg-line rounded-full mt-3 overflow-hidden"><div key={i + (paused ? 'p' : 'r')} className="h-full bg-brand-600" style={{ width: paused ? '0%' : undefined, animation: paused ? 'none' : `he-progress ${SLIDE_MS}ms linear forwards` }} /></div>}
           {n > 1 && <div className="flex justify-center gap-1.5 mt-3">{items.map((_, k) => <button key={k} onClick={() => setI(k)} aria-label={`${k + 1}`} className={`h-2 rounded-full transition-all ${k === i ? 'w-6 bg-brand-600' : 'w-2 bg-line hover:bg-ink-400'}`} />)}</div>}
         </div>
       )}

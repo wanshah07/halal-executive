@@ -4,6 +4,7 @@ import { API_URL } from '../lib/config'
 import { t } from '../lib/i18n'
 import { fmtDate } from '../lib/util'
 import { catChip } from '../components/CategoryFilter'
+import { ICON, ChevronDown, ChevronRight } from '../components/Icon'
 
 // Ask the references library. The answer comes in plain words first, then
 // the detail, then the exact pages it rests on. Nothing outside the uploaded
@@ -49,7 +50,7 @@ export default function References({ lang, data }) {
               </section>
               {ans.details && (
                 <section>
-                  <button className="text-sm font-semibold text-ink-900 flex items-center gap-1" onClick={() => setOpen(!open)} aria-expanded={open}>{open ? '▾' : '▸'} {t(lang, 'details')}</button>
+                  <button className="text-sm font-semibold text-ink-900 flex items-center gap-1" onClick={() => setOpen(!open)} aria-expanded={open}>{open ? <ChevronDown {...ICON} size={16} /> : <ChevronRight {...ICON} size={16} />} {t(lang, 'details')}</button>
                   {open && <p className="text-sm mt-2 leading-relaxed whitespace-pre-wrap text-ink-900">{ans.details}</p>}
                 </section>
               )}

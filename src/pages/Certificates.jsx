@@ -6,6 +6,7 @@ import CategoryFilter, { catChip } from '../components/CategoryFilter'
 import { t } from '../lib/i18n'
 import { fmtDate, fmtDateTime } from '../lib/util'
 import { certStatus, splitProducts } from '../lib/certs'
+import { ICON, ChevronDown, ChevronRight, ExternalLink } from '../components/Icon'
 
 // Halal certificates picked out of the groups: holder, certificate number,
 // scheme, validity and the product list. Each entry folds; the product list
@@ -80,10 +81,10 @@ export default function Certificates({ lang, data }) {
             <div className="text-xs text-ink-600 mt-0.5">{c.scheme}{c.state && ` · ${c.state}`} · {c.cert_no}</div>
             <div className="text-xs text-ink-400 mt-1">{t(lang, 'validity')}: {fmtDate(c.valid_from, lang)} → {fmtDate(c.valid_to, lang)}</div>
           </button>
-          <button className="mt-2 text-sm text-brand-600 hover:underline" onClick={() => toggle(c.id)}>{isOpen(c.id) ? '▾ ' + t(lang, 'hide_products') : `▸ ${c._products.length} ${t(lang, 'show_products')}`}</button>
+          <button className="mt-2 text-sm text-brand-600 hover:underline" onClick={() => toggle(c.id)}>{isOpen(c.id) ? <span className="inline-flex items-center gap-1"><ChevronDown {...ICON} size={16} />{t(lang, 'hide_products')}</span> : <span className="inline-flex items-center gap-1"><ChevronRight {...ICON} size={16} />{c._products.length} {t(lang, 'show_products')}</span>}</button>
           {isOpen(c.id) && products(c)}
           <div className="mt-3 text-xs text-ink-400 flex justify-between">
-            <span>{safeUrl(c.drive_url) ? <a className="hover:underline" href={safeUrl(c.drive_url)} target="_blank" rel="noreferrer">Drive ↗</a> : c.doc_id || ''}</span>
+            <span>{safeUrl(c.drive_url) ? <a className="hover:underline" href={safeUrl(c.drive_url)} target="_blank" rel="noreferrer">Drive <ExternalLink {...ICON} size={12} className="inline -mt-0.5" /></a> : c.doc_id || ''}</span>
             <span>{t(lang, 'updated')} {fmtDateTime(c.updated_at, lang)}</span>
           </div>
         </article>

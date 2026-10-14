@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { t } from '../lib/i18n'
+import { ICON, X } from './Icon'
 
 // Popup notification controlled from the Admin panel (Settings tab:
 // notice_enabled, notice_title, notice_body, notice_level, notice_until).
@@ -22,7 +23,7 @@ export default function Notice({ lang, settings }) {
       <div className="card max-w-md w-full overflow-hidden shadow-xl" onClick={(e) => e.stopPropagation()}>
         <div className={`${tone} text-white px-5 py-3 font-semibold flex justify-between items-center`}>
           <span>{settings.notice_title || t(lang, 'notice')}</span>
-          <button onClick={close} aria-label="close" className="text-white/80 hover:text-white">✕</button>
+          <button onClick={close} aria-label="close" className="text-white/80 hover:text-white"><X {...ICON} /></button>
         </div>
         <div className="p-5 text-sm whitespace-pre-wrap">{lang === 'bm' && settings.notice_body_bm ? settings.notice_body_bm : settings.notice_body}</div>
         <div className="px-5 pb-4 flex justify-end"><button className="btn" onClick={close}>{t(lang, 'dismiss')}</button></div>

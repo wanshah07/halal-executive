@@ -3,6 +3,7 @@ import Segment from '../components/Segment'
 import { t } from '../lib/i18n'
 import { fmtDateTime } from '../lib/util'
 import Poster from '../components/Poster'
+import { ICON, ArrowUpRight } from '../components/Icon'
 
 export default function Events({ lang, data }) {
   const rows = (data.events || []).filter((e) => e.status !== 'hidden').sort((a, b) => Date.parse(a.date_start) - Date.parse(b.date_start))
@@ -21,7 +22,7 @@ export default function Events({ lang, data }) {
           { key: 'title', label: t(lang, 'title'), render: title },
           { key: 'date_start', label: t(lang, 'date'), render: (e) => fmtDateTime(e.date_start, lang) },
           { key: 'venue', label: t(lang, 'venue') },
-          { key: 'link', label: t(lang, 'register'), render: (e) => safeUrl(e.link) ? <a className="text-brand-600 hover:underline" href={safeUrl(e.link)} target="_blank" rel="noreferrer">↗</a> : '—' },
+          { key: 'link', label: t(lang, 'register'), render: (e) => safeUrl(e.link) ? <a className="text-brand-600 hover:underline" href={safeUrl(e.link)} target="_blank" rel="noreferrer" aria-label={t(lang, 'register')}><ArrowUpRight {...ICON} size={16} /></a> : '—' },
         ]}
         renderCard={(e) => (
           <article key={e.id} className="card overflow-hidden">
@@ -30,7 +31,7 @@ export default function Events({ lang, data }) {
               <div className="text-xs text-ink-400">{fmtDateTime(e.date_start, lang)}{e.venue && ` · ${e.venue}`}</div>
               <div className="font-semibold mt-1">{title(e)}</div>
               {e.description && <p className="text-sm text-ink-600 mt-2">{e.description}</p>}
-              {safeUrl(e.link) && <a className="btn-brand mt-3" href={safeUrl(e.link)} target="_blank" rel="noreferrer">{t(lang, 'register')} ↗</a>}
+              {safeUrl(e.link) && <a className="btn-brand mt-3" href={safeUrl(e.link)} target="_blank" rel="noreferrer">{t(lang, 'register')} <ArrowUpRight {...ICON} size={15} /></a>}
             </div>
           </article>
         )} />

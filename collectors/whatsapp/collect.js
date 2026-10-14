@@ -49,7 +49,7 @@ const norm = (s) => String(s || '').normalize('NFKC').replace(/\s+/g, ' ').trim(
 const exe = browserPath()
 if (!exe) console.warn('No Chrome or Edge found. Install Google Chrome, or set HE_BROWSER in collectors/.env to a chrome.exe / msedge.exe path.')
 else console.log('Browser:', exe)
-const client = new Client({ authStrategy: new LocalAuth(), puppeteer: { headless: true, executablePath: exe, args: ['--no-sandbox'] } })
+const client = new Client({ authStrategy: new LocalAuth(), puppeteer: { headless: true, executablePath: exe, args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu'] } })
 client.on('qr', (qr) => { console.log('Scan with WhatsApp → Settings → Linked devices → Link a device'); qrcode.generate(qr, { small: true }) })
 client.on('auth_failure', (m) => { console.error('Login failed:', m, '\nDelete the .wwebjs_auth folder and run again to get a new QR.'); process.exit(1) })
 // WhatsApp logged this device out or the connection dropped: exit so pm2

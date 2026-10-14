@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { askAssistant } from '../lib/api'
 import { buildIndex, search } from '../lib/search'
 import { t } from '../lib/i18n'
+import { ICON, MessageCircle, X } from './Icon'
 
 // Retrieval first, model second. The page searches its own FAQ and guidelines,
 // shows the top hits immediately, then asks the Apps Script chat endpoint
@@ -32,10 +33,10 @@ export default function Chatbot({ lang, data, open, setOpen, seed }) {
 
   return (
     <>
-      <button onClick={() => setOpen(!open)} className="fixed bottom-5 right-5 z-40 rounded-full bg-brand-600 text-white shadow-lg px-4 py-3 font-semibold hover:bg-brand-700">💬 {t(lang, 'chatbot')}</button>
+      <button onClick={() => setOpen(!open)} className="fixed bottom-5 right-5 z-40 rounded-full bg-brand-600 text-white shadow-lg px-4 py-3 font-semibold hover:bg-brand-700 inline-flex items-center gap-2"><MessageCircle {...ICON} size={20} /> {t(lang, 'chatbot')}</button>
       {open && (
         <div className="fixed bottom-20 right-5 z-40 w-[min(420px,calc(100vw-2.5rem))] card shadow-2xl flex flex-col max-h-[70vh]">
-          <div className="px-4 py-3 border-b border-line font-semibold flex justify-between"><span>{t(lang, 'chatbot')}</span><button onClick={() => setOpen(false)}>✕</button></div>
+          <div className="px-4 py-3 border-b border-line font-semibold flex justify-between"><span>{t(lang, 'chatbot')}</span><button onClick={() => setOpen(false)} aria-label="close" className="text-ink-400 hover:text-ink-900"><X {...ICON} /></button></div>
           <div className="flex-1 overflow-auto p-4 space-y-3 text-sm">
             {!msgs.length && <div className="text-ink-400">{t(lang, 'sources_note')}</div>}
             {msgs.map((m, i) => m.role === 'hits' ? (

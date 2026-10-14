@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { buildIndex, search } from '../lib/search'
 import { t } from '../lib/i18n'
+import { ICON, ArrowUpRight } from './Icon'
 
 export default function SearchBar({ lang, data, onOpen, onAsk }) {
   const [q, setQ] = useState('')
@@ -11,7 +12,7 @@ export default function SearchBar({ lang, data, onOpen, onAsk }) {
     <div className="relative">
       <div className="flex gap-2">
         <input className="input" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t(lang, 'search_ph')} onKeyDown={(e) => { if (e.key === 'Enter' && q.trim()) onAsk(q) }} />
-        <button className="btn-brand shrink-0" onClick={() => q.trim() && onAsk(q)}>{t(lang, 'ask')} ↗</button>
+        <button className="btn-brand shrink-0" onClick={() => q.trim() && onAsk(q)}>{t(lang, 'ask')} <ArrowUpRight {...ICON} size={16} /></button>
       </div>
       {q && (
         <div className="absolute z-20 mt-1 w-full card shadow-lg max-h-96 overflow-auto">

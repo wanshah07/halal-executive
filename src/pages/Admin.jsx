@@ -4,6 +4,7 @@ import { API_URL } from '../lib/config'
 import { t } from '../lib/i18n'
 import { RefAdmin, EventsAdmin } from '../components/AdminExtra'
 import { POSTER_ACCEPT, POSTER_MAX } from '../components/Poster'
+import { ICON, Lock, RefreshCw, Upload, X } from '../components/Icon'
 
 // Admin panel, locked. A registered email asks for a code, the code arrives
 // by email from the Sheet's Apps Script, and the session lasts 6 hours.
@@ -29,7 +30,7 @@ function SignIn({ lang, onIn }) {
   return (
     <div className="max-w-md">
       <div className="card p-6">
-        <div className="text-3xl mb-2" aria-hidden="true">🔒</div>
+        <div className="mb-3 text-ink-900"><Lock {...ICON} size={32} /></div>
         <h2 className="text-xl font-bold">{t(lang, 'admin_locked')}</h2>
         <p className="text-sm text-ink-600 mt-1 mb-4">{t(lang, 'admin_locked_sub')}</p>
         {!API_URL && <div className="card p-3 mb-4 text-sm bg-amber-50 border-amber-200">{t(lang, 'not_connected')}</div>}
@@ -121,7 +122,7 @@ function ReviewBox({ lang, onChanged }) {
   const body = ({ tab, r }) => tab === 'FAQ' ? (r.answer_formal_en || r.answer_layman_en) : tab === 'Events' ? `${r.date_start || ''} ${r.venue || ''} ${r.description || ''}` : tab === 'Certificates' ? `${r.scheme || ''} · ${r.valid_from || ''} → ${r.valid_to || ''}` : (r.summary_en || '')
   return (
     <div className="card p-5 mb-4 space-y-3">
-      <div className="flex items-center justify-between"><h3 className="font-semibold">{t(lang, 'review_title')} {drafts && <span className="text-ink-400 font-normal">({items.length})</span>}</h3><button className="btn" onClick={load}>⟳</button></div>
+      <div className="flex items-center justify-between"><h3 className="font-semibold">{t(lang, 'review_title')} {drafts && <span className="text-ink-400 font-normal">({items.length})</span>}</h3><button className="btn" onClick={load} aria-label="refresh"><RefreshCw {...ICON} size={16} /></button></div>
       <p className="text-sm text-ink-600">{t(lang, 'review_sub')}</p>
       {!drafts && !msg && <div className="text-sm text-ink-400">{t(lang, 'loading')}</div>}
       {drafts && !items.length && <div className="text-sm text-ink-400">{t(lang, 'review_empty')}</div>}
@@ -238,8 +239,8 @@ export default function Admin({ lang, data, onSaved, onSession }) {
             <input className="input" placeholder="Title" value={p.title} onChange={(e) => setPosters((ps) => ps.map((x, j) => j === i ? { ...x, title: e.target.value } : x))} />
             <input className="input" placeholder="Image URL" value={p.url} onChange={(e) => setPosters((ps) => ps.map((x, j) => j === i ? { ...x, url: e.target.value, file: '' } : x))} />
             <input className="input" placeholder="Click-through link" value={p.link} onChange={(e) => setPosters((ps) => ps.map((x, j) => j === i ? { ...x, link: e.target.value } : x))} />
-            <label className="btn cursor-pointer whitespace-nowrap" title={t(lang, 'poster_formats')}>{upIdx === i ? '…' : `⬆ ${t(lang, 'upload')}`}<input type="file" accept={POSTER_ACCEPT} className="sr-only" disabled={upIdx >= 0} onChange={(e) => { uploadPoster(i, e.target.files[0]); e.target.value = '' }} /></label>
-            <button className="btn" onClick={() => setPosters((ps) => ps.filter((_, j) => j !== i))}>✕</button>
+            <label className="btn cursor-pointer whitespace-nowrap" title={t(lang, 'poster_formats')}>{upIdx === i ? '…' : <><Upload {...ICON} size={16} /> {t(lang, 'upload')}</>}<input type="file" accept={POSTER_ACCEPT} className="sr-only" disabled={upIdx >= 0} onChange={(e) => { uploadPoster(i, e.target.files[0]); e.target.value = '' }} /></label>
+            <button className="btn" onClick={() => setPosters((ps) => ps.filter((_, j) => j !== i))} aria-label="remove"><X {...ICON} size={16} /></button>
           </div>
         ))}
       </div>

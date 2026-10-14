@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { SITE_NAME, SITE_SUB, SHEET_URL, DRIVE_FOLDER_URL } from '../lib/config'
 import { t } from '../lib/i18n'
 import { NAV } from './Sidebar'
+import { ICON, Menu, ExternalLink, ChevronDown, RefreshCw, Lock } from './Icon'
 
 export default function Header({ lang, setLang, tab, setTab, onRefresh, onExport, counts, loading, onMenu }) {
   const [exp, setExp] = useState(false)
@@ -12,7 +13,7 @@ export default function Header({ lang, setLang, tab, setTab, onRefresh, onExport
       <div className="max-w-7xl mx-auto px-4 sm:px-6">
         <div className="flex items-center justify-between gap-2 sm:gap-4 py-3">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-            <button className="md:hidden btn px-2.5 shrink-0" onClick={onMenu} aria-label={t(lang, 'menu')}>☰</button>
+            <button className="md:hidden btn px-2.5 shrink-0" onClick={onMenu} aria-label={t(lang, 'menu')}><Menu {...ICON} size={20} /></button>
             <a href="#overview" onClick={() => setTab('overview')} className="flex items-center gap-2 sm:gap-3 min-w-0">
               <img
                 src="./brand/jakim-halal-logo.png"
@@ -31,18 +32,18 @@ export default function Header({ lang, setLang, tab, setTab, onRefresh, onExport
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             <button className="btn px-2.5 sm:px-3.5" onClick={() => setLang(lang === 'en' ? 'bm' : 'en')} title="Language">{lang === 'en' ? 'BM' : 'EN'}</button>
             <a className="btn hidden md:inline-flex" href="#faq" onClick={() => setTab('faq')}>{t(lang, 'faq')}</a>
-            {SHEET_URL && <a className="btn hidden md:inline-flex" href={SHEET_URL} target="_blank" rel="noreferrer">{t(lang, 'sheet')} ↗</a>}
-            {DRIVE_FOLDER_URL && <a className="btn hidden lg:inline-flex" href={DRIVE_FOLDER_URL} target="_blank" rel="noreferrer">{t(lang, 'drive')} ↗</a>}
+            {SHEET_URL && <a className="btn hidden md:inline-flex" href={SHEET_URL} target="_blank" rel="noreferrer">{t(lang, 'sheet')} <ExternalLink {...ICON} size={14} /></a>}
+            {DRIVE_FOLDER_URL && <a className="btn hidden lg:inline-flex" href={DRIVE_FOLDER_URL} target="_blank" rel="noreferrer">{t(lang, 'drive')} <ExternalLink {...ICON} size={14} /></a>}
             <div className="relative hidden sm:block" ref={ref}>
-              <button className="btn" onClick={() => setExp(!exp)}>{t(lang, 'export')} ▾</button>
+              <button className="btn" onClick={() => setExp(!exp)}>{t(lang, 'export')} <ChevronDown {...ICON} size={16} /></button>
               {exp && (
                 <div className="absolute right-0 mt-1 card shadow-lg py-1 w-36 z-40">
                   {['csv', 'pdf', 'docx'].map((k) => <button key={k} className="block w-full text-left px-3 py-1.5 text-sm hover:bg-paper" onClick={() => { setExp(false); onExport(k) }}>{t(lang, 'export_' + k)}</button>)}
                 </div>
               )}
             </div>
-            <button className="btn px-2.5 sm:px-3.5" onClick={onRefresh} disabled={loading} aria-label={t(lang, 'refresh')} title={t(lang, 'refresh')}>{loading ? '…' : '⟳'}<span className="hidden sm:inline">{t(lang, 'refresh')}</span></button>
-            <a className="btn-dark px-2.5 sm:px-3.5" href="#admin" onClick={() => setTab('admin')} aria-label={t(lang, 'admin')} title={t(lang, 'admin')}><span aria-hidden="true">🔒</span><span className="hidden sm:inline">{t(lang, 'admin')}</span></a>
+            <button className="btn px-2.5 sm:px-3.5" onClick={onRefresh} disabled={loading} aria-label={t(lang, 'refresh')} title={t(lang, 'refresh')}><RefreshCw {...ICON} size={17} className={loading ? 'animate-spin' : ''} /><span className="hidden sm:inline">{t(lang, 'refresh')}</span></button>
+            <a className="btn-dark px-2.5 sm:px-3.5" href="#admin" onClick={() => setTab('admin')} aria-label={t(lang, 'admin')} title={t(lang, 'admin')}><Lock {...ICON} size={17} /><span className="hidden sm:inline">{t(lang, 'admin')}</span></a>
           </div>
         </div>
         <nav className="flex gap-6 overflow-x-auto -mb-px">
