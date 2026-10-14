@@ -1,7 +1,7 @@
 name: Deploy site
 # Builds the Vite page and publishes it to GitHub Pages at
-# halalexecutive.kkmhalalconsultant.com (public/CNAME). Repository →
-# Settings → Pages → Source: GitHub Actions, then add the DNS record in
+# halalexecutive.kkmhalalconsultant.com (public/CNAME). configure-pages
+# enables Pages with the Actions source on first run; add the DNS record in
 # SETUP.md. Only this repository publishes this site.
 on:
   push:
@@ -18,6 +18,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # Creates the Pages site on first run (source: GitHub Actions), so no
+      # settings click is needed; a no-op once it exists.
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm }
       - run: npm ci
