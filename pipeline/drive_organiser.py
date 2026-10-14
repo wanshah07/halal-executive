@@ -34,6 +34,33 @@ If the document is a halal certificate (Sijil Pengesahan Halal Malaysia or a for
 Return JSON: {"relation":"version_of|new","of_id":"existing id or null","title":"","doc_date":"","expiry":"","confidence":"high|medium|low","reason":"","certificate":null|{"company":"","cert_no":"","scheme":"","state":"","valid_from":"","valid_to":"","products":[""]}}"""
 
 
+CERT = """Read this halal certificate (Sijil Pengesahan Halal Malaysia, or a foreign certification body's certificate) and return its particulars exactly as printed: holder company name, certificate number, scheme (Food Product, Food Premise, Cosmetic, Pharmaceutical, Logistics, Slaughterhouse, OEM, other), Malaysian state of the holder if printed, valid_from and valid_to (ISO dates), and the product or premise list (one string per item). Never invent anything: a field you cannot read is "[SAHKAN]". If the text is not a halal certificate at all, return {"certificate": null}.
+Return JSON: {"certificate": {"company":"","cert_no":"","scheme":"","state":"","valid_from":"","valid_to":"","products":[""]}}"""
+
+CERT_TEXT = re.compile(r"sijil\s+pengesahan\s+halal|halal\s+certificat|certificate\s+of\s+halal|perakuan\s+halal|pengesahan\s+halal\s+malaysia", re.I)
+
+
+def read_cert(text):
+    """A certificate's particulars from its text, asked on their own. The
+    filing call (CLASSIFY) does many things and sometimes leaves `certificate`
+    empty; this one does only this (14 Oct 2026: the Heinz certificate was
+    filed with no Certificates row for exactly that reason)."""
+    if not (text or "").strip():
+        return None, "", ""
+    out = llm_router.complete_json([{"role": "system", "content": CERT}, {"role": "user", "content": text[:8000]}], max_tokens=1200)
+    j = out["json"] if isinstance(out["json"], dict) else {}
+    c = j.get("certificate") if isinstance(j.get("certificate"), dict) else (j if j.get("company") else None)
+    return c, out["provider"], out["model"]
+
+
+def cert_row(cid, cert, d, url, modified, note):
+    prods = cert.get("products") or []
+    return {"id": cid, "company": cert.get("company", ""), "cert_no": cert.get("cert_no", ""), "scheme": cert.get("scheme", ""), "category": d.get("category", "halal"),
+            "state": cert.get("state", ""), "valid_from": cert.get("valid_from", ""), "valid_to": cert.get("valid_to", ""),
+            "products": "; ".join(str(x) for x in prods) if isinstance(prods, list) else str(prods),
+            "drive_url": url, "doc_id": d["id"], "status": "current", "updated_at": modified, "notes": note}
+
+
 def safe(s):
     return re.sub(r"[\\/:*?\"<>|]+", "-", s).strip()[:120]
 
@@ -41,8 +68,6 @@ def safe(s):
 def run():
     docs = he_api.read("Documents")
     inbox = [d for d in docs if d.get("status") == "inbox"]
-    if not inbox:
-        print("nothing in inbox"); he_api.run_log("drive_organiser", "", "", 0, True); return 0
     by_hash = {d["content_hash"]: d for d in docs if d.get("content_hash") and d.get("status") in ("current", "archived")}
     current = [d for d in docs if d.get("status") == "current"]
     certs = he_api.read("Certificates")
@@ -87,20 +112,41 @@ def run():
                 he_api.upsert("Documents", [{**old, "status": "archived", "updated_at": om["modified"], "notes": f"superseded by {d['id']}"}])
                 current = [c for c in current if c["id"] != old["id"]]
             d.update(content_hash=h, version=version, status="current", title=title); current.append(d); by_hash[h] = d
-            cert = j.get("certificate")
+            cert = j.get("certificate") if isinstance(j.get("certificate"), dict) else None
+            if not (cert and cert.get("company")) and (d.get("kind") == "certificate" or CERT_TEXT.search(f["text"] or "")):
+                cert, p2, m2 = read_cert(f["text"])
+                provider, model = p2 or provider, m2 or model
             if cert and cert.get("company"):
                 cno = str(cert.get("cert_no") or "").strip().upper()
                 # The same certificate number is one row, however many times it is posted.
                 prev = next((c for c in certs if (old and c.get("doc_id") == old["id"]) or (cno and str(c.get("cert_no") or "").strip().upper() == cno)), None)
                 cid = prev["id"] if prev else ids_cert()
-                he_api.upsert("Certificates", [{"id": cid, "company": cert.get("company", ""), "cert_no": cert.get("cert_no", ""), "scheme": cert.get("scheme", ""), "category": d.get("category", "halal"),
-                                                 "state": cert.get("state", ""), "valid_from": cert.get("valid_from", ""), "valid_to": cert.get("valid_to", ""), "products": "; ".join(cert.get("products") or []),
-                                                 "drive_url": moved["url"], "doc_id": d["id"], "status": "current", "updated_at": moved["modified"], "notes": f"{provider}:{model} {j.get('confidence', '')}"}])
+                he_api.upsert("Certificates", [cert_row(cid, cert, d, moved["url"], moved["modified"], f"{provider}:{model} {j.get('confidence', '')}")])
                 if not prev:
                     certs.append({"id": cid, "cert_no": cert.get("cert_no", ""), "doc_id": d["id"]})
                 print("  certificate", cid, cert.get("company"), cert.get("valid_to"))
             print(d["id"], "filed as", moved["name"], "(supersedes %s)" % old["id"] if old else "")
             n += 1
+        except (he_api.ApiError, llm_router.LLMError, KeyError) as e:
+            errs.append(f"{d['id']}: {e}"); print("skip", d["id"], e, file=sys.stderr)
+
+    # Sweep: a current certificate document that still has no Certificates row
+    # (filed before read_cert existed, or the reading failed last time).
+    have = {str(c.get("doc_id")) for c in certs}
+    for d in [x for x in he_api.read("Documents") if x.get("status") == "current" and x.get("kind") == "certificate" and str(x["id"]) not in have]:
+        try:
+            f = he_api.drive_get(d["drive_file_id"], text=True)
+            cert, p2, m2 = read_cert(f["text"])
+            if not (cert and cert.get("company")):
+                print(d["id"], "certificate text could not be read; left for the admin"); continue
+            provider, model = p2, m2
+            cno = str(cert.get("cert_no") or "").strip().upper()
+            prev = next((c for c in certs if cno and str(c.get("cert_no") or "").strip().upper() == cno), None)
+            cid = prev["id"] if prev else ids_cert()
+            he_api.upsert("Certificates", [cert_row(cid, cert, d, d.get("drive_url", ""), f.get("modified", ""), f"{provider}:{model} sweep")])
+            if not prev:
+                certs.append({"id": cid, "cert_no": cert.get("cert_no", ""), "doc_id": d["id"]})
+            print("  certificate (sweep)", cid, cert.get("company"), cert.get("valid_to")); n += 1
         except (he_api.ApiError, llm_router.LLMError, KeyError) as e:
             errs.append(f"{d['id']}: {e}"); print("skip", d["id"], e, file=sys.stderr)
 
