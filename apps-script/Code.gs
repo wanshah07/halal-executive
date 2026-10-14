@@ -75,7 +75,9 @@ function setup() {
     P.setProperty('DRIVE_ROOT_ID', f.getId());
   }
   if (!P.getProperty('ADMIN_EMAILS')) P.setProperty('ADMIN_EMAILS', Session.getEffectiveUser().getEmail().toLowerCase());
-  seedReferences();
+  // Guidelines are no longer seeded: they mirror the References library
+  // (pipeline/index_references.py sync_guidelines). seedReferences() stays for
+  // reference but is not run.
   showSecrets();
 }
 

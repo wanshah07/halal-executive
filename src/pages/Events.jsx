@@ -17,7 +17,7 @@ export default function Events({ lang, data }) {
           <div className="grid gap-4 grid-cols-2 md:grid-cols-4">{posters.map((p, i) => <a key={i} href={safeUrl(p.link) || safeUrl(p.file) || safeUrl(p.url) || undefined} target="_blank" rel="noreferrer" className="card overflow-hidden"><img src={imageUrl(p.url)} alt={p.title || ''} referrerPolicy="no-referrer" className="block w-full h-auto object-contain bg-paper" />{p.title && <div className="p-2 text-sm font-medium">{p.title}</div>}</a>)}</div>
         </section>
       )}
-      <Segment id="events" lang={lang} title={t(lang, 'events')} rows={rows}
+      <Segment cardGrid="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4" id="events" lang={lang} title={t(lang, 'events')} rows={rows}
         columns={[
           { key: 'title', label: t(lang, 'title'), render: title },
           { key: 'date_start', label: t(lang, 'date'), render: (e) => fmtDateTime(e.date_start, lang) },

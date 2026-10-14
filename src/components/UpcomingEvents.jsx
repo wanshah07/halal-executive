@@ -8,14 +8,14 @@ import { ICON, ArrowRight, ArrowUpRight } from './Icon'
 // the event posters set in Admin, in one section.
 export default function UpcomingEvents({ lang, events, posters = [], setTab }) {
   const up = (events || []).filter((e) => Date.parse(e.date_end || e.date_start) >= Date.now() - 864e5)
-    .sort((a, b) => Date.parse(a.date_start) - Date.parse(b.date_start)).slice(0, 6)
+    .sort((a, b) => Date.parse(a.date_start) - Date.parse(b.date_start)).slice(0, 8)
   const ps = (posters || []).filter((p) => safeUrl(p.url))
   const title = (e) => (lang === 'bm' ? e.title_bm || e.title : e.title)
   return (
     <section className="card p-5 mb-4">
       <div className="flex items-center justify-between mb-3"><h3 className="font-semibold">{t(lang, 'upcoming')}</h3><a href="#events" onClick={() => setTab('events')} className="text-sm text-brand-600 hover:underline">{t(lang, 'all_events')} <ArrowRight {...ICON} size={15} className="inline -mt-0.5" /></a></div>
       {!up.length && !ps.length && <div className="text-sm text-ink-400">{t(lang, 'no_events')}</div>}
-      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
         {up.map((e) => (
           <article key={e.id} className="rounded-xl border border-line overflow-hidden flex flex-col">
             <Poster url={e.poster_url} file={e.poster_file} title={title(e)} />

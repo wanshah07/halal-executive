@@ -190,7 +190,16 @@ def sync_guidelines():
         out.append(row)
     if out:
         he_api.upsert("Guidelines", out)
-    print(f"guidelines: {len(out)} added or updated from the references library")
+    # Guidelines list exactly what the references library holds (Wan, 14 Oct
+    # 2026): a guideline with no indexed reference behind it (the seeded
+    # placeholders, a reference deleted or hidden, or one the AI took from a
+    # group message) is removed. Uploading the document brings it back.
+    ref_ids = {r["id"] for r in refs}
+    linked = {row["id"] for row in out} | {g["id"] for g in gls if g.get("source") in ref_ids}
+    orphans = [g["id"] for g in gls if g["id"] not in linked]
+    if orphans:
+        he_api.delete("Guidelines", orphans)
+    print(f"guidelines: {len(out)} added or updated, {len(orphans)} without a reference removed")
 
 
 def run():

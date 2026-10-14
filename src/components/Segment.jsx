@@ -5,7 +5,7 @@ import { t } from '../lib/i18n'
 // One segment = header row (title, count, filters, card/table toggle) and
 // either a card grid or a table over the same rows. `columns` drives the
 // table; `renderCard` draws a card. Both receive the same row objects.
-export default function Segment({ lang, title, rows, columns, renderCard, filters, defaultView = 'cards', empty, id }) {
+export default function Segment({ lang, title, rows, columns, renderCard, filters, defaultView = 'cards', empty, id, cardGrid = 'grid gap-4 md:grid-cols-2 xl:grid-cols-3' }) {
   // Phones start on cards (tables need sideways scrolling there); a choice the
   // reader made before is kept.
   const start = typeof window !== 'undefined' && window.innerWidth < 640 ? 'cards' : defaultView
@@ -18,7 +18,7 @@ export default function Segment({ lang, title, rows, columns, renderCard, filter
         <div className="flex flex-wrap items-center gap-2">{filters}<ViewToggle lang={lang} view={view} setView={pick} /></div>
       </div>
       {!rows.length && <div className="card p-6 text-sm text-ink-400">{empty || t(lang, 'no_data')}</div>}
-      {!!rows.length && view === 'cards' && <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{rows.map(renderCard)}</div>}
+      {!!rows.length && view === 'cards' && <div className={cardGrid}>{rows.map(renderCard)}</div>}
       {!!rows.length && view === 'table' && (
         <div className="card overflow-x-auto">
           <table className="table">

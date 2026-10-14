@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useEffect, useState } from 'react'
+import { Component, Suspense, lazy, useCallback, useEffect, useState } from 'react'
 import Header from './components/Header'
 import Sidebar, { NAV } from './components/Sidebar'
 import Notice from './components/Notice'
@@ -10,15 +10,40 @@ import { loadData, savedData, snapshotData } from './lib/api'
 import { t } from './lib/i18n'
 
 // Pages other than Overview load on first visit, so the first screen only
-// downloads what it shows.
-const FAQ = lazy(() => import('./pages/FAQ'))
-const Certificates = lazy(() => import('./pages/Certificates'))
-const Guidelines = lazy(() => import('./pages/Guidelines'))
-const References = lazy(() => import('./pages/References'))
-const Documents = lazy(() => import('./pages/Documents'))
-const Events = lazy(() => import('./pages/Events'))
-const News = lazy(() => import('./pages/News'))
-const Admin = lazy(() => import('./pages/Admin'))
+// downloads what it shows. After a new deploy, a page opened before it asks
+// for file names that no longer exist: reload once to pick up the new ones
+// instead of crashing to a blank screen.
+const lazyPage = (load) => lazy(() => load().then((m) => { try { sessionStorage.removeItem('he:reloaded') } catch { /* ignore */ } return m }).catch((e) => {
+  let again = false
+  try { again = !sessionStorage.getItem('he:reloaded'); if (again) sessionStorage.setItem('he:reloaded', '1') } catch { /* ignore */ }
+  if (again) { location.reload(); return new Promise(() => {}) }
+  throw e
+}))
+const FAQ = lazyPage(() => import('./pages/FAQ'))
+const Certificates = lazyPage(() => import('./pages/Certificates'))
+const Guidelines = lazyPage(() => import('./pages/Guidelines'))
+const References = lazyPage(() => import('./pages/References'))
+const Documents = lazyPage(() => import('./pages/Documents'))
+const Events = lazyPage(() => import('./pages/Events'))
+const News = lazyPage(() => import('./pages/News'))
+const Admin = lazyPage(() => import('./pages/Admin'))
+
+// Any error inside a page shows a message and a Reload button instead of
+// blanking the whole site.
+class PageGuard extends Component {
+  constructor(p) { super(p); this.state = { err: null } }
+  static getDerivedStateFromError(err) { return { err } }
+  componentDidUpdate(prev) { if (prev.tab !== this.props.tab && this.state.err) this.setState({ err: null }) }
+  render() {
+    if (!this.state.err) return this.props.children
+    return (
+      <div className="card p-6 text-sm">
+        <div className="font-semibold mb-1">{t(this.props.lang, 'page_error')}</div>
+        <button className="btn-brand mt-2" onClick={() => location.reload()}>{t(this.props.lang, 'refresh')}</button>
+      </div>
+    )
+  }
+}
 
 const TABS = NAV.map(([k]) => k)
 const fromHash = () => { const h = location.hash.replace('#', '').split('/')[0]; return TABS.includes(h) ? h : 'overview' }
@@ -85,6 +110,7 @@ export default function App() {
         <main className="w-full flex-1 max-w-7xl mx-auto px-4 sm:px-6 py-6">
           {err && <div className="card p-3 mb-4 text-sm bg-red-50 border-red-200">{err}</div>}
           <div className="mb-6"><SearchBar lang={lang} data={data} onOpen={(type, id) => setTab(type, id)} onAsk={(q) => setSeed({ q, n: Date.now() })} /></div>
+          <PageGuard lang={lang} tab={tab}>
           <Suspense fallback={<div className="text-sm text-ink-400 p-4">{t(lang, 'loading')}</div>}>
           {tab === 'overview' && <Overview lang={lang} data={data} setTab={setTab} />}
           {tab === 'faq' && <FAQ lang={lang} data={data} focusId={focus} />}
@@ -96,6 +122,7 @@ export default function App() {
           {tab === 'news' && <News lang={lang} data={data} />}
           {tab === 'admin' && <Admin lang={lang} data={data} onSaved={() => refresh(true)} />}
           </Suspense>
+          </PageGuard>
         </main>
         <footer className="border-t border-line bg-white">
           {/* right padding keeps the floating Assistant button off the text */}

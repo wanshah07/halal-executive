@@ -5,7 +5,7 @@ import { CATEGORIES } from '../lib/config'
 import { t } from '../lib/i18n'
 import { count, daysAgo, fmtDateTime } from '../lib/util'
 import { catChip } from '../components/CategoryFilter'
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import { monthlySeries } from '../lib/series'
 import { guessState } from '../lib/config'
 import { certStatus } from '../lib/certs'
@@ -34,7 +34,13 @@ export default function Overview({ lang, data, setTab }) {
   src.forEach((x) => { const st = x.state || guessState(x.venue || x.company); if (st) byState[st] = (byState[st] || 0) + 1 })
   const certStat = count(certs.map((c) => ({ s: certStatus(c) })), 's')
 
-  const recentList = [...faq].sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at)).slice(0, 6)
+  // Newest FAQ first, 10 to a page (Wan, 14 Oct 2026).
+  const PER = 10
+  const sorted = [...faq].sort((a, b) => Date.parse(b.updated_at || b.created_at) - Date.parse(a.updated_at || a.created_at))
+  const pages = Math.max(1, Math.ceil(sorted.length / PER))
+  const [pg, setPg] = useState(0)
+  const page = Math.min(pg, pages - 1)
+  const recentList = sorted.slice(page * PER, page * PER + PER)
 
   // Order (Wan, 14 Oct 2026): hero → recently added FAQ → news → upcoming
   // events with posters → map → overview figures and charts → AI team.
@@ -50,10 +56,20 @@ export default function Overview({ lang, data, setTab }) {
             <li key={f.id} className="py-2.5 flex gap-3 items-start">
               {catChip(f.category, lang)}
               <a href="#faq" onClick={() => setTab('faq', f.id)} className="text-sm hover:underline min-w-0">{lang === 'bm' ? f.question_bm || f.question_en : f.question_en || f.question_bm}</a>
-              <span className="ml-auto shrink-0 text-xs text-ink-400 hidden sm:inline">{fmtDateTime(f.created_at, lang)}</span>
+              <span className="ml-auto shrink-0 text-xs text-ink-400 hidden sm:inline">{fmtDateTime(f.updated_at || f.created_at, lang)}</span>
             </li>
           ))}
         </ul>
+        {pages > 1 && (
+          <nav className="flex flex-wrap items-center justify-center gap-1.5 mt-3" aria-label="FAQ pages">
+            <button className="btn px-2.5 py-1" disabled={page === 0} onClick={() => setPg(page - 1)} aria-label={t(lang, 'prev')}>‹</button>
+            {Array.from({ length: pages }, (_, i) => (
+              <button key={i} onClick={() => setPg(i)} aria-current={i === page ? 'page' : undefined}
+                className={`btn px-3 py-1 ${i === page ? 'bg-brand-600 text-white border-brand-600 hover:bg-brand-700' : ''}`}>{i + 1}</button>
+            ))}
+            <button className="btn px-2.5 py-1" disabled={page === pages - 1} onClick={() => setPg(page + 1)} aria-label={t(lang, 'next')}>›</button>
+          </nav>
+        )}
       </section>
 
       <NewsCarousel lang={lang} news={news} />

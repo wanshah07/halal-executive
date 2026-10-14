@@ -210,7 +210,8 @@ def run(sources, max_batches, dry):
         if faq_rows: he_api.upsert("FAQ", faq_rows)
         if doc_rows: he_api.upsert("Documents", doc_rows)
         if ev_rows: he_api.upsert("Events", ev_rows)
-        if gl_rows: he_api.upsert("Guidelines", gl_rows)
+        # Guidelines mirror the references library only (index_references.py);
+        # a guideline mentioned in a group message is not added on its own.
         relevant = {str(x) for it in j.get("items", []) if it.get("relevant") for x in it.get("source_msg_ids", [])}
         # A message that became a document, event or guideline was used too.
         relevant |= {str(x.get("source_msg_id")) for key in ("documents", "events", "guidelines") for x in j.get(key, []) if x.get("source_msg_id")}
