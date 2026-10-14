@@ -7,7 +7,8 @@ import { download } from './util'
 
 const cell = (v) => (v === null || v === undefined ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v))
 const stamp = () => new Date().toISOString().slice(0, 10)
-const esc = (v) => `"${cell(v).replace(/"/g, '""')}"`
+// A cell that starts with = + - @ would run as a formula in Excel; prefix it.
+const esc = (v) => { let c = cell(v); if (/^[=+\-@\t\r]/.test(c)) c = "'" + c; return `"${c.replace(/"/g, '""')}"` }
 
 export function exportCSV(name, rows, columns) {
   const cols = columns && columns.length ? columns : Object.keys(rows[0] || {}).map((k) => ({ key: k, label: k }))

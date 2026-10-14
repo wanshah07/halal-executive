@@ -70,3 +70,21 @@ export async function askAssistant(question, lang, context) {
   })
   return r.json()
 }
+
+// Question to the references library. Answers are cached on the server for
+// 6 hours; this browser keeps the last 20 too, so a repeat is instant.
+const asked = new Map()
+export async function askRefs(question, lang) {
+  const k = lang + '|' + question.trim().toLowerCase()
+  if (asked.has(k)) return { ...asked.get(k), cached: true, ms: 0 }
+  const r = await post('ask', { question, lang })
+  asked.set(k, r); if (asked.size > 20) asked.delete(asked.keys().next().value)
+  return r
+}
+
+// AI team status (cached 5 minutes on the server).
+export async function aiStatus() {
+  if (!API_URL) return null
+  const r = await fetch(`${API_URL}?action=status`, { redirect: 'follow' })
+  return r.json()
+}

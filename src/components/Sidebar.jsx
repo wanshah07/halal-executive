@@ -5,7 +5,7 @@ import { t } from '../lib/i18n'
 // while the pointer or keyboard focus is on it, and pinned open on request.
 // On phones it is a drawer opened from the header's menu button.
 export const NAV = [
-  ['overview', '▦'], ['faq', '?'], ['certificates', '✔'], ['guidelines', '§'], ['documents', '▤'], ['events', '▣'], ['news', '✦'], ['admin', '⚙'],
+  ['overview', '▦'], ['faq', '?'], ['references', '📖'], ['certificates', '✔'], ['guidelines', '§'], ['documents', '▤'], ['events', '▣'], ['news', '✦'], ['admin', '⚙'],
 ]
 
 export default function Sidebar({ lang, tab, setTab, counts, mobileOpen, setMobileOpen, pinned, setPinned }) {

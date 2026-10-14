@@ -1,3 +1,4 @@
+import { safeUrl } from '../lib/safe'
 import { useEffect, useMemo, useState } from 'react'
 import { certThumb } from '../lib/api'
 import Segment from '../components/Segment'
@@ -33,7 +34,7 @@ export function CertThumb({ c, lang, size = 'card' }) {
         <img src="./brand/jakim-halal-logo.png" alt="" className={size === 'card' ? 'h-12 w-12 opacity-30' : 'h-6 w-6 opacity-30'} />
         {size === 'card' && <span className="text-xs">{t(lang, 'no_preview')}</span>}
       </div>
-  return c.drive_url ? <a href={c.drive_url} target="_blank" rel="noreferrer" className="block" title="Drive ↗">{inner}</a> : inner
+  return safeUrl(c.drive_url) ? <a href={safeUrl(c.drive_url)} target="_blank" rel="noreferrer" className="block" title="Drive ↗">{inner}</a> : inner
 }
 
 const tone = { valid: 'bg-brand-100 text-brand-700', expiring: 'bg-amber-100 text-amber-800', expired: 'bg-red-100 text-red-700' }
@@ -91,7 +92,7 @@ export default function Certificates({ lang, data }) {
           <button className="mt-2 text-sm text-brand-600 hover:underline" onClick={() => toggle(c.id)}>{isOpen(c.id) ? '▾ ' + t(lang, 'hide_products') : `▸ ${c._products.length} ${t(lang, 'show_products')}`}</button>
           {isOpen(c.id) && products(c)}
           <div className="mt-3 text-xs text-ink-400 flex justify-between">
-            <span>{c.drive_url ? <a className="hover:underline" href={c.drive_url} target="_blank" rel="noreferrer">Drive ↗</a> : c.doc_id || ''}</span>
+            <span>{safeUrl(c.drive_url) ? <a className="hover:underline" href={safeUrl(c.drive_url)} target="_blank" rel="noreferrer">Drive ↗</a> : c.doc_id || ''}</span>
             <span>{t(lang, 'updated')} {fmtDateTime(c.updated_at, lang)}</span>
           </div>
         </article>

@@ -1,9 +1,10 @@
+import { safeUrl } from '../lib/safe'
 import { t } from '../lib/i18n'
 
 export default function Hero({ lang, settings }) {
   const title = settings.hero_title || t(lang, 'hero_default_title')
   const sub = (lang === 'bm' && settings.hero_subtitle_bm) || settings.hero_subtitle || t(lang, 'hero_default_sub')
-  const img = settings.hero_image
+  const img = safeUrl(settings.hero_image)
   return (
     <section className="card overflow-hidden mb-6">
       <div className="grid md:grid-cols-[1fr_320px]">
@@ -12,7 +13,7 @@ export default function Hero({ lang, settings }) {
           <h1 className="text-2xl sm:text-3xl font-bold text-ink-900">{title}</h1>
           <p className="mt-2 text-ink-600 max-w-2xl">{sub}</p>
           {settings.hero_cta && (
-            <a href={settings.hero_cta_url || '#faq'} className="btn-brand mt-4">{settings.hero_cta}</a>
+            <a href={safeUrl(settings.hero_cta_url, { allowHash: true }) || '#faq'} className="btn-brand mt-4">{settings.hero_cta}</a>
           )}
         </div>
         {img ? <img src={img} alt="" className="h-full w-full object-cover max-h-64 md:max-h-none" /> : <div className="hidden md:block bg-brand-600" />}

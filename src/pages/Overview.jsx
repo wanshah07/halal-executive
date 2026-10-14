@@ -1,3 +1,4 @@
+import { safeUrl } from '../lib/safe'
 import StatCard from '../components/StatCard'
 import Bars from '../components/Bars'
 import Hero from '../components/Hero'
@@ -9,6 +10,9 @@ import MonthlyChart, { monthlySeries } from '../components/MonthlyChart'
 import MapPanel from '../components/MapPanel'
 import { guessState } from '../lib/config'
 import { certStatus } from './Certificates'
+import AiTeam from '../components/AiTeam'
+import NewsCarousel from '../components/NewsCarousel'
+import UpcomingEvents from '../components/UpcomingEvents'
 
 export default function Overview({ lang, data, setTab }) {
   const faq = data.faq || [], docs = data.documents || [], events = data.events || [], news = data.news || [], gl = data.guidelines || []
@@ -16,7 +20,6 @@ export default function Overview({ lang, data, setTab }) {
   const upcoming = events.filter((e) => Date.parse(e.date_end || e.date_start) >= Date.now())
   const byCat = count(faq, 'category')
   const bySource = (data.raw_stats && data.raw_stats.by_source) || {}
-  const lastRun = (data.runs || [])[0]
   const posters = (() => { try { return JSON.parse(data.settings.posters || '[]') } catch { return [] } })()
   const topics = Object.entries(count(faq, 'subcategory')).sort((a, b) => b[1] - a[1]).slice(0, 8)
   const certs = data.certificates || []
@@ -52,17 +55,18 @@ export default function Overview({ lang, data, setTab }) {
         <StatCard label={t(lang, 'expired')} value={certStat.expired || 0} tone="red" />
       </div>
 
+      <AiTeam lang={lang} runs={data.runs} sample={data.ai_status} />
+
+      <NewsCarousel lang={lang} news={news} />
+
+      <UpcomingEvents lang={lang} events={events} setTab={setTab} />
+
       <div className="grid gap-4 lg:grid-cols-[3fr_2fr] mb-4">
         <MonthlyChart lang={lang} title={t(lang, 'per_month')} data={monthly} />
         <MapPanel lang={lang} byState={byState} />
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4 mb-4">
-        <StatCard label={t(lang, 'queue')} value={data.raw_stats ? data.raw_stats.new : '—'} hint="raw messages waiting" />
-        <StatCard label={t(lang, 'processed')} value={data.raw_stats ? data.raw_stats.processed : '—'} hint="raw messages done" />
-        <StatCard label={t(lang, 'last_run')} value={lastRun ? fmtDateTime(lastRun.ts, lang) : '—'} hint={lastRun ? `${lastRun.job} · ${lastRun.ok ? 'ok' : 'failed'}` : ''} />
-        <StatCard label={t(lang, 'model_used')} value={lastRun ? lastRun.provider : '—'} hint={lastRun ? lastRun.model : 'MIRELD / AFIQ alternate'} />
-      </div>
+
 
       <div className="grid gap-4 lg:grid-cols-[2fr_1fr] mb-4">
         <div className="card p-5">
@@ -81,7 +85,19 @@ export default function Overview({ lang, data, setTab }) {
       </div>
 
       <div className="grid gap-4 md:grid-cols-3 mb-4">
-        <Bars lang={lang} title={t(lang, 'by_source')} rows={['whatsapp', 'facebook', 'telegram', 'manual'].map((s) => ({ label: s === 'manual' ? t(lang, 'admin') : s, value: bySource[s] || 0 }))} />
+        <div className="space-y-4">
+          <Bars lang={lang} title={t(lang, 'by_source')} rows={['whatsapp', 'facebook', 'telegram', 'manual'].map((s) => ({ label: s === 'manual' ? t(lang, 'admin') : s, value: bySource[s] || 0 }))} />
+          <div className="card p-5">
+            <h3 className="font-semibold mb-3">{t(lang, 'collectors')}</h3>
+            {['whatsapp', 'telegram', 'facebook'].map((s) => {
+              const hb = (data.collectors || {})[s]
+              const age = hb ? (Date.now() - Date.parse(hb.ts)) / 60000 : null
+              const live = age != null && age < 15
+              return <div key={s} className="flex items-center justify-between text-sm py-1"><span className="capitalize">{s}</span><span className={`chip ${live ? 'bg-brand-100 text-brand-700' : age != null ? 'bg-red-100 text-red-700' : 'bg-paper text-ink-400 border border-line'}`}>{live ? `● ${t(lang, 'live')}` : age != null ? `${t(lang, 'offline')} · ${Math.round(age)} min` : t(lang, 'not_started')}</span></div>
+            })}
+            <p className="text-xs text-ink-400 mt-2">{t(lang, 'collectors_hint')}</p>
+          </div>
+        </div>
         <div className="card p-5">
           <h3 className="font-semibold mb-3">{t(lang, 'top_topics')}</h3>
           {!topics.length && <div className="text-sm text-ink-400">{t(lang, 'no_data')}</div>}
@@ -90,7 +106,7 @@ export default function Overview({ lang, data, setTab }) {
         <div className="card p-5">
           <h3 className="font-semibold mb-3">{t(lang, 'posters')}</h3>
           {!posters.length && <div className="text-sm text-ink-400">{t(lang, 'no_data')}</div>}
-          <div className="grid grid-cols-2 gap-2">{posters.map((p, i) => <a key={i} href={p.link || p.url} target="_blank" rel="noreferrer"><img src={p.url} alt={p.title || ''} className="rounded-lg border border-line object-cover aspect-[4/5]" /></a>)}</div>
+          <div className="grid grid-cols-2 gap-2">{posters.map((p, i) => <a key={i} href={safeUrl(p.link) || safeUrl(p.url) || undefined} target="_blank" rel="noreferrer"><img src={safeUrl(p.url)} alt={p.title || ''} className="rounded-lg border border-line object-cover aspect-[4/5]" /></a>)}</div>
         </div>
       </div>
       <p className="text-xs text-ink-400">{t(lang, 'sources_note')}</p>

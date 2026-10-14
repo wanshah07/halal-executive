@@ -8,6 +8,7 @@ import Overview from './pages/Overview'
 import FAQ from './pages/FAQ'
 import Certificates, { certStatus, splitProducts } from './pages/Certificates'
 import Guidelines from './pages/Guidelines'
+import References from './pages/References'
 import Documents from './pages/Documents'
 import Events from './pages/Events'
 import News from './pages/News'
@@ -65,7 +66,7 @@ export default function App() {
 
   if (!data) return <div className="p-8 text-ink-600">{err || t(lang, 'loading')}</div>
   const live = (n) => !n.expires_at || Date.parse(n.expires_at) > Date.now()
-  const counts = { faq: (data.faq || []).length, certificates: (data.certificates || []).length, guidelines: (data.guidelines || []).length, documents: (data.documents || []).filter((d) => d.status === 'current').length, events: (data.events || []).length, news: (data.news || []).filter(live).length }
+  const counts = { references: (data.references || []).length, faq: (data.faq || []).length, certificates: (data.certificates || []).length, guidelines: (data.guidelines || []).length, documents: (data.documents || []).filter((d) => d.status === 'current').length, events: (data.events || []).length, news: (data.news || []).filter(live).length }
 
   return (
     <div className="min-h-screen">
@@ -78,6 +79,7 @@ export default function App() {
           {tab === 'overview' && <Overview lang={lang} data={data} setTab={setTab} />}
           {tab === 'faq' && <FAQ lang={lang} data={data} focusId={focus} />}
           {tab === 'certificates' && <Certificates lang={lang} data={data} />}
+          {tab === 'references' && <References lang={lang} data={data} />}
           {tab === 'guidelines' && <Guidelines lang={lang} data={data} />}
           {tab === 'documents' && <Documents lang={lang} data={data} />}
           {tab === 'events' && <Events lang={lang} data={data} />}

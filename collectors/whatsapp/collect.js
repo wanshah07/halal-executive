@@ -21,7 +21,7 @@ import pkg from 'whatsapp-web.js'
 import qrcode from 'qrcode-terminal'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
-import { ingest, browserPath } from '../lib.js'
+import { ingest, post, browserPath } from '../lib.js'
 
 const { Client, LocalAuth, Chat } = pkg
 const GROUP = (process.env.HE_GROUP_NAME || 'Halal Executive').trim()
@@ -52,6 +52,9 @@ else console.log('Browser:', exe)
 const client = new Client({ authStrategy: new LocalAuth(), puppeteer: { headless: true, executablePath: exe, args: ['--no-sandbox'] } })
 client.on('qr', (qr) => { console.log('Scan with WhatsApp → Settings → Linked devices → Link a device'); qrcode.generate(qr, { small: true }) })
 client.on('auth_failure', (m) => { console.error('Login failed:', m, '\nDelete the .wwebjs_auth folder and run again to get a new QR.'); process.exit(1) })
+// WhatsApp logged this device out or the connection dropped: exit so pm2
+// restarts the collector, which reconnects with the saved session.
+client.on('disconnected', (reason) => { console.error('Disconnected:', reason); process.exit(1) })
 process.on('unhandledRejection', (e) => console.error('Error:', e && (e.message || e)))
 
 // Groups straight from WhatsApp Web's chat collection: id + title only, no
@@ -148,6 +151,11 @@ client.on('ready', async () => {
       console.log(`Backfill done: ${added} new rows in the Raw tab.`)
       if (!process.argv.includes('--listen')) { await client.destroy(); process.exit(failed ? 1 : 0) }
     }
+    // Heartbeat every 5 minutes: the site's Overview shows "WhatsApp: live"
+    // while these arrive and "offline" when they stop.
+    const beat = () => post('heartbeat', { source: 'whatsapp', group: GROUP, last_msg: state.lastTs ? new Date(state.lastTs).toISOString() : '', version: 'collector-2' })
+      .catch((e) => console.error('heartbeat failed:', e.message || e))
+    beat(); setInterval(beat, 5 * 60 * 1000)
     console.log('Listening for new messages… (Ctrl+C to stop)')
   } catch (e) {
     console.error('Stopped:', e && (e.message || e)); await client.destroy().catch(() => {}); process.exit(1)

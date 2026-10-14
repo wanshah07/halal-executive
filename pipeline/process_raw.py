@@ -1,24 +1,29 @@
 """Raw → FAQ / Documents / Events / Guidelines.
 
 Runs until the Raw queue for the chosen sources is empty (that is the "every
-3 hours, after all messages finish" rule): each loop takes a batch of `new`
+2 hours, after all messages finish" rule): each loop takes a batch of `new`
 rows, asks the router (MIRELD / AFIQ alternating) for structured output,
 upserts the results, marks the rows processed, and goes again. A batch whose
 LLM call fails on BOTH providers is left `new` for the next run and the run
 is logged as failed; nothing is marked processed on a guess.
 
-  python process_raw.py --source whatsapp,telegram      (3-hourly job)
+  python process_raw.py --source whatsapp,telegram,manual   (2-hourly job)
   python process_raw.py --source facebook               (daily job)
   python process_raw.py --max-batches 2 --dry-run       (try it)
 """
 import argparse
 import datetime as dt
 import json
+import re
 import sys
 
 import he_api
 import llm_router
 from prompts import SYSTEM
+
+# An answer that carries a link or a phone number is never published without
+# review: group messages can be wrong or planted.
+RISKY = re.compile(r"(https?://|www\.|\+?6?01\d[\s-]?\d{3,4}[\s-]?\d{4}|wa\.me)", re.I)
 
 BATCH = 25
 CHAR_BUDGET = 40000      # per model call; rows with long attachments make smaller batches
@@ -43,6 +48,11 @@ class Ids:
     def __call__(self):
         self.n += 1
         return f"{self.prefix}-{self.n:04d}"
+
+
+def safe_url(u):
+    u = str(u or "").strip()
+    return u[:500] if re.match(r"^https?://", u, re.I) else ""
 
 
 def message_for_model(r):
@@ -119,7 +129,7 @@ def run(sources, max_batches, dry):
                 "answer_formal_bm": it.get("answer_formal_bm", ""), "answer_layman_bm": it.get("answer_layman_bm", ""),
                 "source_refs": ";".join(sorted(set((old.get("source_refs", "").split(";") if old.get("source_refs") else []) + [str(x) for x in it.get("source_msg_ids", [])])))[:500],
                 "confidence": it.get("confidence", "medium"),
-                "status": old.get("status") or ("published" if it.get("confidence") == "high" else "draft"),
+                "status": old.get("status") or ("published" if it.get("confidence") == "high" and not RISKY.search(" ".join(str(it.get(k, "")) for k in ("answer_formal_en", "answer_formal_bm", "answer_layman_en", "answer_layman_bm"))) else "draft"),
                 "created_at": old.get("created_at") or ts, "updated_at": ts, "model": f"{provider}:{model}",
             }
             faq_rows.append(row); by_id[rid] = row
@@ -141,11 +151,11 @@ def run(sources, max_batches, dry):
         for e in j.get("events", []):
             if e.get("title"):
                 ev_rows.append({"id": ids["EV"](), "title": e["title"], "title_bm": e.get("title_bm", ""), "date_start": e.get("date_start", ""), "date_end": "", "venue": e.get("venue", ""),
-                                "poster_url": "", "link": e.get("link", ""), "description": e.get("description", ""), "status": "draft", "source": e.get("source_msg_id", "")})
+                                "poster_url": "", "link": safe_url(e.get("link")), "description": e.get("description", ""), "status": "draft", "source": e.get("source_msg_id", "")})
         for g in j.get("guidelines", []):
             if g.get("title"):
                 gl_rows.append({"id": ids["GL"](), "category": g.get("category", "halal"), "title": g["title"], "title_bm": g.get("title_bm", ""), "summary_en": g.get("summary_en", ""),
-                                "summary_bm": g.get("summary_bm", ""), "link": g.get("link", ""), "issuer": g.get("issuer", ""), "effective_date": "", "updated_at": ts, "status": "draft", "source": g.get("source_msg_id", "")})
+                                "summary_bm": g.get("summary_bm", ""), "link": safe_url(g.get("link")), "issuer": g.get("issuer", ""), "effective_date": "", "updated_at": ts, "status": "draft", "source": g.get("source_msg_id", "")})
 
         print(f"batch {batches}: {len(rows)} msgs → faq {len(faq_rows)} docs {len(doc_rows)} events {len(ev_rows)} guidelines {len(gl_rows)} via {provider}/{model}")
         if dry:
@@ -156,6 +166,8 @@ def run(sources, max_batches, dry):
         if ev_rows: he_api.upsert("Events", ev_rows)
         if gl_rows: he_api.upsert("Guidelines", gl_rows)
         relevant = {str(x) for it in j.get("items", []) if it.get("relevant") for x in it.get("source_msg_ids", [])}
+        # A message that became a document, event or guideline was used too.
+        relevant |= {str(x.get("source_msg_id")) for key in ("documents", "events", "guidelines") for x in j.get(key, []) if x.get("source_msg_id")}
         done = [r["id"] for r in rows if r["id"] in relevant]
         skipped = [r["id"] for r in rows if r["id"] not in relevant]
         if done: he_api.raw_update(done, status="processed", processed_at=ts, model=f"{provider}:{model}")

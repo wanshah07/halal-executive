@@ -16,7 +16,7 @@ export const count = (arr, key) => arr.reduce((m, x) => { const k = x[key] || 'â
 export const toCSV = (rows) => {
   if (!rows.length) return ''
   const cols = Object.keys(rows[0])
-  const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`
+  const esc = (v) => { let c = String(v ?? ''); if (/^[=+\-@\t\r]/.test(c)) c = "'" + c; return `"${c.replace(/"/g, '""')}"` }
   return [cols.join(','), ...rows.map((r) => cols.map((c) => esc(r[c])).join(','))].join('\n')
 }
 export const download = (name, text, type = 'text/csv') => {

@@ -33,3 +33,11 @@
 11. **Current references** (checked 14 Oct 2026): MPPHM (Domestik) 2020,
     MHMS 2020, MS 1500:2019, MS 2634:2019. MS 2200-1:2008 is withdrawn;
     never cite it as current.
+12. **References stay private.** Uploaded standards (MS documents are
+    copyrighted by Standards Malaysia) live in Drive and the `RefChunks` tab.
+    The public page may receive answers and short quotes (25 words), never
+    whole passages or files.
+13. **Every link from the Sheet goes through `safeUrl`** (src/lib/safe.js) and
+    links from the model through `safe_url` in the pipeline. Sheet text can
+    come from a WhatsApp message.
+14. **Pipeline cadence is 2 hours** (`10 */2 * * *`).

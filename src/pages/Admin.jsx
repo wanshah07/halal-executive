@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { adminPost, post, getSession, setSession } from '../lib/api'
 import { API_URL } from '../lib/config'
 import { t } from '../lib/i18n'
+import { RefAdmin, EventsAdmin } from '../components/AdminExtra'
 
 // Admin panel, locked. A registered email asks for a code, the code arrives
 // by email from the Sheet's Apps Script, and the session lasts 6 hours.
@@ -184,6 +185,8 @@ export default function Admin({ lang, data, onSaved, onSession }) {
 
       <ReviewBox lang={lang} onChanged={onSaved} />
       <UploadBox lang={lang} />
+      <RefAdmin lang={lang} />
+      <EventsAdmin lang={lang} onChanged={onSaved} />
 
       <div className="card p-5 mb-4 space-y-3">
         <h3 className="font-semibold">Hero</h3>

@@ -41,6 +41,23 @@ skipped. Running the same export twice adds nothing twice. WhatsApp caps an
 export with media at about 10,000 recent messages (40,000 without media).
 `HE_IMPORT_SINCE=2025-01-01` in `.env` limits the import to newer messages.
 
+## Is the collector live?
+
+While it runs, the WhatsApp collector checks in every 5 minutes. The site's
+Overview → Collectors shows **Live** while check-ins arrive and **Offline · N
+min** when they stop. If it says Offline, on the PC run `pm2 logs he-whatsapp`.
+If WhatsApp logged the device out, the collector exits and pm2 restarts it;
+when a QR code shows in the log, run `npm run groups` once in a window to scan
+again.
+
+## Dependency warnings
+
+`npm install` reports high-severity warnings in `extract-zip`, pulled in by
+puppeteer's browser downloader. No fixed version exists yet. The collector
+never uses that downloader (it drives the Chrome or Edge already installed,
+and npm blocks puppeteer's download step), so the vulnerable code does not run.
+`basic-ftp` is pinned to a fixed version and `adm-zip` is on 0.6.
+
 ## Privacy
 
 Sender identity is hashed (`sender_hash` = SHA-256 of the sender id with a

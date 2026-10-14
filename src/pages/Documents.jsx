@@ -1,3 +1,4 @@
+import { safeUrl } from '../lib/safe'
 import { useState } from 'react'
 import Segment from '../components/Segment'
 import CategoryFilter, { catChip } from '../components/CategoryFilter'
@@ -26,7 +27,7 @@ export default function Documents({ lang, data }) {
     <Segment id="documents" lang={lang} title={t(lang, 'documents')} rows={rows} defaultView="table" filters={filters}
       columns={[
         { key: 'status', label: 'Status', render: status },
-        { key: 'title', label: t(lang, 'title'), render: (d) => d.drive_url ? <a className="font-medium hover:underline" href={d.drive_url} target="_blank" rel="noreferrer">{d.title}</a> : d.title },
+        { key: 'title', label: t(lang, 'title'), render: (d) => safeUrl(d.drive_url) ? <a className="font-medium hover:underline" href={safeUrl(d.drive_url)} target="_blank" rel="noreferrer">{d.title}</a> : d.title },
         { key: 'kind', label: 'Kind' },
         { key: 'category', label: t(lang, 'category'), render: (d) => catChip(d.category, lang) },
         { key: 'version', label: t(lang, 'version'), render: (d) => `v${d.version || 1}` },
@@ -37,7 +38,7 @@ export default function Documents({ lang, data }) {
       renderCard={(d) => (
         <article key={d.id} className="card p-4">
           <div className="flex items-center justify-between mb-2">{status(d)}<span className="text-xs text-ink-400">v{d.version || 1} · {d.kind}</span></div>
-          {d.drive_url ? <a href={d.drive_url} target="_blank" rel="noreferrer" className="font-semibold hover:underline">{d.title}</a> : <div className="font-semibold">{d.title}</div>}
+          {safeUrl(d.drive_url) ? <a href={safeUrl(d.drive_url)} target="_blank" rel="noreferrer" className="font-semibold hover:underline">{d.title}</a> : <div className="font-semibold">{d.title}</div>}
           <div className="mt-2 flex items-center gap-2">{catChip(d.category, lang)}{d.supersedes_id && <span className="text-xs text-ink-400">{t(lang, 'supersedes')} {d.supersedes_id}</span>}</div>
           <div className="mt-3 text-xs text-ink-400">{t(lang, 'received')} {fmtDateTime(d.received_at, lang)}<br />{t(lang, 'updated')} {fmtDateTime(d.updated_at, lang)}</div>
         </article>

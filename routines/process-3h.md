@@ -1,6 +1,6 @@
-Run the Halal Executive 3-hourly pass.
+Run the Halal Executive 2-hourly pass.
 
-1. `cd pipeline && python process_raw.py --source whatsapp,telegram` then `python drive_organiser.py`.
+1. `cd pipeline && python process_raw.py --source whatsapp,telegram,manual`, then `python drive_organiser.py`, then `python index_references.py`.
 2. The script loops until the Raw queue for those sources is empty. Do not stop it early.
 3. If it exits non-zero with "all providers failed", do nothing else; the batch stays `new`. Report which provider failed first and the error, in one line.
 4. Otherwise report: messages processed, FAQ rows written, which provider answered (MIRELD or AFIQ) and whether a fallback happened.
