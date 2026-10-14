@@ -21,7 +21,8 @@ web app is the only door to the Sheet and Drive.
 ## 2. Page
 6. Repository → Settings → Variables: `VITE_API_URL` (the /exec URL),
    `VITE_SHEET_URL`, `VITE_DRIVE_FOLDER_URL`. Settings → Pages → Source:
-   GitHub Actions. Push to `main` or run "Deploy site".
+   GitHub Actions (the workflow cannot do this itself). Then Actions → "Deploy
+   site" → Run workflow; the first run after enabling publishes the page.
 7. DNS at the `kkmhalalconsultant.com` zone: `CNAME halalexecutive →
    wanshah07.github.io`. Pages → Custom domain shows
    `halalexecutive.kkmhalalconsultant.com` from `public/CNAME`; tick
