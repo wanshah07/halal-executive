@@ -49,7 +49,10 @@ web app is the only door to the Sheet and Drive.
     `HE_API_URL`, `HE_INGEST_TOKEN` (from `showSecrets()`) and
     `HE_GROUP_NAME`. Run `npm run groups` (scan the QR with WhatsApp → Linked
     devices) to print the exact group names, fix `HE_GROUP_NAME` if needed,
-    then `npm run backfill`, then keep `npm start` running under pm2.
+    then `npm run backfill` (it stops by itself and prints how many rows went
+    to the Raw tab), then keep `npm start` running under pm2. If a group name
+    has odd characters, put its `…@g.us` id from `npm run groups` in
+    `HE_GROUP_ID` instead.
 11. Telegram: BotFather → new bot → `/setprivacy` Disable → add the bot to
     the group → `cd collectors/telegram && npm install && TELEGRAM_BOT_TOKEN=… npm start`.
 12. Facebook: read `collectors/README.md` first. `cd collectors/facebook &&
