@@ -55,6 +55,11 @@ def ensure_tesseract():
 def pdf_pages(data):
     from pypdf import PdfReader
     reader = PdfReader(io.BytesIO(data))
+    # Many official PDFs are encrypted only to stop editing or printing (no
+    # password to open); an empty password unlocks them for reading. AES needs
+    # the cryptography package (requirements.txt).
+    if reader.is_encrypted and not reader.decrypt(""):
+        raise RuntimeError("this PDF needs a password to open; upload an unlocked copy")
     pages = [(i + 1, (p.extract_text() or "").strip()) for i, p in enumerate(reader.pages)]
     empty = [n for n, t in pages if len(t) < 40]
     if empty and ensure_tesseract():
@@ -150,7 +155,9 @@ def run():
         # The Sheet has not been given the new Code.gs yet (no References tab).
         print("references not set up yet:", e)
         return 0
-    refs = [r for r in rows if r.get("status") == "pending"]
+    # Pending rows, plus rows that failed only because the runner lacked the
+    # AES package (fixed 14 Oct 2026), so nobody has to press Re-read for them.
+    refs = [r for r in rows if r.get("status") == "pending" or (r.get("status") == "error" and "cryptography" in str(r.get("error", "")))]
     if not refs:
         print("no references waiting")
         return 0
