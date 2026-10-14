@@ -1,6 +1,6 @@
 name: Pipeline
 # Scheduled jobs. Each one runs until its queue is empty and logs the provider
-# that answered (MIRELD or AFIQ) to the Runs tab. Times are UTC; the 2-hourly
+# that answered (MIRELD or AFIQ) to the Runs tab. Times are UTC; the 30-minute
 # pass starts at 00:10 so it never collides with the Facebook pass at
 # 18:40 UTC (02:40 MYT).
 #
@@ -8,8 +8,10 @@ name: Pipeline
 # Repository variables (all optional): MIRELD_MODEL, AFIQ_MODEL (empty = auto), NEWS_FEEDS
 on:
   schedule:
-    - cron: '10 */2 * * *'    # whatsapp + telegram + admin uploads + new references, every 2 h
-    - cron: '40 18 * * *'     # facebook, once a day
+    # Every 30 min while the collectors bed in (Wan, 14 Oct 2026); back to
+    # '10 */2 * * *' once stable. Public repo: Actions minutes are free.
+    - cron: '10,40 * * * *'   # whatsapp + telegram + admin uploads + new references, every 30 min
+    - cron: '55 18 * * *'     # facebook, once a day (off the :10/:40 slots)
     - cron: '25 */6 * * *'    # news sweep
     - cron: '50 19 * * *'     # drive organiser
   workflow_dispatch:
@@ -51,8 +53,8 @@ jobs:
           j="${{ github.event.inputs.job }}"
           if [ -z "$j" ]; then
             case "${{ github.event.schedule }}" in
-              '10 */2 * * *') j=process_whatsapp ;;
-              '40 18 * * *')  j=process_facebook ;;
+              '10,40 * * * *') j=process_whatsapp ;;
+              '55 18 * * *')  j=process_facebook ;;
               '25 */6 * * *') j=news ;;
               '50 19 * * *')  j=organise ;;
             esac

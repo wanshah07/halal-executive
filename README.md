@@ -38,7 +38,7 @@ Sheet ──(GET ?action=data)──► this page (Vite + React + Tailwind) ─�
   Selection is automatic (`pipeline/llm_router.py`, and `complete()` in
   `apps-script/Code.gs` for the chatbot). The Runs tab and the Overview show
   which provider answered.
-* **Cadence.** WhatsApp + Telegram + Admin uploads + new references every 2 hours, each run continuing until
+* **Cadence.** WhatsApp + Telegram + Admin uploads + new references every 30 minutes for now (2 hours once stable), each run continuing until
   the queue is empty; Facebook once a day, up to 5 hours; news every 6 hours;
   Drive organiser after every pass and once a day. See
   `.github/workflows/pipeline.yml` (primary) and `routines/` (Claude Routine

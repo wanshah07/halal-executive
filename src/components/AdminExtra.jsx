@@ -8,7 +8,7 @@ import { POSTER_ACCEPT, POSTER_MAX } from './Poster'
 const toB64 = (file) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1] || ''); r.onerror = () => rej(r.error); r.readAsDataURL(file) })
 
 // References library: upload a manual, standard or circular. The next
-// pipeline run (every 2 h, or Actions → Pipeline → references) reads it page
+// pipeline run (every 30 min, or Actions → Pipeline → references) reads it page
 // by page and it becomes searchable in the References tab.
 export function RefAdmin({ lang }) {
   const [rows, setRows] = useState(null)

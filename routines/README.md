@@ -9,7 +9,7 @@ secrets in the environment.
 
 | Routine | Cron (MYT) | Prompt |
 |---|---|---|
-| WhatsApp + Telegram pass | every 2 h, :10 | `process-3h.md` |
+| WhatsApp + Telegram pass | every 30 min, :10 and :40 | `process-3h.md` |
 | Facebook pass | daily 02:40 | `process-facebook.md` |
 | News sweep | every 6 h, :25 | `news.md` |
 | Drive organiser | daily 03:50 | `organise.md` |

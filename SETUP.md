@@ -1,6 +1,6 @@
 # Bring-up, in order
 
-Twelve steps. The pipeline runs every 2 hours. Nothing here needs a Google service account: the Apps Script
+Twelve steps. The pipeline runs every 30 minutes for now (2 hours once stable). Nothing here needs a Google service account: the Apps Script
 web app is the only door to the Sheet and Drive.
 
 ## 1. Sheet + Drive
@@ -64,14 +64,14 @@ web app is the only door to the Sheet and Drive.
 Admin → **Add screenshots or files**: screenshots, PDF, Word, Excel,
 PowerPoint or text (10 MB each), with a type (FAQ material, halal
 certificate, guideline, event) and an optional note. Each file lands in the
-Raw tab as source `manual` and in Drive `00 Inbox/manual`; the next 2-hourly
+Raw tab as source `manual` and in Drive `00 Inbox/manual`; the next pipeline
 run reads its text (OCR for images and scans) and writes FAQ entries, or
 files it as a certificate. Run Actions → Pipeline → `process_whatsapp` to do
 it straight away.
 
 ## References library and questions
 Admin → **References library**: upload a manual, standard or circular (PDF,
-Word, Excel, PowerPoint, TXT, 25 MB). The next 2-hourly run (or Actions →
+Word, Excel, PowerPoint, TXT, 25 MB). The next pipeline run (or Actions →
 Pipeline → `references`) reads it page by page, scanned pages through OCR,
 stores the passages in the `RefChunks` tab and writes a short summary. The
 **References** tab then answers questions in Malay or English: plain answer,
