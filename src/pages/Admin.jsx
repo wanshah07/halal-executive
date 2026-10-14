@@ -217,6 +217,14 @@ function ProgressBox({ lang }) {
             <div className="text-xs text-ink-600 mt-1">{done.toLocaleString()} {t(lang, 'read_done')} · {skipped.toLocaleString()} {t(lang, 'filtered')}{failedRows ? ` · ${failedRows} ${t(lang, 'p_row_errors')}` : ''}</div>
           </div>
         </div>
+        {st.llm_speed && (st.llm_speed.MIRELD || st.llm_speed.AFIQ) && (() => {
+          const sp = st.llm_speed, both = sp.MIRELD && sp.AFIQ && sp.MIRELD.n >= 3 && sp.AFIQ.n >= 3
+          const lead = both ? (sp.MIRELD.ms <= sp.AFIQ.ms ? 'MIRELD' : 'AFIQ') : ''
+          const name = { AFIQ: 'Wanshah 1 (AFIQ)', MIRELD: 'Wanshah 2 (MIRELD)' }
+          return (
+            <p className="text-xs text-ink-600">{t(lang, 'p_speed')}: {['AFIQ', 'MIRELD'].filter((k) => sp[k]).map((k) => `${name[k]} ${(sp[k].ms / 1000).toFixed(1)} s`).join(' · ')}{lead ? ` · ${t(lang, 'p_lead')}: ${name[lead]}` : ` · ${t(lang, 'p_measuring')}`}</p>
+          )
+        })()}
         {(watch.whatsapp || watch.pipeline) && (
           <ul className="text-sm text-red-700 space-y-1">{['whatsapp', 'pipeline'].filter((k) => watch[k]).map((k) => <li key={k}>⚠ {watch[k].msg} <span className="text-ink-400">({t(lang, 'p_since')} {ago(watch[k].since, lang)})</span></li>)}</ul>
         )}

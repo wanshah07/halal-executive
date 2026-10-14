@@ -520,7 +520,7 @@ function pipelineStatus() {
   try { log = JSON.parse(P.getProperty('progress_log') || '[]'); } catch (e) { log = []; }
   try { gh = githubRuns(); } catch (e) { gh = { error: String(e.message || e) }; }
   var last = null; try { last = JSON.parse(P.getProperty('last_dispatch') || 'null'); } catch (e) { /* none */ }
-  return { ok: true, now: new Date().toISOString(), log: log, github: gh, raw: rawStats(), collectors: collectorStatus(), last_dispatch: last, watch: watchState() };
+  return { ok: true, now: new Date().toISOString(), log: log, github: gh, raw: rawStats(), collectors: collectorStatus(), last_dispatch: last, watch: watchState(), llm_speed: llmSpeed() };
 }
 
 // ---------- Watchdog ----------
@@ -911,9 +911,30 @@ function deleteByIds(tab, ids) {
   return { ok: true, deleted: n };
 }
 
-// ---------- LLM: MIRELD and AFIQ alternate, each covers the other ----------
+// ---------- LLM: the faster provider leads, each covers the other ----------
+// Every call's time is recorded per provider (moving average; a failure
+// counts as a slow call). Once both have 3 timed calls, the faster one takes
+// 4 calls in 5 and the other 1 in 5, so its time stays measured and the lead
+// changes by itself when the other gateway gets quicker (Wan, 14 Oct 2026).
+// Before that they alternate. The other provider always covers a failure.
+var SPEED_SHARE = 0.8;
+function llmSpeed() { try { return JSON.parse(props().getProperty('llm_speed') || '{}'); } catch (e) { return {}; } }
+function recordSpeed(name, ms, ok) {
+  try {
+    var all = llmSpeed(), s = all[name] || { ms: 0, n: 0, fails: 0 };
+    var t = ok ? ms : Math.max(ms, (s.ms || 30000) * 1.5, 60000);
+    s.ms = s.n ? Math.round(s.ms * 0.7 + t * 0.3) : Math.round(t);
+    s.n = Math.min((s.n || 0) + 1, 1000); s.fails = ok ? 0 : (s.fails || 0) + 1; s.at = new Date().toISOString();
+    all[name] = s; props().setProperty('llm_speed', JSON.stringify(all));
+  } catch (e) { /* timing is a nicety */ }
+}
 function nextProvider() {
-  var P = props(), turn = parseInt(P.getProperty('llm_turn') || '0', 10);
+  var P = props(), sp = llmSpeed(), a = sp.MIRELD, b = sp.AFIQ;
+  if (a && b && a.n >= 3 && b.n >= 3) {
+    var fast = a.ms <= b.ms ? 'MIRELD' : 'AFIQ';
+    return Math.random() < SPEED_SHARE ? fast : (fast === 'MIRELD' ? 'AFIQ' : 'MIRELD');
+  }
+  var turn = parseInt(P.getProperty('llm_turn') || '0', 10);
   P.setProperty('llm_turn', String(turn + 1));
   return turn % 2 === 0 ? 'MIRELD' : 'AFIQ';
 }
@@ -996,6 +1017,7 @@ function callProvider(name, messages, opts) {
 function complete(messages, opts) {
   var first = nextProvider(), order = [first, first === 'MIRELD' ? 'AFIQ' : 'MIRELD'], errs = [];
   for (var i = 0; i < order.length; i++) {
+    var t0 = Date.now();
     try {
       var r = callProvider(order[i], messages, opts);
       // A reply cut off by the token limit (thinking models spend part of it
@@ -1008,9 +1030,10 @@ function complete(messages, opts) {
         if (r.finish === 'length') throw new Error('reply cut off');
       }
       if (opts && opts.json) r.json = parseJson(r.text); // unreadable JSON hands over to the other provider
+      recordSpeed(order[i], Date.now() - t0, true);
       if (i) { r.fallback_from = first; r.first_error = errs[0]; }
       return r;
-    } catch (e) { errs.push(order[i] + ': ' + String(e.message || e).slice(0, 200)); }
+    } catch (e) { recordSpeed(order[i], Date.now() - t0, false); errs.push(order[i] + ': ' + String(e.message || e).slice(0, 200)); }
   }
   throw new Error('both providers failed: ' + errs.join(' | '));
 }

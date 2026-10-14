@@ -3,10 +3,12 @@
 1. **The Sheet is the database.** Every write goes through
    `apps-script/Code.gs`. Do not add a second writer (no gspread, no direct
    Drive API) and do not change `TABS` column order; append columns only.
-2. **Two providers, auto-selected.** MIRELD and AFIQ alternate per call with
-   mutual fallback (`pipeline/llm_router.py`, `complete()` in Code.gs). Never
-   hard-code one, never add a third without Wan, never mark a Raw row
-   processed when both failed.
+2. **Two providers, auto-selected by speed.** MIRELD and AFIQ cover each
+   other on any failure (`pipeline/llm_router.py`, `complete()` in Code.gs).
+   Each call's time is recorded per provider; once both have 3 timed calls
+   the faster one leads 4 calls in 5 and the other keeps 1 in 5 so the lead
+   can change by itself (Wan, 14 Oct 2026). Never hard-code one, never add a
+   third without Wan, never mark a Raw row processed when both failed.
 3. **Nothing private is published.** `Raw` never reaches the page. Names,
    phone numbers, member company names and case details stay out of FAQ,
    Documents titles, Events and News. A fact the messages left unstated is

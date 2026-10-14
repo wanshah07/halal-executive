@@ -1,4 +1,4 @@
-"""MIRELD and AFIQ, alternating, each covering the other.
+"""MIRELD and AFIQ: the faster one leads, each covering the other.
 
 Both are OpenAI-compatible chat gateways:
   MIRELD  https://api.mireld.my/v1   key MIRELD_API_KEY  model MIRELD_MODEL
@@ -23,6 +23,7 @@ MIRELD_TIMEOUT keeps the wait short where that is known to happen.
 import json
 import os
 import pathlib
+import random
 import re
 import time
 
@@ -46,6 +47,45 @@ def _turn():
     n = int(f.read_text() or "0") if f.exists() else 0
     f.write_text(str(n + 1))
     return n
+
+
+# Speed-led routing (Wan, 14 Oct 2026): each call's time per provider goes
+# into STATE/speed.json as a moving average (a failure counts as slow). Once
+# both have 3 timed calls the faster one leads 4 calls in 5 and the other
+# keeps 1 in 5, so the lead moves by itself when the other gets quicker.
+# STATE is kept between runs by the workflow's cache step.
+SPEED_SHARE = 0.8
+
+
+def _speed():
+    try:
+        return json.loads((STATE / "speed.json").read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def record_speed(name, secs, ok):
+    try:
+        STATE.mkdir(parents=True, exist_ok=True)
+        allp = _speed()
+        s = allp.get(name) or {"s": 0, "n": 0, "fails": 0}
+        t = secs if ok else max(secs, (s.get("s") or 30) * 1.5, 60)
+        s["s"] = round(s["s"] * 0.7 + t * 0.3, 2) if s.get("n") else round(t, 2)
+        s["n"] = min(s.get("n", 0) + 1, 1000)
+        s["fails"] = 0 if ok else s.get("fails", 0) + 1
+        allp[name] = s
+        (STATE / "speed.json").write_text(json.dumps(allp))
+    except OSError:
+        pass
+
+
+def pick_first(avail):
+    sp = _speed()
+    timed = [p for p in avail if (sp.get(p) or {}).get("n", 0) >= 3]
+    if len(avail) > 1 and len(timed) == len(avail):
+        ranked = sorted(avail, key=lambda p: sp[p]["s"])
+        return ranked[0] if random.random() < SPEED_SHARE else ranked[1]
+    return avail[_turn() % len(avail)]
 
 
 def available():
@@ -136,10 +176,11 @@ def complete(messages, json_mode=False, **kw):
     avail = available()
     if not avail:
         raise LLMError("no provider keys set (MIRELD_API_KEY / AFIQ_API_KEY)")
-    first = avail[_turn() % len(avail)]
+    first = pick_first(avail)
     order = [first] + [p for p in avail if p != first]
     errors = []
     for name in order:
+        t0 = time.time()
         try:
             out = _call(name, messages, json_mode=json_mode, **kw)
             if json_mode:
@@ -150,11 +191,13 @@ def complete(messages, json_mode=False, **kw):
                     # without it before handing the request on.
                     retry = _call(name, messages + [{"role": "user", "content": "Reply with the JSON object only, no other text."}], json_mode=False, **kw)
                     out = {**retry, "json": parse_json(retry["text"])}
+            record_speed(name, time.time() - t0, True)
             if errors:
                 out["fallback_from"] = order[0]
                 out["first_error"] = errors[0]
             return out
         except (LLMError, requests.RequestException, ValueError) as e:
+            record_speed(name, time.time() - t0, False)
             errors.append(f"{name}: {e}")
             print(f"[router] {name} failed: {str(e)[:200]}")
             time.sleep(1)
