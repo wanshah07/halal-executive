@@ -40,7 +40,10 @@ jobs:
       - run: pip install -r pipeline/requirements.txt
       - name: Restore provider turn counter
         uses: actions/cache@v4
-        with: { path: .state, key: llm-turn-${{ github.run_id }}, restore-keys: llm-turn- }
+        with:
+          path: .state
+          key: llm-turn-${{ github.run_id }}
+          restore-keys: llm-turn-
       - name: Pick job
         id: pick
         run: |
