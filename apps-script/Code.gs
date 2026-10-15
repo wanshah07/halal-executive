@@ -34,7 +34,7 @@ var TABS = {
   FAQ:        ['id','category','subcategory','question_en','question_bm','answer_formal_en','answer_layman_en','answer_formal_bm','answer_layman_bm','source_refs','confidence','status','created_at','updated_at','model','verify_notes','verified_at'],
   Guidelines: ['id','category','title','title_bm','summary_en','summary_bm','link','issuer','effective_date','updated_at','status','source'],
   Documents:  ['id','title','kind','category','drive_file_id','drive_url','content_hash','version','supersedes_id','source_msg_id','received_at','updated_at','status','notes'],
-  Certificates: ['id','company','cert_no','scheme','category','state','valid_from','valid_to','products','drive_url','doc_id','status','updated_at','notes'],
+  Certificates: ['id','company','cert_no','scheme','category','state','valid_from','valid_to','products','drive_url','doc_id','status','updated_at','notes','issuer','legal_authority','reg_no','issue_date','office_address','factory_address','scope'],
   Events:     ['id','title','title_bm','date_start','date_end','venue','poster_url','link','description','status','source','poster_file'],
   News:       ['id','title','url','source','published_at','fetched_at','expires_at','summary_en','summary_bm','category'],
   Settings:   ['key','value'],
@@ -691,7 +691,7 @@ var EDITABLE = {
   FAQ: ['category', 'subcategory', 'question_en', 'question_bm', 'answer_formal_en', 'answer_layman_en', 'answer_formal_bm', 'answer_layman_bm'],
   Events: ['title', 'title_bm', 'date_start', 'date_end', 'venue', 'link', 'description', 'poster_url', 'poster_file'],
   Documents: ['title', 'kind', 'category'],
-  Certificates: ['company', 'cert_no', 'scheme', 'state', 'category', 'valid_from', 'valid_to', 'products'],
+  Certificates: ['company', 'cert_no', 'scheme', 'state', 'category', 'valid_from', 'valid_to', 'products', 'issuer', 'legal_authority', 'reg_no', 'issue_date', 'office_address', 'factory_address', 'scope'],
   Guidelines: ['category', 'title', 'title_bm', 'issuer', 'summary_en', 'summary_bm', 'link'],
 };
 function reviewSave(tab, id, fields) {
@@ -699,7 +699,7 @@ function reviewSave(tab, id, fields) {
   var patch = {};
   allowed.forEach(function (k) {
     if (fields[k] === undefined) return;
-    var v = String(fields[k] == null ? '' : fields[k]).slice(0, k.indexOf('answer') === 0 || k === 'description' || k.indexOf('summary') === 0 ? 6000 : 500);
+    var v = String(fields[k] == null ? '' : fields[k]).slice(0, k.indexOf('answer') === 0 || k === 'description' || k.indexOf('summary') === 0 || k === 'products' || k === 'scope' ? 6000 : 500);
     if ((k === 'link' || k === 'poster_url' || k === 'poster_file') && v && !/^https?:\/\//i.test(v)) throw new Error(k + ' must start with https://');
     patch[k] = v;
   });

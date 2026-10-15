@@ -34,8 +34,18 @@ If the document is a halal certificate (Sijil Pengesahan Halal Malaysia or a for
 Return JSON: {"relation":"version_of|new","of_id":"existing id or null","title":"","doc_date":"","expiry":"","confidence":"high|medium|low","reason":"","certificate":null|{"company":"","cert_no":"","scheme":"","state":"","valid_from":"","valid_to":"","products":[""]}}"""
 
 
-CERT = """Read this halal certificate (Sijil Pengesahan Halal Malaysia, or a foreign certification body's certificate) and return its particulars exactly as printed: holder company name, certificate number, scheme (Food Product, Food Premise, Cosmetic, Pharmaceutical, Logistics, Slaughterhouse, OEM, other), Malaysian state of the holder if printed, valid_from and valid_to (ISO dates), and the product or premise list (one string per item). Never invent anything: a field you cannot read is "[SAHKAN]". If the text is not a halal certificate at all, return {"certificate": null}.
-Return JSON: {"certificate": {"company":"","cert_no":"","scheme":"","state":"","valid_from":"","valid_to":"","products":[""]}}"""
+CERT = """Read this halal certificate (Sijil Pengesahan Halal Malaysia, or a foreign certification body's certificate) and return its particulars exactly as printed. Never invent anything: a field that is not printed is "" and a field you cannot read is "[SAHKAN]". If the text is not a halal certificate at all, return {"certificate": null}.
+- issuer: the issuing body as printed, with its authority/signatory if printed (e.g. "The Central Islamic Council of Thailand (CICOT), under the authority of the Sheikhul Islam of Thailand")
+- legal_authority: the law, act or section it is issued under, as printed
+- cert_no: the certificate number; reg_no: any registration / file / reference number other than the certificate number
+- issue_date, valid_from, valid_to: ISO dates (YYYY-MM-DD)
+- company: the certified company's NAME only (no address)
+- office_address and factory_address (or premise address) as printed; "" when not printed
+- scheme: Food Product, Food Premise, Cosmetic, Pharmaceutical, Logistics, Slaughterhouse, OEM, other
+- state: the Malaysian state of the holder if printed
+- products: the approved products or product types, one string per item, as printed
+- scope: one sentence stating what the certificate certifies, as printed (e.g. production processes comply with Islamic law; use of the halal logo)
+Return JSON {"certificate": {"issuer":"","legal_authority":"","cert_no":"","reg_no":"","issue_date":"","valid_from":"","valid_to":"","company":"","office_address":"","factory_address":"","scheme":"","state":"","products":[""],"scope":""}}"""
 
 CERT_TEXT = re.compile(r"sijil\s+pengesahan\s+halal|halal\s+certificat|certificate\s+of\s+halal|perakuan\s+halal|pengesahan\s+halal\s+malaysia", re.I)
 
@@ -72,7 +82,8 @@ def cert_row(cid, cert, d, url, modified, note, status="current"):
     return {"id": cid, "company": cert.get("company", ""), "cert_no": cert.get("cert_no", ""), "scheme": cert.get("scheme", ""), "category": d.get("category", "halal"),
             "state": cert.get("state", ""), "valid_from": cert.get("valid_from", ""), "valid_to": cert.get("valid_to", ""),
             "products": "; ".join(str(x) for x in prods) if isinstance(prods, list) else str(prods),
-            "drive_url": url, "doc_id": d["id"], "status": status, "updated_at": modified, "notes": note}
+            "drive_url": url, "doc_id": d["id"], "status": status, "updated_at": modified, "notes": note,
+            **{k: str(cert.get(k) or "")[:2000] for k in ("issuer", "legal_authority", "reg_no", "issue_date", "office_address", "factory_address", "scope")}}
 
 
 def safe(s):
@@ -118,7 +129,7 @@ def run():
             date = (j.get("doc_date") or d.get("received_at") or "")[:10] or dt.date.today().isoformat()
             ext = os.path.splitext(f["name"])[1] or ""
             cert = j.get("certificate") if isinstance(j.get("certificate"), dict) else None
-            if not (cert and cert.get("company")) and (d.get("kind") == "certificate" or CERT_TEXT.search(f["text"] or "")):
+            if not (cert and cert.get("company") and cert.get("issuer")) and (d.get("kind") == "certificate" or CERT_TEXT.search(f["text"] or "") or (cert and cert.get("company"))):
                 cert, p2, m2 = read_cert(f["text"])
                 provider, model = p2 or provider, m2 or model
             # An expired certificate (or a document past its printed expiry) is
@@ -146,7 +157,7 @@ def run():
                 # The same certificate number is one row, however many times it is posted.
                 prev = next((c for c in certs if (old and c.get("doc_id") == old["id"]) or (cno and str(c.get("cert_no") or "").strip().upper() == cno)), None)
                 cid = prev["id"] if prev else ids_cert()
-                he_api.upsert("Certificates", [cert_row(cid, cert, d, moved["url"], moved["modified"], f"{provider}:{model} {j.get('confidence', '')}",
+                he_api.upsert("Certificates", [cert_row(cid, cert, d, moved["url"], moved["modified"], f"{provider}:{model} full-read {j.get('confidence', '')}",
                                                         status=prev.get("status") if prev and prev.get("status") == "current" else status)])
                 if not prev:
                     certs.append({"id": cid, "cert_no": cert.get("cert_no", ""), "doc_id": d["id"], "status": status})
@@ -158,8 +169,15 @@ def run():
 
     # Sweep: a current certificate document that still has no Certificates row
     # (filed before read_cert existed, or the reading failed last time).
-    have = {str(c.get("doc_id")) for c in certs}
-    for d in [x for x in he_api.read("Documents") if x.get("status") in ("current", "draft") and x.get("kind") == "certificate" and str(x["id"]) not in have]:
+    # Rows from before the full template are read again, once ("full-read"),
+    # but only once the Sheet has the new columns (new Code.gs deployed).
+    if certs and "issuer" not in certs[0]:
+        print("Certificates tab has no issuer column yet: deploy the new Code.gs; details are read after that.")
+        certs_ready = False
+    else:
+        certs_ready = True
+    have = {str(c.get("doc_id")) for c in certs if c.get("issuer") or "full-read" in str(c.get("notes") or "")}
+    for d in [x for x in he_api.read("Documents") if certs_ready and x.get("status") in ("current", "draft") and x.get("kind") == "certificate" and str(x["id"]) not in have]:
         try:
             f = he_api.drive_get(d["drive_file_id"], text=True)
             cert, p2, m2 = read_cert(f["text"])
@@ -170,9 +188,10 @@ def run():
                 print(d["id"], "expired certificate; not listed"); continue
             provider, model = p2, m2
             cno = str(cert.get("cert_no") or "").strip().upper()
-            prev = next((c for c in certs if cno and str(c.get("cert_no") or "").strip().upper() == cno), None)
+            prev = next((c for c in certs if str(c.get("doc_id")) == str(d["id"]) or (cno and str(c.get("cert_no") or "").strip().upper() == cno)), None)
             cid = prev["id"] if prev else ids_cert()
-            he_api.upsert("Certificates", [cert_row(cid, cert, d, d.get("drive_url", ""), f.get("modified", ""), f"{provider}:{model} sweep", status=d.get("status") or "current")])
+            he_api.upsert("Certificates", [cert_row(cid, cert, d, d.get("drive_url", ""), f.get("modified", ""), f"{provider}:{model} full-read",
+                                                    status=(prev or {}).get("status") or d.get("status") or "current")])
             if not prev:
                 certs.append({"id": cid, "cert_no": cert.get("cert_no", ""), "doc_id": d["id"]})
             print("  certificate (sweep)", cid, cert.get("company"), cert.get("valid_to")); n += 1
