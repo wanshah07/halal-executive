@@ -53,12 +53,26 @@ def read_cert(text):
     return c, out["provider"], out["model"]
 
 
-def cert_row(cid, cert, d, url, modified, note):
+def expired(v):
+    """True when an ISO date (valid_to / expiry) is already past."""
+    try:
+        return dt.date.fromisoformat(str(v)[:10]) < dt.date.today()
+    except ValueError:
+        return False
+
+
+def live_status(d):
+    """Admin uploads are published at once; a file from the WhatsApp group
+    waits in Admin → Drafts until an admin publishes it (Wan, 15 Oct 2026)."""
+    return "draft" if "from:group" in str(d.get("notes") or "") else "current"
+
+
+def cert_row(cid, cert, d, url, modified, note, status="current"):
     prods = cert.get("products") or []
     return {"id": cid, "company": cert.get("company", ""), "cert_no": cert.get("cert_no", ""), "scheme": cert.get("scheme", ""), "category": d.get("category", "halal"),
             "state": cert.get("state", ""), "valid_from": cert.get("valid_from", ""), "valid_to": cert.get("valid_to", ""),
             "products": "; ".join(str(x) for x in prods) if isinstance(prods, list) else str(prods),
-            "drive_url": url, "doc_id": d["id"], "status": "current", "updated_at": modified, "notes": note}
+            "drive_url": url, "doc_id": d["id"], "status": status, "updated_at": modified, "notes": note}
 
 
 def safe(s):
@@ -68,8 +82,8 @@ def safe(s):
 def run():
     docs = he_api.read("Documents")
     inbox = [d for d in docs if d.get("status") == "inbox"]
-    by_hash = {d["content_hash"]: d for d in docs if d.get("content_hash") and d.get("status") in ("current", "archived")}
-    current = [d for d in docs if d.get("status") == "current"]
+    by_hash = {d["content_hash"]: d for d in docs if d.get("content_hash") and d.get("status") in ("current", "draft", "archived", "expired")}
+    current = [d for d in docs if d.get("status") in ("current", "draft")]
     certs = he_api.read("Certificates")
     _ci = [0]
     for c in certs:
@@ -103,28 +117,40 @@ def run():
             title = safe(j.get("title") or d["title"] or f["name"])
             date = (j.get("doc_date") or d.get("received_at") or "")[:10] or dt.date.today().isoformat()
             ext = os.path.splitext(f["name"])[1] or ""
-            old = next((c for c in cands if c["id"] == j.get("of_id")), None) if j.get("relation") == "version_of" and j.get("confidence") in ("high", "medium") else None
-            version = int(old.get("version") or 1) + 1 if old else 1
-            moved = he_api.drive_file(d["drive_file_id"], name=f"{date} v{version} {title}{ext}", path=f"10 Documents/{d.get('category', 'halal')}", description=f"{d['id']} · {j.get('reason', '')}")
-            he_api.upsert("Documents", [{**d, "title": title, "content_hash": h, "version": version, "supersedes_id": old["id"] if old else "", "drive_url": moved["url"], "updated_at": moved["modified"], "status": "current", "notes": (f"expiry {j['expiry']}; " if j.get("expiry") else "") + f"{provider}:{model} {j.get('confidence', '')}"}])
-            if old:
-                om = he_api.drive_file(old["drive_file_id"], path=f"90 Archive/{old.get('category', 'halal')}")
-                he_api.upsert("Documents", [{**old, "status": "archived", "updated_at": om["modified"], "notes": f"superseded by {d['id']}"}])
-                current = [c for c in current if c["id"] != old["id"]]
-            d.update(content_hash=h, version=version, status="current", title=title); current.append(d); by_hash[h] = d
             cert = j.get("certificate") if isinstance(j.get("certificate"), dict) else None
             if not (cert and cert.get("company")) and (d.get("kind") == "certificate" or CERT_TEXT.search(f["text"] or "")):
                 cert, p2, m2 = read_cert(f["text"])
                 provider, model = p2 or provider, m2 or model
+            # An expired certificate (or a document past its printed expiry) is
+            # kept in Drive "90 Archive" for the record and never becomes a draft.
+            if (cert and expired(cert.get("valid_to"))) or expired(j.get("expiry")):
+                moved = he_api.drive_file(d["drive_file_id"], name=f"{date} EXPIRED {title}{ext}", path=f"90 Archive/{d.get('category', 'halal')}", description=f"{d['id']} · expired")
+                he_api.upsert("Documents", [{**d, "title": title, "content_hash": h, "drive_url": moved["url"], "updated_at": moved["modified"], "status": "expired",
+                                             "notes": f"expired {(cert or {}).get('valid_to') or j.get('expiry')}; {provider}:{model}"}])
+                by_hash[h] = d
+                print(d["id"], "expired, archived:", title); n += 1
+                continue
+            status = live_status(d)
+            old = next((c for c in cands if c["id"] == j.get("of_id")), None) if j.get("relation") == "version_of" and j.get("confidence") in ("high", "medium") else None
+            version = int(old.get("version") or 1) + 1 if old else 1
+            moved = he_api.drive_file(d["drive_file_id"], name=f"{date} v{version} {title}{ext}", path=f"10 Documents/{d.get('category', 'halal')}", description=f"{d['id']} · {j.get('reason', '')}")
+            he_api.upsert("Documents", [{**d, "title": title, "content_hash": h, "version": version, "supersedes_id": old["id"] if old else "", "drive_url": moved["url"], "updated_at": moved["modified"], "status": status,
+                                         "notes": ("from:group; " if status == "draft" else "") + (f"expiry {j['expiry']}; " if j.get("expiry") else "") + f"{provider}:{model} {j.get('confidence', '')}"}])
+            if old:
+                om = he_api.drive_file(old["drive_file_id"], path=f"90 Archive/{old.get('category', 'halal')}")
+                he_api.upsert("Documents", [{**old, "status": "archived", "updated_at": om["modified"], "notes": f"superseded by {d['id']}"}])
+                current = [c for c in current if c["id"] != old["id"]]
+            d.update(content_hash=h, version=version, status=status, title=title); current.append(d); by_hash[h] = d
             if cert and cert.get("company"):
                 cno = str(cert.get("cert_no") or "").strip().upper()
                 # The same certificate number is one row, however many times it is posted.
                 prev = next((c for c in certs if (old and c.get("doc_id") == old["id"]) or (cno and str(c.get("cert_no") or "").strip().upper() == cno)), None)
                 cid = prev["id"] if prev else ids_cert()
-                he_api.upsert("Certificates", [cert_row(cid, cert, d, moved["url"], moved["modified"], f"{provider}:{model} {j.get('confidence', '')}")])
+                he_api.upsert("Certificates", [cert_row(cid, cert, d, moved["url"], moved["modified"], f"{provider}:{model} {j.get('confidence', '')}",
+                                                        status=prev.get("status") if prev and prev.get("status") == "current" else status)])
                 if not prev:
-                    certs.append({"id": cid, "cert_no": cert.get("cert_no", ""), "doc_id": d["id"]})
-                print("  certificate", cid, cert.get("company"), cert.get("valid_to"))
+                    certs.append({"id": cid, "cert_no": cert.get("cert_no", ""), "doc_id": d["id"], "status": status})
+                print("  certificate", cid, cert.get("company"), cert.get("valid_to"), status)
             print(d["id"], "filed as", moved["name"], "(supersedes %s)" % old["id"] if old else "")
             n += 1
         except (he_api.ApiError, llm_router.LLMError, KeyError) as e:
@@ -133,17 +159,20 @@ def run():
     # Sweep: a current certificate document that still has no Certificates row
     # (filed before read_cert existed, or the reading failed last time).
     have = {str(c.get("doc_id")) for c in certs}
-    for d in [x for x in he_api.read("Documents") if x.get("status") == "current" and x.get("kind") == "certificate" and str(x["id"]) not in have]:
+    for d in [x for x in he_api.read("Documents") if x.get("status") in ("current", "draft") and x.get("kind") == "certificate" and str(x["id"]) not in have]:
         try:
             f = he_api.drive_get(d["drive_file_id"], text=True)
             cert, p2, m2 = read_cert(f["text"])
             if not (cert and cert.get("company")):
                 print(d["id"], "certificate text could not be read; left for the admin"); continue
+            if expired(cert.get("valid_to")):
+                he_api.upsert("Documents", [{**d, "status": "expired", "notes": f"expired {cert.get('valid_to')}"}])
+                print(d["id"], "expired certificate; not listed"); continue
             provider, model = p2, m2
             cno = str(cert.get("cert_no") or "").strip().upper()
             prev = next((c for c in certs if cno and str(c.get("cert_no") or "").strip().upper() == cno), None)
             cid = prev["id"] if prev else ids_cert()
-            he_api.upsert("Certificates", [cert_row(cid, cert, d, d.get("drive_url", ""), f.get("modified", ""), f"{provider}:{model} sweep")])
+            he_api.upsert("Certificates", [cert_row(cid, cert, d, d.get("drive_url", ""), f.get("modified", ""), f"{provider}:{model} sweep", status=d.get("status") or "current")])
             if not prev:
                 certs.append({"id": cid, "cert_no": cert.get("cert_no", ""), "doc_id": d["id"]})
             print("  certificate (sweep)", cid, cert.get("company"), cert.get("valid_to")); n += 1

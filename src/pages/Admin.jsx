@@ -3,7 +3,7 @@ import { adminPost, post, getSession, setSession, dropLocal, refreshAll } from '
 import { API_URL } from '../lib/config'
 import { t } from '../lib/i18n'
 import { fmtDateTime } from '../lib/util'
-import { safeUrl } from '../lib/safe'
+import { safeUrl, imageUrl } from '../lib/safe'
 import { RefAdmin, EventsAdmin, ContentManager, deleteForGood } from '../components/AdminExtra'
 import { POSTER_ACCEPT, POSTER_MAX } from '../components/Poster'
 import { ICON, Lock, RefreshCw, Upload, X, Play } from '../components/Icon'
@@ -258,57 +258,115 @@ function ProgressBox({ lang }) {
   )
 }
 
+// Drafts to review, one tab per kind. Each draft can be read in full,
+// edited, then published, hidden or deleted.
+const REVIEW_KINDS = ['FAQ', 'Events', 'Documents', 'Certificates', 'Guidelines']
+// [field, label, long?, editable?]
+const FULL = {
+  FAQ: [['category', 'Category'], ['subcategory', 'Subcategory'], ['question_en', 'Question (EN)'], ['question_bm', 'Soalan (BM)'], ['answer_formal_en', 'Answer, formal (EN)', 1], ['answer_layman_en', 'Answer, simple (EN)', 1], ['answer_formal_bm', 'Jawapan, rasmi (BM)', 1], ['answer_layman_bm', 'Jawapan, mudah (BM)', 1]],
+  Events: [['title', 'Title'], ['title_bm', 'Tajuk (BM)'], ['date_start', 'Start (YYYY-MM-DD)'], ['date_end', 'End (YYYY-MM-DD)'], ['venue', 'Venue'], ['link', 'Registration link'], ['poster_url', 'Poster link'], ['description', 'Description', 1]],
+  Documents: [['title', 'Title'], ['kind', 'Kind'], ['category', 'Category'], ['drive_url', 'File', 0, 0], ['notes', 'Notes', 0, 0]],
+  Certificates: [['company', 'Company'], ['cert_no', 'Certificate no.'], ['scheme', 'Scheme'], ['state', 'State'], ['category', 'Category'], ['valid_from', 'Valid from (YYYY-MM-DD)'], ['valid_to', 'Valid to (YYYY-MM-DD)'], ['products', 'Products (separate with ;)', 1], ['drive_url', 'File', 0, 0]],
+  Guidelines: [['category', 'Category'], ['title', 'Title'], ['title_bm', 'Tajuk (BM)'], ['issuer', 'Issuer'], ['summary_en', 'Summary (EN)', 1], ['summary_bm', 'Ringkasan (BM)', 1], ['link', 'Link']],
+}
+const isoDay = (v) => { const d = new Date(v); return v && !isNaN(d) ? new Date(d.getTime() + 8 * 3600e3).toISOString().slice(0, 10) : (v || '') }
+function DraftItem({ lang, tab, r, onSet, onDelete, onSaved }) {
+  const [openFull, setOpenFull] = useState(false)
+  const [edit, setEdit] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const fields = FULL[tab] || []
+  const title = tab === 'FAQ' ? (r.question_en || r.question_bm) : tab === 'Certificates' ? r.company : r.title
+  const body = tab === 'FAQ' ? (r.answer_formal_en || r.answer_layman_en) : tab === 'Events' ? `${isoDay(r.date_start)} ${r.venue || ''} ${r.description || ''}` : tab === 'Certificates' ? `${r.cert_no || ''} · ${r.scheme || ''} · ${isoDay(r.valid_from)} → ${isoDay(r.valid_to)}` : tab === 'Documents' ? `${r.kind || ''} · ${r.category || ''}` : (r.summary_en || '')
+  const startEdit = () => { const e = {}; fields.forEach(([k, , , ed]) => { if (ed !== 0) e[k] = /date|valid_/.test(k) ? isoDay(r[k]) : (r[k] ?? '') }); setEdit(e); setOpenFull(true) }
+  async function save(publish) {
+    setBusy(true); setErr('')
+    try { await adminPost('review_save', { tab, id: r.id, fields: edit }); onSaved({ ...r, ...edit }); setEdit(null); if (publish) onSet('published') }
+    catch (e) { setErr(e.message) } finally { setBusy(false) }
+  }
+  const poster = tab === 'Events' && imageUrl(r.poster_url)
+  return (
+    <li className="py-3 flex flex-col gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-start gap-3">
+        {poster && <img src={poster} alt="" loading="lazy" className="w-24 h-32 object-cover rounded-lg border border-line shrink-0" />}
+        <div className="min-w-0 flex-1">
+          <div className="text-xs text-ink-400">{r.id}{r.category ? ` · ${r.category}` : ''}{r.confidence ? ` · ${r.confidence}` : ''}{String(r.notes || '').includes('from:group') ? ' · WhatsApp' : ''}</div>
+          <button type="button" className="font-medium text-left hover:underline" aria-expanded={openFull} onClick={() => setOpenFull(!openFull)}>{title || '(no title)'}</button>
+          {!openFull && <button type="button" className="w-full text-left text-sm text-ink-600 line-clamp-3 whitespace-pre-wrap" onClick={() => setOpenFull(true)}>{body} <span className="text-brand-700">{t(lang, 'read_full')}</span></button>}
+        </div>
+        <div className="flex flex-wrap gap-2 shrink-0">
+          {!edit && <button className="btn" onClick={startEdit}>{t(lang, 'edit')}</button>}
+          <button className="btn-brand" onClick={() => onSet('published')}>{t(lang, 'publish')}</button>
+          <button className="btn" onClick={() => onSet('hidden')}>{t(lang, 'hide')}</button>
+          <button className="btn text-red-700" onClick={onDelete}>{t(lang, 'delete')}</button>
+        </div>
+      </div>
+      {openFull && !edit && (
+        <dl className="space-y-2 text-sm">
+          {fields.filter(([k]) => r[k]).map(([k, label]) => (
+            <div key={k}><dt className="text-xs text-ink-400">{label}</dt>
+              <dd className="whitespace-pre-wrap break-words text-ink-900">{/^https?:\/\//.test(String(r[k])) ? <a className="underline text-brand-700" href={safeUrl(r[k])} target="_blank" rel="noopener noreferrer">{r[k]}</a> : /date|valid_/.test(k) ? isoDay(r[k]) : String(r[k])}</dd></div>
+          ))}
+        </dl>
+      )}
+      {edit && (
+        <div className="grid sm:grid-cols-2 gap-3 text-sm">
+          {fields.filter(([, , , ed]) => ed !== 0).map(([k, label, long]) => (
+            <div key={k} className={long ? 'sm:col-span-2' : ''}><label className="label" htmlFor={`ed-${r.id}-${k}`}>{label}</label>
+              {long
+                ? <textarea id={`ed-${r.id}-${k}`} className="input" rows={4} value={edit[k]} onChange={(e) => setEdit({ ...edit, [k]: e.target.value })} />
+                : <input id={`ed-${r.id}-${k}`} className="input" value={edit[k]} onChange={(e) => setEdit({ ...edit, [k]: e.target.value })} />}
+            </div>
+          ))}
+          <div className="sm:col-span-2 flex flex-wrap items-center gap-2">
+            <button className="btn-brand" disabled={busy} onClick={() => save(true)}>{busy ? '…' : t(lang, 'save_publish')}</button>
+            <button className="btn" disabled={busy} onClick={() => save(false)}>{t(lang, 'save_changes')}</button>
+            <button className="btn" disabled={busy} onClick={() => setEdit(null)}>{t(lang, 'cancel')}</button>
+            {err && <span className="text-red-600">{err}</span>}
+          </div>
+        </div>
+      )}
+    </li>
+  )
+}
+
 function ReviewBox({ lang, onChanged }) {
   const [drafts, setDrafts] = useState(null)
   const [open, setOpen] = useState([])
-  const [shown, setShown] = useState({})
+  const [kind, setKind] = useState('FAQ')
   const [msg, setMsg] = useState('')
   const load = () => adminPost('review_list').then((r) => { setDrafts(r.drafts); setOpen(r.to_confirm || []) }).catch((e) => setMsg(e.message))
   useEffect(() => { load() }, [])
   // The row leaves the list at once; the server write follows.
   const without = (tab, id) => setDrafts((d) => (d ? { ...d, [tab]: (d[tab] || []).filter((r) => r.id !== id) } : d))
+  const replace = (tab, row) => setDrafts((d) => (d ? { ...d, [tab]: (d[tab] || []).map((r) => (r.id === row.id ? row : r)) } : d))
   async function set(tab, id, status) {
     without(tab, id); if (status === 'hidden') dropLocal(tab, id)
     try { await adminPost('review_set', { tab, id, status }); onChanged && onChanged() } catch (e) { setMsg(e.message); load(); refreshAll() }
   }
-  const items = drafts ? Object.entries(drafts).flatMap(([tab, rows]) => rows.map((r) => ({ tab, r }))) : []
-  const title = ({ tab, r }) => tab === 'FAQ' ? (r.question_en || r.question_bm) : tab === 'Certificates' ? r.company : r.title
-  // Every field the draft carries, so it can be read in full before publishing.
-  const FULL = {
-    FAQ: [['question_en', 'Question (EN)'], ['question_bm', 'Soalan (BM)'], ['answer_formal_en', 'Answer, formal (EN)'], ['answer_layman_en', 'Answer, simple (EN)'], ['answer_formal_bm', 'Jawapan, rasmi (BM)'], ['answer_layman_bm', 'Jawapan, mudah (BM)'], ['subcategory', 'Subcategory']],
-    Events: [['title', 'Title'], ['title_bm', 'Tajuk (BM)'], ['date_start', 'Date'], ['venue', 'Venue'], ['link', 'Link'], ['description', 'Description']],
-    Guidelines: [['title', 'Title'], ['title_bm', 'Tajuk (BM)'], ['issuer', 'Issuer'], ['summary_en', 'Summary (EN)'], ['summary_bm', 'Ringkasan (BM)'], ['link', 'Link']],
-    Certificates: [['company', 'Company'], ['cert_no', 'Certificate no.'], ['scheme', 'Scheme'], ['state', 'State'], ['valid_from', 'Valid from'], ['valid_to', 'Valid to'], ['products', 'Products'], ['drive_url', 'File']],
-  }
-  const body = ({ tab, r }) => tab === 'FAQ' ? (r.answer_formal_en || r.answer_layman_en) : tab === 'Events' ? `${r.date_start || ''} ${r.venue || ''} ${r.description || ''}` : tab === 'Certificates' ? `${r.scheme || ''} · ${r.valid_from || ''} → ${r.valid_to || ''}` : (r.summary_en || '')
+  const count = (k) => ((drafts && drafts[k]) || []).length
+  const total = REVIEW_KINDS.reduce((n, k) => n + count(k), 0)
+  const rows = (drafts && drafts[kind]) || []
   return (
     <div className="card p-5 mb-4 space-y-3">
-      <div className="flex items-center justify-between"><h3 className="font-semibold">{t(lang, 'review_title')} {drafts && <span className="text-ink-400 font-normal">({items.length})</span>}</h3><button className="btn" onClick={load} aria-label="refresh"><RefreshCw {...ICON} size={16} /></button></div>
+      <div className="flex items-center justify-between"><h3 className="font-semibold">{t(lang, 'review_title')} {drafts && <span className="text-ink-400 font-normal">({total})</span>}</h3><button className="btn" onClick={load} aria-label="refresh"><RefreshCw {...ICON} size={16} /></button></div>
       <p className="text-sm text-ink-600">{t(lang, 'review_sub')}</p>
+      <div className="flex flex-wrap gap-2" role="tablist">
+        {REVIEW_KINDS.map((k) => (
+          <button key={k} role="tab" aria-selected={kind === k} onClick={() => setKind(k)} className={`px-3 py-1.5 rounded-lg border text-sm ${kind === k ? 'bg-ink-900 text-white border-ink-900' : 'border-line text-ink-600 hover:bg-paper'}`}>
+            {t(lang, 'draft_' + k)} <span className={kind === k ? 'text-white/70' : 'text-ink-400'}>({count(k)})</span>
+          </button>
+        ))}
+      </div>
       {!drafts && !msg && <div className="text-sm text-ink-400">{t(lang, 'loading')}</div>}
-      {drafts && !items.length && <div className="text-sm text-ink-400">{t(lang, 'review_empty')}</div>}
+      {drafts && !rows.length && <div className="text-sm text-ink-400">{t(lang, 'review_empty')}</div>}
       <ul className="divide-y divide-line">
-        {items.map((it) => (
-          <li key={it.tab + it.r.id} className="py-3 flex flex-col sm:flex-row sm:items-start gap-3">
-            <div className="min-w-0 flex-1">
-              <div className="text-xs text-ink-400">{it.tab} · {it.r.id}{it.r.category ? ` · ${it.r.category}` : ''}{it.r.confidence ? ` · ${it.r.confidence}` : ''}</div>
-              <button type="button" className="font-medium text-left hover:underline" aria-expanded={!!shown[it.tab + it.r.id]} onClick={() => setShown((x) => ({ ...x, [it.tab + it.r.id]: !x[it.tab + it.r.id] }))}>{title(it)}</button>
-              {shown[it.tab + it.r.id] ? (
-                <dl className="mt-2 space-y-2 text-sm">
-                  {(FULL[it.tab] || []).filter(([k]) => it.r[k]).map(([k, label]) => (
-                    <div key={k}><dt className="text-xs text-ink-400">{label}</dt>
-                      <dd className="whitespace-pre-wrap break-words text-ink-900">{/^https?:\/\//.test(String(it.r[k])) ? <a className="underline text-brand-700" href={safeUrl(it.r[k])} target="_blank" rel="noopener noreferrer">{it.r[k]}</a> : String(it.r[k])}</dd></div>
-                  ))}
-                </dl>
-              ) : (
-                <button type="button" className="w-full text-left text-sm text-ink-600 line-clamp-3 whitespace-pre-wrap" onClick={() => setShown((x) => ({ ...x, [it.tab + it.r.id]: true }))}>{body(it)} <span className="text-brand-700">{t(lang, 'read_full')}</span></button>
-              )}
-            </div>
-            <div className="flex gap-2 shrink-0"><button className="btn-brand" onClick={() => set(it.tab, it.r.id, 'published')}>{t(lang, 'publish')}</button><button className="btn" onClick={() => set(it.tab, it.r.id, 'hidden')}>{t(lang, 'hide')}</button><button className="btn text-red-700" onClick={() => deleteForGood(lang, it.tab, it.r.id, title(it), () => without(it.tab, it.r.id)).catch((e) => { setMsg(e.message); load() })}>{t(lang, 'delete')}</button></div>
-          </li>
+        {rows.map((r) => (
+          <DraftItem key={kind + r.id} lang={lang} tab={kind} r={r} onSet={(st) => set(kind, r.id, st)} onSaved={(row) => replace(kind, row)}
+            onDelete={() => deleteForGood(lang, kind, r.id, r.question_en || r.title || r.company, () => without(kind, r.id)).catch((e) => { setMsg(e.message); load() })} />
         ))}
       </ul>
-      {!!open.length && (
+      {kind === 'FAQ' && !!open.length && (
         <div className="pt-3 border-t border-line">
           <h4 className="font-semibold text-sm">{t(lang, 'to_confirm')} <span className="text-ink-400 font-normal">({open.reduce((n, r) => n + r.notes.length, 0)})</span></h4>
           <p className="text-sm text-ink-600 mb-2">{t(lang, 'to_confirm_sub')}</p>

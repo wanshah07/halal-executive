@@ -22,7 +22,12 @@
    pembungkusan not kemasan. Regulatory terms stay original.
 5. **News lives 72 hours.** `expires_at` is set once at fetch and never
    extended.
-6. **Nothing is deleted automatically except finished events.** Superseded
+6. **Group files wait for an admin; expired ones never show.** A poster,
+   certificate or document from the WhatsApp group is copied into Drive and
+   lands in Admin → Drafts (`from:group`); Admin uploads publish at once. An
+   expired certificate or document goes to `90 Archive` with status `expired`
+   and is never a draft; nor is a finished event (Wan, 15 Oct 2026).
+   **Nothing is deleted automatically except finished events.** Superseded
    document versions move to `90 Archive`; duplicates are marked, not removed.
    Deleting for good (row + its Drive file) happens only through Admin's
    Delete button, which asks first (`adminDelete` in Code.gs). Finished

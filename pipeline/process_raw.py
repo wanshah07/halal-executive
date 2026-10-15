@@ -52,6 +52,23 @@ def shape(j):
 ADMIN_CERT = "Admin upload: this is a halal certificate"
 
 
+def poster_for(mid, rows, dry):
+    """The poster of an event announced with a picture or PDF in the group:
+    copied to Drive "30 Posters" and shared view-only by Apps Script, exactly
+    like a poster uploaded in Admin, so the draft event shows it."""
+    r = next((x for x in rows if str(x["id"]) == str(mid)), None)
+    if not r or dry:
+        return "", ""
+    for a in json.loads(r.get("attachments") or "[]"):
+        if a.get("drive_file_id") and re.match(r"image/|application/pdf", str(a.get("mime") or "")):
+            try:
+                p = he_api.post("poster_from_drive", id=a["drive_file_id"])
+                return p.get("url", ""), p.get("file", "")
+            except he_api.ApiError as e:
+                print("poster not copied:", e, file=sys.stderr)
+    return "", ""
+
+
 def _day(v):
     try:
         return dt.date.fromisoformat(str(v)[:10])
@@ -252,6 +269,12 @@ def run(sources, max_batches, dry, minutes=20, attachments=None):
                 for a in json.loads(r.get("attachments") or "[]"):
                     if a.get("drive_file_id"):
                         att_index[(r["id"], a.get("name"))] = a
+            src_of = {str(r["id"]): r.get("source", "") for r in rows}
+
+            def origin(mid):
+                # Admin uploads are published by the organiser; group files wait as drafts.
+                return "from:admin; " if src_of.get(str(mid)) == "manual" else "from:group; "
+
             for d in j["documents"]:
                 a = att_index.get((d.get("source_msg_id"), d.get("attachment_name")))
                 if not a:
@@ -262,7 +285,7 @@ def run(sources, max_batches, dry, minutes=20, attachments=None):
                 doc_rows.append({"id": ids["DOC"](), "title": d.get("title") or a["name"], "kind": d.get("kind", "other"), "category": d.get("category", "halal"),
                                  "drive_file_id": a["drive_file_id"], "drive_url": a.get("drive_url", ""), "content_hash": a.get("sha256", ""), "version": "",
                                  "supersedes_id": "", "source_msg_id": d.get("source_msg_id"), "received_at": next((r["ts"] for r in rows if r["id"] == d.get("source_msg_id")), ts),
-                                 "updated_at": ts, "status": "inbox", "notes": "awaiting organiser"})
+                                 "updated_at": ts, "status": "inbox", "notes": origin(d.get("source_msg_id")) + "awaiting organiser"})
             # A halal certificate posted in the group is filed even when the model
             # did not list it: the text read from the picture or PDF decides.
             for m in msgs:
@@ -276,7 +299,7 @@ def run(sources, max_batches, dry, minutes=20, attachments=None):
                     doc_rows.append({"id": ids["DOC"](), "title": "Halal certificate", "kind": "certificate", "category": "halal",
                                      "drive_file_id": a["drive_file_id"], "drive_url": a.get("drive_url", ""), "content_hash": a.get("sha256", ""), "version": "",
                                      "supersedes_id": "", "source_msg_id": m["id"], "received_at": m.get("ts") or ts,
-                                     "updated_at": ts, "status": "inbox", "notes": "certificate text found; awaiting organiser"})
+                                     "updated_at": ts, "status": "inbox", "notes": origin(m["id"]) + "certificate text found; awaiting organiser"})
             msg_ts = {str(r["id"]): str(r.get("ts") or "") for r in rows}
             for e in j["events"]:
                 if event_past(e, msg_ts.get(str(e.get("source_msg_id")), "")):
@@ -286,8 +309,9 @@ def run(sources, max_batches, dry, minutes=20, attachments=None):
                     continue  # same event (title words + day) already on file
                 seen_events.add(ek)
                 if e.get("title"):
-                    ev_rows.append({"id": ids["EV"](), "title": e["title"], "title_bm": e.get("title_bm", ""), "date_start": e.get("date_start", ""), "date_end": "", "venue": e.get("venue", ""),
-                                    "poster_url": "", "link": safe_url(e.get("link")), "description": e.get("description", ""), "status": "draft", "source": e.get("source_msg_id", "")})
+                    poster, poster_file = poster_for(e.get("source_msg_id"), rows, dry)
+                    ev_rows.append({"id": ids["EV"](), "title": e["title"], "title_bm": e.get("title_bm", ""), "date_start": e.get("date_start", ""), "date_end": e.get("date_end", ""), "venue": e.get("venue", ""),
+                                    "poster_url": poster, "link": safe_url(e.get("link")), "description": e.get("description", ""), "status": "draft", "source": e.get("source_msg_id", ""), "poster_file": poster_file})
             for g in j["guidelines"]:
                 gk = norm_title(g.get("title"))
                 if g.get("title") and gk in seen_guidelines:

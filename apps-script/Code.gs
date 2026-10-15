@@ -236,8 +236,10 @@ function publicData() {
     // number): admin only, like the open points to confirm.
     faq: noMarks(readTab('FAQ').filter(function (r) { return r.status === 'published'; }).map(function (r) { delete r.verify_notes; delete r.source_refs; return r; })),
     guidelines: noMarks(readTab('Guidelines').filter(function (r) { return r.status !== 'hidden' && r.status !== 'draft'; })),
-    documents: noMarks(readTab('Documents').filter(function (r) { return r.status !== 'hidden' && r.status !== 'duplicate'; })),
-    certificates: noMarks(readTab('Certificates').filter(function (r) { return r.status !== 'hidden'; })),
+    // Only what an admin published (or uploaded): group files wait as drafts,
+    // expired certificates and unread inbox files never show.
+    documents: noMarks(readTab('Documents').filter(function (r) { return ['hidden', 'duplicate', 'draft', 'expired', 'inbox'].indexOf(String(r.status)) < 0; })),
+    certificates: noMarks(readTab('Certificates').filter(function (r) { return r.status !== 'hidden' && r.status !== 'draft' && r.status !== 'expired'; })),
     events: noMarks(readTab('Events').filter(function (r) { return r.status !== 'hidden' && r.status !== 'draft' && !eventOver(r, now); })),
     news: readTab('News').filter(function (r) { return !r.expires_at || Date.parse(r.expires_at) > now; }),
     references: readTab('References').filter(function (r) { return r.status === 'indexed'; }).map(function (r) {
@@ -281,6 +283,7 @@ function doPost(e) {
     if (a === 'llm')          return json(llmProxy(body));
     if (a === 'heartbeat')    return json(heartbeat(body));
     if (a === 'progress')     return json(saveProgress(body));
+    if (a === 'poster_from_drive') return json(posterFromDrive(body.id));
     if (a === 'raw_stats')    { var rs0 = rawStats(); rs0.ok = true; return json(rs0); }
     if (a === 'pipeline_status') { needAdmin(); return json(pipelineStatus()); }
 
@@ -294,6 +297,7 @@ function doPost(e) {
       if (a === 'admins_set')    { needAdmin(); return json(setAdminEmails(body.emails || [])); }
       if (a === 'manual_upload') { needAdmin(); var mu = manualUpload(body, sessEmail || 'token'); mu.run = autoRun(mu.chat ? 'process_whatsapp' : 'uploads'); return json(mu); }
       if (a === 'review_set')    { needAdmin(); return json(reviewSet(body.tab, body.id, body.status)); }
+      if (a === 'review_save')   { needAdmin(); return json(reviewSave(String(body.tab || ''), String(body.id || ''), body.fields || {})); }
       if (a === 'settings')      { needAdmin(); return json(writeSettings(body.settings || {})); }
       if (a === 'ref_upload')    { needAdmin(); var ru = refUpload(body, sessEmail || 'token'); ru.run = autoRun('references'); return json(ru); }
       if (a === 'ref_set')       { needAdmin(); var rs = refSet(body.id, body.status); if (body.status === 'pending') rs.run = autoRun('references'); return json(rs); }
@@ -637,11 +641,11 @@ function certThumb(id) {
 }
 
 // Drafts written by the pipeline wait here for an admin to publish or hide.
-var REVIEW_TABS = ['FAQ', 'Events', 'Guidelines', 'Certificates'];
+var REVIEW_TABS = ['FAQ', 'Events', 'Documents', 'Certificates', 'Guidelines'];
 function reviewList() {
   var out = {};
   var now = Date.now();
-  REVIEW_TABS.forEach(function (t) { out[t] = readTab(t).filter(function (r) { return r.status === 'draft' && !(t === 'Events' && eventOver(r, now)); }); });
+  REVIEW_TABS.forEach(function (t) { out[t] = readTab(t).filter(function (r) { return r.status === 'draft' && !(t === 'Events' && eventOver(r, now)) && !(t === 'Certificates' && r.valid_to && eventOver({ date_start: r.valid_to }, now)); }); });
   // Points the pipeline could not confirm from the references library: they
   // were left out of the published answer and wait here until a reference
   // that states them is uploaded.
@@ -654,8 +658,37 @@ function reviewList() {
 function reviewSet(tab, id, status) {
   if (REVIEW_TABS.indexOf(tab) < 0) throw new Error('unknown tab');
   if (['published', 'hidden', 'draft', 'current'].indexOf(status) < 0) throw new Error('unknown status');
-  if (tab === 'Certificates' && status === 'published') status = 'current';
+  if ((tab === 'Certificates' || tab === 'Documents') && status === 'published') status = 'current';
   var patch = { status: status };
+  if (TABS[tab].indexOf('updated_at') >= 0) patch.updated_at = new Date().toISOString();
+  var r = updateByIds(tab, [id], patch);
+  // A certificate and its document are one item: publishing or hiding one does the other.
+  try {
+    if (tab === 'Certificates') { var c = readTab('Certificates').filter(function (x) { return String(x.id) === id; })[0]; if (c && c.doc_id) updateByIds('Documents', [String(c.doc_id)], patch); }
+    if (tab === 'Documents') { var cs = readTab('Certificates').filter(function (x) { return String(x.doc_id) === id; }).map(function (x) { return x.id; }); if (cs.length) updateByIds('Certificates', cs, patch); }
+  } catch (e) { /* the main row is set */ }
+  return r;
+}
+
+// Edit a draft before publishing it. Only the fields a reader sees can be
+// changed; links must be http(s).
+var EDITABLE = {
+  FAQ: ['category', 'subcategory', 'question_en', 'question_bm', 'answer_formal_en', 'answer_layman_en', 'answer_formal_bm', 'answer_layman_bm'],
+  Events: ['title', 'title_bm', 'date_start', 'date_end', 'venue', 'link', 'description', 'poster_url'],
+  Documents: ['title', 'kind', 'category'],
+  Certificates: ['company', 'cert_no', 'scheme', 'state', 'category', 'valid_from', 'valid_to', 'products'],
+  Guidelines: ['category', 'title', 'title_bm', 'issuer', 'summary_en', 'summary_bm', 'link'],
+};
+function reviewSave(tab, id, fields) {
+  var allowed = EDITABLE[tab]; if (!allowed) throw new Error('unknown tab');
+  var patch = {};
+  allowed.forEach(function (k) {
+    if (fields[k] === undefined) return;
+    var v = String(fields[k] == null ? '' : fields[k]).slice(0, k.indexOf('answer') === 0 || k === 'description' || k.indexOf('summary') === 0 ? 6000 : 500);
+    if ((k === 'link' || k === 'poster_url') && v && !/^https?:\/\//i.test(v)) throw new Error(k + ' must start with https://');
+    patch[k] = v;
+  });
+  if (tab === 'Events' && patch.poster_url) { var pl = posterFromLink(patch.poster_url); if (pl) { patch.poster_url = pl.url; patch.poster_file = pl.file; } }
   if (TABS[tab].indexOf('updated_at') >= 0) patch.updated_at = new Date().toISOString();
   return updateByIds(tab, [id], patch);
 }
@@ -1366,6 +1399,18 @@ function posterStore(b64, name, mime) {
 function posterFromLink(u) {
   var m = String(u || '').match(/drive\.google\.com\/(?:file\/d\/|open\?id=|uc\?(?:export=\w+&)?id=)([\w-]{20,})/);
   return m ? { url: 'https://drive.google.com/thumbnail?id=' + m[1] + '&sz=w1600', file: 'https://drive.google.com/file/d/' + m[1] + '/view' } : null;
+}
+
+// A poster posted in the WhatsApp group (already in Drive "00 Inbox"): a
+// copy goes to "30 Posters", shared view-only so the event card can show it,
+// the same as a poster uploaded in Admin. The inbox original stays private.
+function posterFromDrive(fileId) {
+  var src = DriveApp.getFileById(String(fileId)), mime = src.getMimeType();
+  if (!/^image\/|^application\/pdf$/.test(mime)) throw new Error('not a picture or PDF');
+  var f = src.makeCopy(src.getName(), folder('30 Posters'));
+  f.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  var id = f.getId(), web = /^image\/(jpeg|png|webp|gif)$/.test(mime);
+  return { ok: true, url: web ? 'https://lh3.googleusercontent.com/d/' + id : 'https://drive.google.com/thumbnail?id=' + id + '&sz=w1600', file: 'https://drive.google.com/file/d/' + id + '/view' };
 }
 
 function posterUpload(b) { var p = posterStore(b.b64, b.name, b.mime); return { ok: true, url: p.url, file: p.file }; }
