@@ -6,7 +6,7 @@ import SearchBar from './components/SearchBar'
 import Chatbot from './components/Chatbot'
 import Overview from './pages/Overview'
 import { certStatus, splitProducts } from './lib/certs'
-import { loadData, savedData, snapshotData } from './lib/api'
+import { loadData, savedData, snapshotData, loadSettings } from './lib/api'
 // Admin upload queue: loaded with the app so it keeps sending on every page.
 import './lib/uploadQueue'
 import { t } from './lib/i18n'
@@ -76,6 +76,15 @@ export default function App() {
   const [err, setErr] = useState('')
   const [loading, setLoading] = useState(true)
   const [chatOpen, setChatOpen] = useState(false)
+  // The popup reads the small settings request first (fresh colour and
+  // posters); if neither it nor the full feed answers in 8 s, it uses the
+  // saved copy.
+  const [waited, setWaited] = useState(false)
+  const [liveSettings, setLiveSettings] = useState(null)
+  useEffect(() => {
+    loadSettings().then((st) => st && setLiveSettings(st))
+    const id = setTimeout(() => setWaited(true), 8000); return () => clearTimeout(id)
+  }, [])
   const [seed, setSeed] = useState(null)
   const [menu, setMenu] = useState(false)
 
@@ -98,7 +107,10 @@ export default function App() {
     // First visit on this browser: show the deploy's snapshot while the live
     // feed loads, instead of a blank "Loading".
     if (!savedData()) snapshotData().then((d) => d && setData((cur) => cur || d))
-    refresh(false)
+    // Always ask the Sheet on page load (the saved copy shows meanwhile), so a
+    // change made in Admin (notice colour, posters) shows on the next refresh
+    // on every device, not after the 5-minute browser cache runs out.
+    refresh(true)
     const again = () => refresh(true)
     addEventListener('he:refresh', again)
     return () => removeEventListener('he:refresh', again)
@@ -154,7 +166,9 @@ export default function App() {
           </div>
         </footer>
       </div>
-      <Notice lang={lang} settings={data.settings || {}} active={tab === 'overview'} />
+      {/* Opens on fresh settings only (a saved copy may hold an old colour or
+          posters); if the Sheet does not answer, the saved copy is used. */}
+      <Notice lang={lang} settings={(!data._stale ? data.settings : liveSettings || data.settings) || {}} active={tab === 'overview' && (!!liveSettings || !data._stale || !!err || !loading || waited)} />
       <Chatbot lang={lang} data={data} open={chatOpen} setOpen={setChatOpen} seed={seed} />
     </div>
   )

@@ -55,19 +55,19 @@ const AlertCard = React.forwardRef<HTMLDivElement, AlertCardProps>(
               </Button>
             </motion.div>
           )}
-          <div className="overflow-y-auto p-6 pb-0">
+          <div className="overflow-y-auto p-5 sm:p-6 pb-0">
             {icon && (
-              <motion.div variants={itemVariants} className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-white/15">
+              <motion.div variants={itemVariants} className="mb-2 sm:mb-3 flex h-10 w-10 sm:h-12 sm:w-12 items-center justify-center rounded-full bg-white/15">
                 <motion.div animate={{ scale: [1, 1.1, 1] }} transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}>{icon}</motion.div>
               </motion.div>
             )}
-            <motion.h3 variants={itemVariants} className="pr-8 text-xl sm:text-2xl font-bold tracking-tight">{title}</motion.h3>
-            {description && <motion.p variants={itemVariants} className="mt-2 text-sm leading-relaxed whitespace-pre-wrap" style={{ opacity: 0.88 }}>{description}</motion.p>}
+            <motion.h3 variants={itemVariants} className="pr-8 text-lg sm:text-2xl font-bold tracking-tight leading-snug">{title}</motion.h3>
+            {description && <motion.p variants={itemVariants} className="mt-2 text-[13px] sm:text-sm leading-snug sm:leading-relaxed whitespace-pre-wrap" style={{ opacity: 0.88 }}>{description}</motion.p>}
             {children && <motion.div variants={itemVariants} className="mt-4">{children}</motion.div>}
           </div>
-          <motion.div variants={itemVariants} className="p-6 pt-4">
+          <motion.div variants={itemVariants} className="p-5 pt-3 sm:p-6 sm:pt-4">
             <Button
-              className="w-full rounded-full py-6 text-base font-semibold shadow-lg transition-transform duration-200 active:scale-95"
+              className="w-full rounded-full py-5 sm:py-6 text-base font-semibold shadow-lg transition-transform duration-200 active:scale-95"
               style={{ background: foreground, color: background }}
               onClick={onButtonClick}
             >

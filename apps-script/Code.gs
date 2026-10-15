@@ -169,6 +169,9 @@ function doGet(e) {
   var a = (e.parameter.action || 'data');
   if (a === 'data') return json(cachedPublicData());
   if (a === 'ping') return json({ ok: true, ts: new Date().toISOString() });
+  // Settings only (a few KB): the popup notice reads this first, so a colour
+  // or poster changed in Admin shows without waiting for the full feed.
+  if (a === 'settings') { var st = readSettings(); delete st.llm_turn; delete st.seed_deleted; return json({ ok: true, settings: st }); }
   if (a === 'thumb') return json(certThumb(String(e.parameter.id || '')));
   if (a === 'status') return json(aiStatus());
   return json({ ok: false, error: 'unknown action' });

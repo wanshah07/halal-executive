@@ -148,6 +148,17 @@ export async function askRefs(question, lang) {
   return r
 }
 
+// Settings only (small and quick): the popup notice uses it so a change made
+// in Admin shows on the next refresh even while the full feed is loading.
+export async function loadSettings() {
+  if (!API_URL) return null
+  try {
+    const r = await fetch(`${API_URL}?action=settings&t=${Date.now()}`, { redirect: 'follow' })
+    const j = await r.json()
+    return j && j.ok ? j.settings : null
+  } catch { return null }
+}
+
 // AI team status (cached 5 minutes on the server).
 export async function aiStatus() {
   if (!API_URL) return null

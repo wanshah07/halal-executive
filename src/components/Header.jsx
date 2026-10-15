@@ -36,7 +36,7 @@ export default function Header({ lang, setLang, tab, sub, setTab, onRefresh, onE
               />
               <div className="min-w-0">
                 {/* Phones: the name on two short lines so it never runs under the buttons */}
-                <div className="sm:hidden text-[13px] font-bold tracking-wide leading-[1.1] uppercase"><div>Halal Executive</div><div>Hub</div></div>
+                <div className="sm:hidden text-[12px] font-bold tracking-wide leading-[1.15] uppercase whitespace-nowrap"><div>Halal Executive</div><div>Hub</div></div>
                 <div className="hidden sm:block text-lg font-bold tracking-wide leading-tight uppercase truncate">{SITE_NAME}</div>
               </div>
             </a>

@@ -122,6 +122,12 @@
 23. **Header and page share one column**: both are `max-w-7xl mx-auto` inside
     `xl:pl-[232px]`; the sidebar shows from 1280 px (below that it is the menu
     drawer), so the ten header tabs always fit and the edges line up.
+25. **Popup freshness.** The page always asks the Sheet on load (the saved
+    copy shows meanwhile), and the popup reads `?action=settings` (a few KB)
+    first, waiting up to 8 s for fresh settings before falling back to the
+    saved copy. Its text colour is picked by contrast ratio (dark on amber or
+    gold, white on green, red or navy); posters are capped so the whole card
+    fits a phone screen.
 24. **Popup posters** slide every 3 s and each adds 3 s to the 7 s the popup
     stays open. Admin → Event posters is a different thing: posters for the
     Events page and the Overview's upcoming-events row.

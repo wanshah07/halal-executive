@@ -25,7 +25,10 @@ export const textOn = (hex) => {
   if (!m) return '#ffffff'
   const n = parseInt(m[1], 16), lin = (c) => { c /= 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4 }
   const L = 0.2126 * lin(n >> 16) + 0.7152 * lin((n >> 8) & 255) + 0.0722 * lin(n & 255)
-  return L > 0.45 ? '#0f172a' : '#ffffff'
+  // Whichever text colour reads better on it (WCAG contrast ratio): amber or
+  // gold gets dark text, green or red gets white.
+  const onWhite = 1.05 / (L + 0.05), onDark = (L + 0.05) / (0.0119 + 0.05)
+  return onDark > onWhite ? '#0f172a' : '#ffffff'
 }
 export const noticeDay = (v) => { const s = String(v || '').trim(); if (!s) return ''; if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s; const t = Date.parse(s); return isNaN(t) ? '' : new Date(t + 8 * 3600e3).toISOString().slice(0, 10) }
 export const parsePosters = (s) => { try { const a = JSON.parse(s || '[]'); return Array.isArray(a) ? a.filter((p) => safeUrl(p.url)) : [] } catch { return [] } }
@@ -42,7 +45,7 @@ function Slides({ posters, color, hold }) {
   if (!n) return null
   const go = (d) => setI((v) => (v + d + n) % n)
   const p = posters[Math.min(i, n - 1)]
-  const img = <img src={imageUrl(p.url)} alt={p.title || ''} referrerPolicy="no-referrer" className="block w-full h-auto max-h-[45vh] sm:max-h-[50vh] object-contain rounded-lg bg-white/95" />
+  const img = <img src={imageUrl(p.url)} alt={p.title || ''} referrerPolicy="no-referrer" className="block w-full h-auto max-h-[28vh] sm:max-h-[42vh] object-contain rounded-lg bg-white/95" />
   return (
     <div className="select-none" onTouchStart={(e) => { x0.current = e.touches[0].clientX }} onTouchEnd={(e) => { if (x0.current == null) return; const dx = e.changedTouches[0].clientX - x0.current; if (Math.abs(dx) > 40) go(dx < 0 ? 1 : -1); x0.current = null }}>
       <div className="relative">
