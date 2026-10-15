@@ -293,6 +293,7 @@ function doPost(e) {
     if (a === 'raw_stats')    { var rs0 = rawStats(); rs0.ok = true; return json(rs0); }
     if (a === 'pipeline_status') { needAdmin(); return json(pipelineStatus()); }
     if (a === 'requeue_files') { needAdmin(); return json(requeueFiles()); } // writes only status cells, no lock
+    if (a === 'event_from_poster') { needAdmin(); return json(eventFromPoster(body)); } // stores the poster and reads it; no Sheet write
 
     // A chat-export .txt can hold tens of thousands of messages: import it
     // without the write lock, so Run now, events and deletes are not blocked
@@ -1474,6 +1475,25 @@ function posterFromDrive(fileId) {
   f.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
   var id = f.getId(), web = /^image\/(jpeg|png|webp|gif)$/.test(mime);
   return { ok: true, url: web ? 'https://lh3.googleusercontent.com/d/' + id : 'https://drive.google.com/thumbnail?id=' + id + '&sz=w1600', file: 'https://drive.google.com/file/d/' + id + '/view' };
+}
+
+// Admin → Events: a poster chosen in the form is stored like any poster, read
+// (OCR for pictures and scanned PDFs) and the AI fills the event fields, the
+// same way an uploaded halal certificate is read. The admin checks and saves;
+// nothing is published by this call (Wan, 15 Oct 2026).
+var EVENT_READ = 'You read a poster or announcement for an event in Malaysia (seminar, course, training, talk, expo) for halal executives. Return JSON {"is_event":true|false,"title":"","title_bm":"","date_start":"YYYY-MM-DDTHH:MM","date_end":"YYYY-MM-DDTHH:MM or empty","venue":"","link":"","description":""}. Dates in Malaysia time as printed; if the year is not printed use the next date on or after TODAY. Time 09:00 if no time is printed. title in English, title_bm in Bahasa Malaysia (Malaysian, never Indonesian); keep the official name as printed in the language it is printed. venue as printed (or "Online" / the platform). link: a registration or info URL printed on the poster, else empty. description: 2-4 short sentences: organiser, who it is for, fee if printed, contact as printed. Never invent a date, fee or link that is not on the poster.';
+function eventFromPoster(b) {
+  var p = posterStore(b.b64, b.name, b.mime), f = DriveApp.getFileById(p.id), text = '';
+  try { text = extractText(f, f.getBlob()); } catch (e) { text = ''; }
+  var out = { ok: true, poster_url: p.url, poster_file: p.file, fields: {}, read: !!String(text).trim() };
+  if (!String(text).trim()) { out.note = 'The poster has no readable text; fill the fields by hand.'; return out; }
+  var today = Utilities.formatDate(new Date(), 'Asia/Kuala_Lumpur', 'yyyy-MM-dd');
+  var r = complete([{ role: 'system', content: EVENT_READ.replace('TODAY', today) }, { role: 'user', content: String(text).slice(0, 8000) }], { json: true, max_tokens: 900, temperature: 0 });
+  var j = r.json || {};
+  ['title', 'title_bm', 'date_start', 'date_end', 'venue', 'link', 'description'].forEach(function (k) { if (j[k]) out.fields[k] = String(j[k]).slice(0, k === 'description' ? 2000 : 300); });
+  if (out.fields.link && !/^https?:\/\//i.test(out.fields.link)) delete out.fields.link;
+  out.is_event = j.is_event !== false; out.provider = r.provider;
+  return out;
 }
 
 function posterUpload(b) { var p = posterStore(b.b64, b.name, b.mime); return { ok: true, url: p.url, file: p.file }; }

@@ -24,7 +24,10 @@
    extended.
 6. **Group files wait for an admin; expired ones never show.** A poster,
    certificate or document from the WhatsApp group is copied into Drive and
-   lands in Admin → Drafts (`from:group`); Admin uploads publish at once. An
+   lands in Admin → Drafts (`from:group`); Admin uploads publish at once.
+   An Admin upload marked Event is always read into an event with its poster
+   (`read_event`), like a certificate upload, and a poster chosen in the
+   Events form is read by the AI to fill the form (`eventFromPoster`). An
    expired certificate or document goes to `90 Archive` with status `expired`
    and is never a draft; nor is a finished event (Wan, 15 Oct 2026).
    **Nothing is deleted automatically except finished events.** Superseded

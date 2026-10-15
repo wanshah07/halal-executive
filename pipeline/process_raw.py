@@ -50,6 +50,23 @@ def shape(j):
 
 
 ADMIN_CERT = "Admin upload: this is a halal certificate"
+ADMIN_EVENT = "Admin upload: this is an event"
+
+EVENT_READ = """You read a poster or announcement for an event in Malaysia (seminar, course, training, talk, expo) for halal executives. Return JSON {"is_event":true|false,"title":"","title_bm":"","date_start":"YYYY-MM-DDTHH:MM","date_end":"","venue":"","link":"","description":""}. Dates in Malaysia time as printed; if the year is not printed use the next date on or after TODAY. Time 09:00 if none is printed. title in English, title_bm in Bahasa Malaysia (Malaysian, never Indonesian). description: 2-4 short sentences (organiser, audience, fee and contact as printed). Never invent a date, fee or link."""
+
+
+def read_event(m):
+    """The event on one Admin-uploaded poster, read on its own."""
+    text = "\n\n".join([m.get("text") or ""] + [a.get("content") or "" for a in m.get("attachments", [])]).strip()
+    if not text:
+        return None
+    try:
+        out = llm_router.complete_json([{"role": "system", "content": EVENT_READ.replace("TODAY", dt.date.today().isoformat())}, {"role": "user", "content": text[:8000]}], max_tokens=900, temperature=0)
+    except llm_router.LLMError as e:
+        print("event not read:", e, file=sys.stderr)
+        return None
+    j = out["json"] if isinstance(out["json"], dict) else {}
+    return j if j.get("is_event") is not False and j.get("title") else None
 
 
 def poster_for(mid, rows, dry):
@@ -301,6 +318,15 @@ def run(sources, max_batches, dry, minutes=20, attachments=None):
                                      "supersedes_id": "", "source_msg_id": m["id"], "received_at": m.get("ts") or ts,
                                      "updated_at": ts, "status": "inbox", "notes": origin(m["id"]) + "certificate text found; awaiting organiser"})
             msg_ts = {str(r["id"]): str(r.get("ts") or "") for r in rows}
+            # An Admin upload marked "Event" always becomes an event, like a
+            # certificate upload: when the batch reply did not list it, the
+            # poster is read again on its own (Wan, 15 Oct 2026).
+            listed = {str(e.get("source_msg_id")) for e in j["events"]}
+            for m in msgs:
+                if (m.get("text") or "").startswith(ADMIN_EVENT) and str(m["id"]) not in listed:
+                    ev = read_event(m)
+                    if ev:
+                        j["events"].append(dict(ev, source_msg_id=m["id"]))
             for e in j["events"]:
                 if event_past(e, msg_ts.get(str(e.get("source_msg_id")), "")):
                     continue  # over already, or announced in an old message: never a draft (Wan, 15 Oct 2026)
@@ -311,7 +337,10 @@ def run(sources, max_batches, dry, minutes=20, attachments=None):
                 if e.get("title"):
                     poster, poster_file = poster_for(e.get("source_msg_id"), rows, dry)
                     ev_rows.append({"id": ids["EV"](), "title": e["title"], "title_bm": e.get("title_bm", ""), "date_start": e.get("date_start", ""), "date_end": e.get("date_end", ""), "venue": e.get("venue", ""),
-                                    "poster_url": poster, "link": safe_url(e.get("link")), "description": e.get("description", ""), "status": "draft", "source": e.get("source_msg_id", ""), "poster_file": poster_file})
+                                    "poster_url": poster, "link": safe_url(e.get("link")), "description": e.get("description", ""),
+                                    # Admin uploads publish at once; group posters wait in Drafts.
+                                    "status": "published" if src_of.get(str(e.get("source_msg_id"))) == "manual" else "draft",
+                                    "source": e.get("source_msg_id", ""), "poster_file": poster_file})
             for g in j["guidelines"]:
                 gk = norm_title(g.get("title"))
                 if g.get("title") and gk in seen_guidelines:

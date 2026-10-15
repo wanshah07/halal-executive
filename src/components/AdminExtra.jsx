@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { adminPost, dropLocal, refreshAll } from '../lib/api'
+import { imageUrl } from '../lib/safe'
 import { CATEGORIES } from '../lib/config'
 import { t } from '../lib/i18n'
 import { fmtDateTime } from '../lib/util'
@@ -91,6 +92,23 @@ export function EventsAdmin({ lang, onChanged }) {
       await adminPost('event_save', payload); setMsg(t(lang, 'saved')); setE(EMPTY); setPoster(null); const i = document.getElementById('ev-poster'); if (i) i.value = ''; load(); onChanged && onChanged()
     } catch (er) { setMsg(er.message) } finally { setBusy(false) }
   }
+  // Choosing a poster: it is stored in Drive and the AI reads it and fills the
+  // form, like an uploaded halal certificate. Fields already typed are kept.
+  async function readPoster(f) {
+    if (!f) return
+    if (f.size > POSTER_MAX) { setMsg(t(lang, 'too_big_10')); return }
+    setBusy(true); setMsg(t(lang, 'reading_poster'))
+    try {
+      const r = await adminPost('event_from_poster', { b64: await toB64(f), name: f.name, mime: f.type || '' })
+      setPoster(null)
+      setE((cur) => {
+        const next = { ...cur, poster_url: r.poster_url, poster_file: r.poster_file }
+        Object.entries(r.fields || {}).forEach(([k, v]) => { if (!cur[k]) next[k] = v })
+        return next
+      })
+      setMsg(r.note || (r.is_event === false ? t(lang, 'poster_not_event') : t(lang, 'poster_read')))
+    } catch (er) { setMsg(er.message) } finally { setBusy(false); const i = document.getElementById('ev-poster'); if (i) i.value = '' }
+  }
   async function remove(r) { try { if (await deleteForGood(lang, 'Events', r.id, r.title, () => setRows((rs) => (rs || []).filter((x) => x.id !== r.id)))) onChanged && onChanged() } catch (er) { setMsg(er.message); load() } }
   async function hide(r) {
     setRows((rs) => (rs || []).filter((x) => x.id !== r.id)); dropLocal('Events', r.id)
@@ -107,8 +125,9 @@ export function EventsAdmin({ lang, onChanged }) {
         <div><label className="label" htmlFor="ev-v">{t(lang, 'venue')}</label><input id="ev-v" className="input" value={e.venue} onChange={(x) => setE({ ...e, venue: x.target.value })} placeholder="Online / Shah Alam" /></div>
         <div><label className="label" htmlFor="ev-l">{t(lang, 'register')} (https://…)</label><input id="ev-l" type="url" className="input" value={e.link} onChange={(x) => setE({ ...e, link: x.target.value })} /></div>
         <div className="sm:col-span-2"><label className="label" htmlFor="ev-d">{t(lang, 'description')}</label><textarea id="ev-d" rows={3} className="input" value={e.description} onChange={(x) => setE({ ...e, description: x.target.value })} /></div>
-        <div><label className="label" htmlFor="ev-poster">{t(lang, 'poster')} ({t(lang, 'poster_formats')})</label><input id="ev-poster" type="file" accept={POSTER_ACCEPT} className="input" onChange={(x) => setPoster(x.target.files[0] || null)} /></div>
+        <div><label className="label" htmlFor="ev-poster">{t(lang, 'poster')} ({t(lang, 'poster_formats')})</label><input id="ev-poster" type="file" accept={POSTER_ACCEPT} className="input" disabled={busy} onChange={(x) => readPoster(x.target.files[0] || null)} /></div>
         <div><label className="label" htmlFor="ev-pu">{t(lang, 'poster')} URL</label><input id="ev-pu" type="url" className="input" value={e.poster_url} onChange={(x) => setE({ ...e, poster_url: x.target.value, poster_file: '' })} placeholder="https://… / Google Drive link" /></div>
+        {imageUrl(e.poster_url) && <div className="sm:col-span-2 flex items-center gap-3"><img src={imageUrl(e.poster_url)} alt="" className="w-20 h-28 object-cover rounded-lg border border-line" /><span className="text-xs text-ink-400">{t(lang, 'poster')}</span></div>}
         <div className="sm:col-span-2 flex items-center gap-3"><button className="btn-brand" disabled={busy}>{busy ? '…' : e.id ? t(lang, 'save_changes') : t(lang, 'add_event')}</button>{e.id && <button type="button" className="btn" onClick={() => setE(EMPTY)}>{t(lang, 'cancel')}</button>}{msg && <span className="text-sm text-ink-600">{msg}</span>}</div>
       </form>
       <ul className="divide-y divide-line">
