@@ -17,10 +17,10 @@ export default function Header({ lang, setLang, tab, setTab, onRefresh, onExport
             <button className="md:hidden btn px-2.5 shrink-0" onClick={onMenu} aria-label={t(lang, 'menu')}><Menu {...ICON} size={20} /></button>
             <a href="#overview" onClick={() => setTab('overview')} className="flex items-center gap-2 sm:gap-3 min-w-0">
               <img
-                src="./brand/jakim-halal-logo.png"
+                src="./brand/he-logo.png"
                 onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = './brand/halal-logo.svg' }}
-                alt="Halal Malaysia logo"
-                className="h-10 w-10 sm:h-11 sm:w-11 object-contain shrink-0"
+                alt="Halal Executive logo"
+                className="h-11 w-11 sm:h-12 sm:w-12 object-contain shrink-0"
               />
               <div className="min-w-0">
                 {/* Phones: the name on two short lines so it never runs under the buttons */}

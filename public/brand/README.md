@@ -1,5 +1,11 @@
 # Brand assets
 
+**Since 15 Oct 2026 the site's own mark is the Halal Executive logo** (Wan's
+artwork): `he-logo.png` (512 px, transparent, header), `he-favicon.png`
+(64 px, dome and Arabic only, strokes thickened for tab sizes),
+`../favicon.ico` (16/32/48) and `he-apple-touch-icon.png` (180 px on white).
+The JAKIM files below stay for the certificate placeholder tile.
+
 Files committed on 14 Oct 2026 from the artwork Wan supplied: `jakim-halal-logo.png`
 (512 px, header), `favicon.png` (64 px), `apple-touch-icon.png` (180 px) and
 `halal-executive-lockup.png` (full lock-up with the wordmark).
