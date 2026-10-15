@@ -302,6 +302,10 @@ function doPost(e) {
     if (a === 'pipeline_status') { needAdmin(); return json(pipelineStatus()); }
     if (a === 'requeue_files') { needAdmin(); return json(requeueFiles()); } // writes only status cells, no lock
     if (a === 'event_from_poster') { needAdmin(); return json(eventFromPoster(body)); } // stores the poster and reads it; no Sheet write
+    if (a === 'faq_rephrase')  { needAdmin(); return json(faqRephrase(body)); } // model call, no Sheet write
+    if (a === 'logo_upload')   { needAdmin(); return json(logoUpload(body)); } // Drive only
+    // Admin lists of FHCB and Directory, hidden rows included (the public feed drops them).
+    if (a === 'rows_list')     { needAdmin(); if (!ROW_FIELDS[body.tab]) throw new Error('unknown tab'); return json({ ok: true, rows: readTab(body.tab) }); }
 
     // A chat-export .txt can hold tens of thousands of messages: import it
     // without the write lock, so Run now, events and deletes are not blocked
@@ -323,9 +327,7 @@ function doPost(e) {
       if (a === 'poster_upload') { needAdmin(); return json(posterUpload(body)); }
       if (a === 'row_save')      { needAdmin(); return json(rowSave(String(body.tab || ''), body.row || {})); }
       if (a === 'seed_rows')     { needAdmin(); return json(seedRows(String(body.tab || ''), body.rows || [])); }
-      if (a === 'logo_upload')   { needAdmin(); return json(logoUpload(body)); }
       if (a === 'fhcb_doc_upload') { needAdmin(); return json(fhcbDocUpload(body, sessEmail || 'token')); }
-      if (a === 'faq_rephrase')  { needAdmin(); return json(faqRephrase(body)); }
       if (a === 'ingest')        return json(ingest(body.rows || []));
       if (a === 'raw_update')    return json(updateByIds('Raw', body.ids || [], body.patch || {}));
       if (a === 'upsert')        { if (WRITABLE.indexOf(body.tab) < 0) throw new Error('tab not writable'); return json(upsert(body.tab, body.rows || [])); }
@@ -457,8 +459,10 @@ function autoRun(job) {
 // a day after its end (or start, when it has no end). Runs with the 30-minute
 // timer; publicData already hides them in between.
 function eventOver(e, now) {
-  var v = e.date_end || e.date_start, t = v instanceof Date ? v.getTime() : Date.parse(v);
-  if (isNaN(t)) { var m = String(v || '').match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})/); if (m) t = new Date(+m[3], +m[2] - 1, +m[1]).getTime(); } // 12/03/2024
+  // A Malaysian date (DD/MM/YYYY) is read day-first before anything else:
+  // Date.parse would read 05/11/2026 as 11 May (US order).
+  var v = e.date_end || e.date_start, m = String(v || '').match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})/);
+  var t = v instanceof Date ? v.getTime() : m ? new Date(+m[3], +m[2] - 1, +m[1]).getTime() : Date.parse(v);
   return !isNaN(t) && t + 24 * 3600 * 1000 < now;
 }
 function purgePastEvents() {
@@ -506,7 +510,7 @@ function adminDelete(tab, id) {
   if (tab === 'References') {
     var sh = sheet('RefChunks'), v = sh.getDataRange().getValues(), keep = [v[0]];
     for (var i = 1; i < v.length; i++) if (String(v[i][1]) !== id) keep.push(v[i]);
-    sh.clearContents(); sh.getRange(1, 1, keep.length, TABS.RefChunks.length).setValues(keep);
+    sh.clearContents(); sh.getRange(1, 1, keep.length, TABS.RefChunks.length).setValues(keep.map(safeRow));
     file = row.drive_file_id; bumpAnswerVersion();
     // The guideline made from this reference goes too.
     var gl = readTab('Guidelines').filter(function (g) { return String(g.source) === id && String(g.id) === 'GL-' + id; });
@@ -525,6 +529,11 @@ function adminDelete(tab, id) {
   }
   var fileGone = file ? removeDriveFile(file) : false;
   deleteByIds(tab, [id]);
+  // A deleted FHCB or Directory row is remembered, so "Load" never brings it back.
+  if (tab === 'FHCB' || tab === 'Directory') {
+    var gone = seedDeleted(); gone[tab + ':' + id] = 1;
+    writeSettings({ seed_deleted: JSON.stringify(Object.keys(gone)).slice(0, 45000) });
+  }
   return { ok: true, deleted: id, file_deleted: fileGone };
 }
 
@@ -611,14 +620,24 @@ function tickWatch() {
 function purgeExpiredCerts() {
   var now = Date.now(), gone = readTab('Certificates').filter(function (c) { return c.valid_to && eventOver({ date_start: c.valid_to }, now); });
   gone.forEach(function (c) { try { adminDelete('Certificates', String(c.id)); } catch (e) { console.error('cert purge ' + c.id + ': ' + e); } });
-  // Documents marked expired by the organiser with no certificate row left.
-  var docs = readTab('Documents').filter(function (d) { return String(d.status) === 'expired' && d.updated_at && Date.parse(d.updated_at) + 864e5 < now; });
+  // Certificate files the organiser marked expired, with no certificate row
+  // left. Other expired documents (circulars, forms) are only archived, never
+  // deleted (rules 6 and 18).
+  var linked = {}; readTab('Certificates').forEach(function (c) { if (c.doc_id) linked[String(c.doc_id)] = 1; });
+  var docs = readTab('Documents').filter(function (d) { return String(d.status) === 'expired' && String(d.kind) === 'certificate' && !linked[String(d.id)] && d.updated_at && Date.parse(d.updated_at) + 864e5 < now; });
   docs.forEach(function (d) { try { adminDelete('Documents', String(d.id)); } catch (e) { console.error('doc purge ' + d.id + ': ' + e); } });
   return gone.length + docs.length;
 }
 function tickPipeline() {
-  try { purgePastEvents(); } catch (e) { console.error('purge: ' + e); }
-  try { purgeExpiredCerts(); } catch (e) { console.error('cert purge: ' + e); }
+  // Deleting rows shifts the rows below, so the purges hold the same lock as
+  // every other write.
+  var lock = LockService.getScriptLock();
+  if (lock.tryLock(60000)) {
+    try {
+      try { purgePastEvents(); } catch (e) { console.error('purge: ' + e); }
+      try { purgeExpiredCerts(); } catch (e) { console.error('cert purge: ' + e); }
+    } finally { lock.releaseLock(); }
+  }
   try { rawTriage(); } catch (e) { console.error('triage: ' + e); }
   dispatchRun('process_whatsapp');
   // Files lane: certificates and documents from the group and from Admin.
@@ -744,7 +763,7 @@ function writeSettings(obj) {
   v.forEach(function (r, i) { if (i) idx[r[0]] = i + 1; });
   Object.keys(obj).forEach(function (k) {
     if (k === 'llm_turn') return;
-    if (idx[k]) sh.getRange(idx[k], 2).setValue(String(obj[k])); else sh.appendRow([k, String(obj[k])]);
+    if (idx[k]) sh.getRange(idx[k], 2).setValue(cellSafe(String(obj[k]))); else sh.appendRow([k, cellSafe(String(obj[k]))]);
   });
   return { ok: true, count: Object.keys(obj).length };
 }
@@ -869,7 +888,7 @@ function ingest(rows) {
         var cur = []; try { cur = JSON.parse(sh.getRange(at, aCol).getValue() || '[]'); } catch (e) { cur = []; }
         var curHas = cur.some(function (a) { return a && a.drive_file_id; });
         if (!curHas) {
-          sh.getRange(at, aCol).setValue(JSON.stringify(save(r)));
+          sh.getRange(at, aCol).setValue(cellSafe(JSON.stringify(save(r))));
           sh.getRange(at, sCol).setValue('new');
           sh.getRange(at, nCol).setValue('file added by the WhatsApp collector');
           filled++; return;
@@ -879,7 +898,7 @@ function ingest(rows) {
     }
     var att = save(r);
     var keep = rawRelevant(r.text, att);
-    lines.push([r.source + '-' + r.msg_id, r.source, r.group || '', String(r.msg_id), r.sender_hash || '', r.ts || new Date().toISOString(), r.text || '', JSON.stringify(att), keep ? 'new' : 'skipped', '', '', keep ? '' : 'prefilter', fp[0] || '']);
+    lines.push(safeRow([r.source + '-' + r.msg_id, r.source, r.group || '', String(r.msg_id), r.sender_hash || '', r.ts || new Date().toISOString(), r.text || '', JSON.stringify(att), keep ? 'new' : 'skipped', '', '', keep ? '' : 'prefilter', fp[0] || '']));
     have[key] = -1; if (fp.length) fps[fp[0]] = -1; added++;
   });
   // One write for the whole batch (a chat export can hold thousands of rows).
@@ -1037,6 +1056,7 @@ function cellSafe(x) {
   if (typeof x !== 'string') return x;
   return /^[=+@]|^-(?!\d+(\.\d+)?$)|^0\d/.test(x) ? "'" + x : x;
 }
+function safeRow(r) { return r.map(cellSafe); }
 function upsert(tab, rows) {
   var cols = TABS[tab]; if (!cols) throw new Error('unknown tab ' + tab);
   var sh = sheet(tab); ensureHeader(sh, cols); pubBust();
@@ -1283,9 +1303,9 @@ function refChunks(b) {
     var v = sh.getDataRange().getValues(), keep = [v[0]];
     for (var i = 1; i < v.length; i++) if (String(v[i][1]) !== String(b.ref_id)) keep.push(v[i]);
     sh.clearContents();
-    sh.getRange(1, 1, keep.length, cols.length).setValues(keep);
+    sh.getRange(1, 1, keep.length, cols.length).setValues(keep.map(safeRow));
   }
-  var rows = (b.chunks || []).map(function (c, i) { return [b.ref_id + '-' + (c.n != null ? c.n : i), b.ref_id, String(c.page), String(c.text).slice(0, 4000), String(c.terms || '').slice(0, 500)]; });
+  var rows = (b.chunks || []).map(function (c, i) { return safeRow([b.ref_id + '-' + (c.n != null ? c.n : i), b.ref_id, String(c.page), String(c.text).slice(0, 4000), String(c.terms || '').slice(0, 500)]); });
   if (rows.length) sh.getRange(sh.getLastRow() + 1, 1, rows.length, cols.length).setValues(rows);
   bumpAnswerVersion();
   return { ok: true, written: rows.length };
@@ -1593,12 +1613,13 @@ function rowSave(tab, row) {
 }
 // Load the page's bundled list (FHCB 21 Aug 2026, JAKIM training providers
 // Jun 2026) into the Sheet: only ids not there yet, nothing overwritten.
+function seedDeleted() { var o = {}; try { JSON.parse(readSettings().seed_deleted || '[]').forEach(function (k) { o[k] = 1; }); } catch (e) { /* none */ } return o; }
 function seedRows(tab, rows) {
   if (!ROW_FIELDS[tab]) throw new Error('unknown tab');
   var have = {}; readTab(tab).forEach(function (r) { have[String(r.id)] = r; });
-  var add = [], fix = [];
+  var add = [], fix = [], deleted = seedDeleted();
   rows.slice(0, 500).forEach(function (r) {
-    if (!r.id) return;
+    if (!r.id || deleted[tab + ':' + String(r.id)]) return;
     var c = cleanRow(tab, r); c.id = String(r.id);
     var cur = have[c.id];
     if (!cur) { add.push(c); have[c.id] = c; return; }
@@ -1609,7 +1630,8 @@ function seedRows(tab, rows) {
     ROW_FIELDS[tab].forEach(function (k) {
       var want = c[k], got = cur[k] === undefined || cur[k] === null ? '' : String(cur[k]);
       if (want === undefined || want === '') return;
-      if (got === '' || /^#(ERROR|NAME|VALUE|REF|N\/A)/.test(got) || (/^0\d/.test(want) && got === want.replace(/^0+/, ''))) { out[k] = want; changed = true; }
+      // Only cells a load damaged; a field Wan cleared on purpose stays empty.
+      if (/^#(ERROR|NAME|VALUE|REF|N\/A)/.test(got) || (/^0\d/.test(want) && got === want.replace(/^0+/, ''))) { out[k] = want; changed = true; }
     });
     if (changed) { out.id = c.id; out.updated_at = new Date().toISOString(); fix.push(out); }
   });

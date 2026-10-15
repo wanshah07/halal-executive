@@ -7,7 +7,7 @@ import { safeUrl, imageUrl } from '../lib/safe'
 import { RefAdmin, EventsAdmin, ContentManager, deleteForGood } from '../components/AdminExtra'
 import { RowManager } from '../components/AdminRows'
 import Pager from '../components/Pager'
-import Notice, { NOTICE_COLORS, textOn, parsePosters } from '../components/Notice'
+import Notice, { NOTICE_COLORS, textOn, parsePosters, noticeDay } from '../components/Notice'
 import { EVENT_KINDS } from '../lib/config'
 import { POSTER_ACCEPT, POSTER_MAX } from '../components/Poster'
 import { ICON, Lock, RefreshCw, Upload, X, Play, Sparkles } from '../components/Icon'
@@ -124,8 +124,11 @@ function UploadBox({ lang }) {
               const word = x.state === 'failed' ? t(lang, 'q_failed') : x.state === 'sent' ? t(lang, 'q_sent_short') : x.state === 'sending' ? t(lang, 'q_sending') : t(lang, 'q_queued')
               return (
                 <li key={x.id} className="px-3 py-2 flex flex-wrap items-center gap-x-3 gap-y-1">
-                  <span className={`chip ${tone} shrink-0`}>{word}</span>
-                  <span className="font-medium min-w-0 flex-1 break-all" title={x.name}>{x.name || t(lang, 'note_only')}</span>
+                  {/* Status and the full file name on their own line, then the details. */}
+                  <span className="flex items-start gap-2 basis-full min-w-0">
+                    <span className={`chip ${tone} shrink-0 mt-0.5`}>{word}</span>
+                    <span className="font-medium min-w-0 [overflow-wrap:anywhere]" title={x.name}>{x.name || t(lang, 'note_only')}</span>
+                  </span>
                   {editing === x.id
                     ? <span className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
                         <select className="input w-auto py-1" value={x.kind} onChange={(e) => update(x.id, { kind: e.target.value })} aria-label={t(lang, 'upload_kind')}>{['faq', 'certificate', 'guideline', 'event'].map((k) => <option key={k} value={k}>{t(lang, 'kind_' + (k === 'certificate' ? 'cert' : k))}</option>)}</select>
@@ -479,7 +482,7 @@ function NoticeAdmin({ lang, s, set }) {
       <div className="grid sm:grid-cols-3 gap-3">
         <div><label className="label" htmlFor="f-nbt">{t(lang, 'notice_button')} (EN)</label><input id="f-nbt" className="input" value={s.notice_button || ''} onChange={(e) => set('notice_button', e.target.value)} placeholder="Okay, I understand" /></div>
         <div><label className="label" htmlFor="f-nbtb">{t(lang, 'notice_button')} (BM)</label><input id="f-nbtb" className="input" value={s.notice_button_bm || ''} onChange={(e) => set('notice_button_bm', e.target.value)} placeholder="Baik, saya faham" /></div>
-        <div><label className="label" htmlFor="f-nu">{t(lang, 'notice_until')}</label><input id="f-nu" type="date" className="input" value={String(s.notice_until || '').slice(0, 10)} onChange={(e) => set('notice_until', e.target.value)} /></div>
+        <div><label className="label" htmlFor="f-nu">{t(lang, 'notice_until')}</label><input id="f-nu" type="date" className="input" value={noticeDay(s.notice_until)} onChange={(e) => set('notice_until', e.target.value)} /></div>
       </div>
       <div>
         <div className="label">{t(lang, 'notice_color')}</div>
@@ -564,7 +567,7 @@ export default function Admin({ lang, data, onSaved, onSession }) {
   async function signOut() { try { await post('logout', { session: sess.session }) } catch { /* ignore */ } setSession(null); setSess(null) }
 
   return (
-    <div className="max-w-3xl">
+    <div className="w-full">
       <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
         <h2 className="text-xl font-bold">{t(lang, 'admin')}</h2>
         <div className="text-sm text-ink-600">{t(lang, 'signed_in_as')} <b>{sess.email}</b> · <button className="text-brand-600 hover:underline" onClick={signOut}>{t(lang, 'sign_out')}</button></div>

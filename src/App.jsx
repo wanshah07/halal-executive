@@ -123,7 +123,7 @@ export default function App() {
     <div className="min-h-screen">
       <Header lang={lang} setLang={setLang} tab={tab} sub={sub} setTab={setTab} onRefresh={() => refresh(true)} onExport={doExport} counts={counts} loading={loading} onMenu={() => setMenu(true)} />
       <Sidebar lang={lang} tab={tab} sub={sub} setTab={setTab} counts={counts} mobileOpen={menu} setMobileOpen={setMenu} />
-      <div className="min-h-[calc(100vh-118px)] flex flex-col md:pl-[232px]">
+      <div className="min-h-[calc(100vh-118px)] flex flex-col xl:pl-[232px]">
         <main className="w-full flex-1 max-w-7xl mx-auto px-4 sm:px-6 py-6">
           {err && <div className="card p-3 mb-4 text-sm bg-red-50 border-red-200">{err}</div>}
           <div className="mb-6"><SearchBar lang={lang} data={data} onOpen={(type, id) => setTab(type, id)} onAsk={(q) => setSeed({ q, n: Date.now() })} /></div>

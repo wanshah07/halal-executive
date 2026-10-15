@@ -23,10 +23,10 @@ export default function Header({ lang, setLang, tab, sub, setTab, onRefresh, onE
     <header ref={head} className="bg-white border-b border-line sticky top-0 z-30">
       {/* Centred over the same column as the page (right of the sidebar on
           tablets and desktops), so the header and the content line up. */}
-      <div className="md:pl-[232px]"><div className="max-w-7xl mx-auto px-4 sm:px-6">
+      <div className="xl:pl-[232px]"><div className="max-w-7xl mx-auto px-4 sm:px-6">
         <div className="flex items-center justify-between gap-2 sm:gap-4 py-3">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-            <button className="md:hidden btn px-2.5 shrink-0" onClick={onMenu} aria-label={t(lang, 'menu')}><Menu {...ICON} size={20} /></button>
+            <button className="xl:hidden btn px-2.5 shrink-0" onClick={onMenu} aria-label={t(lang, 'menu')}><Menu {...ICON} size={20} /></button>
             <a href="#overview" onClick={() => setTab('overview')} className="flex items-center gap-2 sm:gap-3 min-w-0">
               <img
                 src="./brand/he-logo.png"
@@ -36,16 +36,16 @@ export default function Header({ lang, setLang, tab, sub, setTab, onRefresh, onE
               />
               <div className="min-w-0">
                 {/* Phones: the name on two short lines so it never runs under the buttons */}
-                <div className="sm:hidden text-[13px] font-bold tracking-wide leading-[1.1] uppercase"><div>Halal</div><div>Executive</div></div>
+                <div className="sm:hidden text-[13px] font-bold tracking-wide leading-[1.1] uppercase"><div>Halal Executive</div><div>Hub</div></div>
                 <div className="hidden sm:block text-lg font-bold tracking-wide leading-tight uppercase truncate">{SITE_NAME}</div>
               </div>
             </a>
           </div>
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             <button className="btn px-2.5 sm:px-3.5" onClick={() => setLang(lang === 'en' ? 'bm' : 'en')} title="Language">{lang === 'en' ? 'BM' : 'EN'}</button>
-            <a className="btn hidden md:inline-flex" href="#faq" onClick={() => setTab('faq')}>{t(lang, 'faq')}</a>
-            {SHEET_URL && <a className="btn hidden md:inline-flex" href={SHEET_URL} target="_blank" rel="noreferrer">{t(lang, 'sheet')} <ExternalLink {...ICON} size={14} /></a>}
-            {DRIVE_FOLDER_URL && <a className="btn hidden lg:inline-flex" href={DRIVE_FOLDER_URL} target="_blank" rel="noreferrer">{t(lang, 'drive')} <ExternalLink {...ICON} size={14} /></a>}
+            <a className="btn hidden xl:inline-flex" href="#faq" onClick={() => setTab('faq')}>{t(lang, 'faq')}</a>
+            {SHEET_URL && <a className="btn hidden xl:inline-flex" href={SHEET_URL} target="_blank" rel="noreferrer">{t(lang, 'sheet')} <ExternalLink {...ICON} size={14} /></a>}
+            {DRIVE_FOLDER_URL && <a className="btn hidden 2xl:inline-flex" href={DRIVE_FOLDER_URL} target="_blank" rel="noreferrer">{t(lang, 'drive')} <ExternalLink {...ICON} size={14} /></a>}
             <div className="relative hidden sm:block" ref={ref}>
               <button className="btn" onClick={() => setExp(!exp)}>{t(lang, 'export')} <ChevronDown {...ICON} size={16} /></button>
               {exp && (

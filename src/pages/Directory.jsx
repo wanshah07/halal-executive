@@ -1,4 +1,4 @@
-import { lazy, Suspense, useMemo, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import Segment from '../components/Segment'
 import { t } from '../lib/i18n'
 import { safeUrl } from '../lib/safe'
@@ -29,6 +29,7 @@ export default function Directory({ lang, data, sub: subKey, setTab }) {
   const cats = dirCategories(data.settings)
   const [cat, setCat] = useState('all')
   const [place, setPlace] = useState('all')
+  useEffect(() => { setPlace('all'); setCat('all') }, [cur.sub])
   const [q, setQ] = useState('')
   const [zoom, setZoom] = useState(null)
   const all = useMemo(() => directoryRows(data).map((r) => ({ ...r, _state: r.state || guessState(r.address) || '' })), [data])
@@ -36,7 +37,8 @@ export default function Directory({ lang, data, sub: subKey, setTab }) {
   const subRows = inSection.filter((r) => cur.sub !== 'training' || cat === 'all' || r.subtype === cat)
   // Map: one marker per Malaysian state, and one per country for providers abroad.
   const byPlace = useMemo(() => { const m = {}; subRows.forEach((r) => { const k = r.country && r.country !== 'Malaysia' ? r.country : r._state; if (k) m[k] = (m[k] || 0) + 1 }); return m }, [subRows])
-  const markers = Object.entries(byPlace).map(([k, n]) => { const ll = stateCoords(k) || countryCoords(k); return ll && { id: k, lat: ll[0], lng: ll[1], count: n, label: `${k}: ${n}` } }).filter(Boolean)
+  // Same markers object until the counts change, so the map keeps the reader's zoom.
+  const markers = useMemo(() => Object.entries(byPlace).map(([k, n]) => { const ll = stateCoords(k) || countryCoords(k); return ll && { id: k, lat: ll[0], lng: ll[1], count: n, label: `${k}: ${n}` } }).filter(Boolean), [JSON.stringify(byPlace)]) // eslint-disable-line react-hooks/exhaustive-deps
   const rows = subRows.filter((r) => (place === 'all' || r._state === place || r.country === place) && (!q || JSON.stringify(r).toLowerCase().includes(q.toLowerCase())))
     .sort((a, b) => String(a.name).localeCompare(String(b.name)))
   const pickPlace = (k) => { setPlace(place === k ? 'all' : k); document.getElementById('directory')?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }

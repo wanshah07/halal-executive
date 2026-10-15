@@ -93,8 +93,11 @@
     live in `COUNTRY_COORDS` (config.js); add a country there when a new one
     appears in the FHCB list, or its marker is silently skipped.
 18. **Expired certificates are deleted for good a day after `valid_to`**
-    (`purgeExpiredCerts`, every 30 min with the events purge), with their
-    document row and Drive file. Nothing else deletes by itself.
+    (`purgeExpiredCerts`, every 30 min with the events purge, under the script
+    lock), with their document row and Drive file. An expired document that is
+    not a certificate (a circular, a form) is archived, never deleted. Dates are
+    read day-first (DD/MM/YYYY) before anything else (`eventOver`). Nothing
+    else deletes by itself.
 19. **Disclaimer.** The footer, the FAQ page and the popup notice say the hub
     is AI-drafted, reviewed, not a ruling, can be wrong, and is used at the
     reader's own responsibility. Keep that wording on every public page.
@@ -109,11 +112,16 @@
     ticked, only on the Overview page, every time it is opened or refreshed
     (nothing remembered), and closes itself after 7 seconds (paused while
     held) as well as on a click (Wan, 15 Oct 2026).
-23. **Header and page share one column**: both are `max-w-7xl mx-auto` inside
-    `md:pl-[232px]` (the sidebar width), so their edges line up at any width.
 22. **Navigation.** Tablet and desktop header: `ui/nav-header.tsx`, text only,
     no icons; phones: the icon bar. Admin is only the black button at the top
     right, never in the header tabs or the sidebar (`MENU` in Sidebar.jsx).
     Directory has three sections (#directory/training, /sertu, /lab); the
     categories inside Training & Consultancy live in Settings `dir_categories`
-    and are edited in Admin → Directory.
+    and are edited in Admin → Directory. Deleted FHCB/Directory rows are kept
+    in Settings `seed_deleted` so "Load" never brings them back.
+23. **Header and page share one column**: both are `max-w-7xl mx-auto` inside
+    `xl:pl-[232px]`; the sidebar shows from 1280 px (below that it is the menu
+    drawer), so the ten header tabs always fit and the edges line up.
+24. **Popup posters** slide every 3 s and each adds 3 s to the 7 s the popup
+    stays open. Admin → Event posters is a different thing: posters for the
+    Events page and the Overview's upcoming-events row.

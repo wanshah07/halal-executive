@@ -69,7 +69,7 @@ const Tab = ({ item, active, setPosition, onChange, liRef }: {
         href={item.href || `#${item.value}`}
         aria-current={active ? "page" : undefined}
         onClick={(e) => { if (onChange) { e.preventDefault(); onChange(item.value); } }}
-        className="block cursor-pointer whitespace-nowrap px-[7px] py-1.5 text-[11.5px] font-medium uppercase tracking-normal lg:tracking-wide lg:px-3.5 lg:py-2 lg:text-[13px] xl:px-4 xl:text-sm"
+        className="block cursor-pointer whitespace-nowrap px-[7px] py-1.5 text-[11.5px] font-medium uppercase tracking-normal lg:px-2.5 lg:text-[12px] 2xl:px-4 2xl:py-2 2xl:text-sm 2xl:tracking-wide"
       >
         {item.label}
       </a>

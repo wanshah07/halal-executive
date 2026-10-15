@@ -28,11 +28,13 @@ export default function Fhcb({ lang, data, focusId, focusKey }) {
   const [zoom, setZoom] = useState(null)
   const all = useMemo(() => fhcbRows(data), [data])
   const docs = (data.documents || []).filter((d) => d.category === 'fhcb')
-  const list = docs.filter((d) => d.kind === 'fhcb_list'), circulars = docs.filter((d) => d.kind !== 'fhcb_list')
+  // Only the current list; a list a newer upload superseded is archived.
+  const list = docs.filter((d) => d.kind === 'fhcb_list' && d.status !== 'archived'), circulars = docs.filter((d) => d.kind !== 'fhcb_list' && d.status !== 'archived')
   const effective = (all.find((r) => r.effective_date) || {}).effective_date
   const byCountry = useMemo(() => { const m = {}; all.forEach((r) => { m[r.country] = (m[r.country] || 0) + 1 }); return m }, [all])
   const countries = Object.keys(byCountry).sort()
-  const markers = countries.map((c) => { const ll = countryCoords(c); return ll && { id: c, lat: ll[0], lng: ll[1], count: byCountry[c], label: `${c}: ${byCountry[c]}` } }).filter(Boolean)
+  // Same markers object until the counts change, so the map keeps the reader's zoom.
+  const markers = useMemo(() => countries.map((c) => { const ll = countryCoords(c); return ll && { id: c, lat: ll[0], lng: ll[1], count: byCountry[c], label: `${c}: ${byCountry[c]}` } }).filter(Boolean), [countries.join('|'), JSON.stringify(byCountry)]) // eslint-disable-line react-hooks/exhaustive-deps
   const rows = all.filter((r) => (country === 'all' || r.country === country) && (!q || JSON.stringify(r).toLowerCase().includes(q.toLowerCase())))
     .sort((a, b) => a.country.localeCompare(b.country) || (a.no || 0) - (b.no || 0))
   useEffect(() => { if (focusId) { const r = all.find((x) => String(x.id) === String(focusId)); if (r) { setCountry(r.country); setQ('') } } }, [focusId, focusKey, all])

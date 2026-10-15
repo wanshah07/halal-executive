@@ -23,7 +23,12 @@ export function RowManager({ lang, tab, data, onChanged }) {
   const key = tab === 'FHCB' ? 'fhcb' : 'directory'
   const fields = tab === 'FHCB' ? FHCB_FIELDS : dirFields(data && data.settings)
   const seed = tab === 'FHCB' ? fhcbSeed : dirSeed
-  const live = (data && data[key]) || []
+  // Admin reads its own list (hidden rows included); the public feed drops
+  // hidden rows, which would make them impossible to find again.
+  const [all, setAll] = useState(null)
+  const reload = () => adminPost('rows_list', { tab }).then((r) => setAll(r.rows)).catch(() => setAll(null))
+  useEffect(() => { reload() }, [tab, data]) // eslint-disable-line react-hooks/exhaustive-deps
+  const live = all || (data && data[key]) || []
   const [q, setQ] = useState('')
   const [row, setRow] = useState(null)
   const [logo, setLogo] = useState(null)
@@ -137,7 +142,7 @@ function FhcbDocs({ lang, data, onChanged }) {
             <span className={`chip ${d.kind === 'fhcb_list' ? 'bg-brand-100 text-brand-700' : 'bg-paper border border-line'}`}>{t(lang, d.kind === 'fhcb_list' ? 'doc_kind_list' : 'doc_kind_circular')}</span>
             <span className="min-w-0 flex-1 truncate">{d.title}</span>
             <span className="text-xs text-ink-400">{String(d.received_at || '').slice(0, 10)}</span>
-            <button className="btn px-2.5 text-red-700" onClick={() => deleteForGood(lang, 'Documents', d.id, d.title, () => setGone((g) => ({ ...g, [d.id]: 1 }))).then(() => { dropLocal('Documents', d.id); onChanged && onChanged() }).catch((er) => setMsg(er.message))} aria-label={t(lang, 'delete')}><Trash2 {...ICON} size={15} /></button>
+            <button className="btn px-2.5 text-red-700" onClick={() => deleteForGood(lang, 'Documents', d.id, d.title, () => setGone((g) => ({ ...g, [d.id]: 1 }))).then((ok) => { if (ok) { dropLocal('Documents', d.id); onChanged && onChanged() } }).catch((er) => setMsg(er.message))} aria-label={t(lang, 'delete')}><Trash2 {...ICON} size={15} /></button>
           </li>
         ))}
       </ul>

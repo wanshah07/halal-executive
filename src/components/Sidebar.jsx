@@ -16,7 +16,7 @@ export const MENU = NAV.filter(([k]) => k !== 'admin')
 
 export default function Sidebar({ lang, tab, sub, setTab, counts, mobileOpen, setMobileOpen }) {
   const open = true
-  useEffect(() => { setMobileOpen(false) }, [tab, setMobileOpen])
+  useEffect(() => { setMobileOpen(false) }, [tab, sub, setMobileOpen])
   const items = MENU.flatMap(([k, Icon]) => [(
     <a key={k} href={`#${k}`} onClick={(e) => { e.preventDefault(); setTab(k) }} title={t(lang, k)}
       className={`flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm font-medium transition ${tab === k ? 'bg-brand-600 text-white' : 'text-ink-600 hover:bg-paper hover:text-ink-900'}`}>
@@ -36,11 +36,11 @@ export default function Sidebar({ lang, tab, sub, setTab, counts, mobileOpen, se
   ])
   return (
     <>
-      <aside className="hidden md:flex fixed left-0 top-[var(--hh,117px)] bottom-0 z-20 w-[232px] flex-col gap-1 border-r border-line bg-white p-2 overflow-y-auto">
+      <aside className="hidden xl:flex fixed left-0 top-[var(--hh,117px)] bottom-0 z-20 w-[232px] flex-col gap-1 border-r border-line bg-white p-2 overflow-y-auto">
         {items}
       </aside>
       {mobileOpen && (
-        <div className="md:hidden fixed inset-0 z-40 bg-black/40" onClick={() => setMobileOpen(false)}>
+        <div className="xl:hidden fixed inset-0 z-40 bg-black/40" onClick={() => setMobileOpen(false)}>
           <nav className="absolute left-0 top-0 bottom-0 w-64 bg-white p-3 flex flex-col gap-1 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="font-bold px-2 py-2">{t(lang, 'menu')}</div>{items}
           </nav>
