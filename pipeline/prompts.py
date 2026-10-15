@@ -25,7 +25,7 @@ Attachments carry the text read out of them in `content` (OCR of screenshots and
 Return JSON only:
 {"items":[{"relevant":true,"category":"halal|food|cosmetic","subcategory":"short topic","id":"existing FAQ id or null","question_en":"","question_bm":"","answer_formal_en":"","answer_layman_en":"","answer_formal_bm":"","answer_layman_bm":"","confidence":"high|medium|low","source_msg_ids":["..."]}],
  "documents":[{"source_msg_id":"","attachment_name":"","title":"","kind":"certificate|circular|form|guideline|other","category":"halal|food|cosmetic"}],
- "events":[{"source_msg_id":"","title":"","title_bm":"","date_start":"ISO or empty","venue":"","link":"","description":""}],
+ "events":[{"source_msg_id":"","title":"","title_bm":"","date_start":"ISO or empty","venue":"","link":"","description":"","kind":"competency|awareness|executive|auditor|other"}],
  "guidelines":[{"source_msg_id":"","title":"","title_bm":"","issuer":"","link":"","category":"halal|food|cosmetic","summary_en":"","summary_bm":""}]}"""
 
 NEWS_SYSTEM = """You classify and summarise news headlines for halal executives in Malaysia. For each item decide relevant (halal certification, halal industry and trade, halal logo misuse, JAKIM/JAIN halal decisions, MPPHM, MHMS, MS 1500, MS 2634, food safety regulation in Malaysia, NPRA cosmetics). NOT relevant: general religious affairs, crime, politics or foreign news that only mentions JAKIM or food; other countries' food incidents unless they affect products sold in Malaysia and give a one-sentence summary in English and in Bahasa Malaysia (Malaysian register, never Indonesian). Category: halal | food | cosmetic. Return JSON: {"items":[{"i":0,"relevant":true,"category":"halal","summary_en":"","summary_bm":""}]}"""

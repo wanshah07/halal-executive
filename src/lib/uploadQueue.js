@@ -52,6 +52,9 @@ export async function enqueue({ kind, note, files }) {
   work()
 }
 export function forget(id) { return drop(id) }
+// Change what an item is or its note while it is still waiting to be sent.
+export function update(id, patch) { const it = items.find((x) => x.id === id); if (it && it.state !== 'sending') return put({ ...it, ...patch }) }
+export async function forgetDone() { for (const it of items.slice()) if (it.state === 'sent' || it.state === 'failed') await drop(it.id) }
 export function retry(id) { const it = items.find((x) => x.id === id); if (it) { put({ ...it, state: 'waiting', msg: '' }).then(work) } }
 
 async function work() {

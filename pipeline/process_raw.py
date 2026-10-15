@@ -340,7 +340,8 @@ def run(sources, max_batches, dry, minutes=20, attachments=None):
                                     "poster_url": poster, "link": safe_url(e.get("link")), "description": e.get("description", ""),
                                     # Admin uploads publish at once; group posters wait in Drafts.
                                     "status": "published" if src_of.get(str(e.get("source_msg_id"))) == "manual" else "draft",
-                                    "source": e.get("source_msg_id", ""), "poster_file": poster_file})
+                                    "source": e.get("source_msg_id", ""), "poster_file": poster_file,
+                                    "kind": e.get("kind") if e.get("kind") in ("competency", "awareness", "executive", "auditor") else "other"})
             for g in j["guidelines"]:
                 gk = norm_title(g.get("title"))
                 if g.get("title") and gk in seen_guidelines:

@@ -78,3 +78,23 @@
     stops the queue. `tickWatch` (every 10 min) emails the admins once when
     the WhatsApp heartbeat is older than 15 minutes or not CONNECTED, or the
     last 3 runs failed, and once when it is fixed.
+16. **FHCB and Directory are Sheet tabs edited in Admin** (Wan, 15 Oct 2026).
+    `src/data/fhcb.json` (96 bodies, JAKIM list effective 21 Aug 2026) and
+    `src/data/directory.json` (42 JAKIM training providers, Jun 2026, plus
+    sample service rows) are seeds: Admin → "Load" copies the rows the Sheet
+    does not have yet, and the page shows the seed only while the tab is empty.
+    After that every update is one row added, edited or deleted in Admin, and
+    each row keeps `source_ref` (document and page). Logos the seed ships are
+    in `public/fhcb/` and `public/directory/`; a logo uploaded in Admin goes to
+    Drive `50 Logos`, the FHCB list PDF and circulars to `40 FHCB` (Documents,
+    category `fhcb`, embedded on the page with Drive's viewer).
+17. **Maps are MapLibre GL on Carto Positron** (`src/components/MapView.jsx`);
+    the CSP in `index.html` allows `basemaps.cartocdn.com`. Country centroids
+    live in `COUNTRY_COORDS` (config.js); add a country there when a new one
+    appears in the FHCB list, or its marker is silently skipped.
+18. **Expired certificates are deleted for good a day after `valid_to`**
+    (`purgeExpiredCerts`, every 30 min with the events purge), with their
+    document row and Drive file. Nothing else deletes by itself.
+19. **Disclaimer.** The footer, the FAQ page and the popup notice say the hub
+    is AI-drafted, reviewed, not a ruling, can be wrong, and is used at the
+    reader's own responsibility. Keep that wording on every public page.

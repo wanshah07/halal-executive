@@ -68,3 +68,20 @@ npm install
 cp .env.example .env     # set VITE_API_URL once the Apps Script is deployed
 npm run dev              # http://localhost:5173, sample data when VITE_API_URL is empty
 ```
+
+## FHCB, Directory, events by type (15 Oct 2026)
+
+- **FHCB**: foreign halal certification bodies recognised by JAKIM, by country
+  on a world map, with logos, contacts and the document page each row cites.
+  Admin → FHCB: Load the 21 Aug 2026 list once, then add / edit / delete rows
+  as JAKIM gazettes updates; upload the list PDF and circulars (embedded on the
+  page).
+- **Directory**: Training (JAKIM Daftar Penyedia Latihan Halal, Jun 2026) and
+  Services (Jurusertu, Training & Consultancy, Laboratory - coming soon), on a
+  map by state. Admin → Directory to add rows and logos.
+- **Events** carry a training type (Halal Competency, Halal Awareness, Halal
+  Executive, Internal Halal Auditor, Others), set by the AI from the poster and
+  editable in Admin.
+- **FAQ**: Admin → Manage published content → FAQ has Edit, Rephrase (AI
+  rewrite, same facts) and Delete in one box.
+- Expired events and certificates are deleted a day after they end.

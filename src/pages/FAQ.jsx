@@ -35,6 +35,8 @@ export default function FAQ({ lang, data, focusId, focusKey }) {
     </>
   )
   return (
+    <div>
+    <div className="card p-3 mb-4 text-xs text-ink-600 bg-amber-50 border-amber-200"><b>{t(lang, 'disclaimer_title')}.</b> {t(lang, 'disclaimer_faq')}</div>
     <Segment id="faq" focusId={focusId} focusKey={focusKey} lang={lang} title={t(lang, 'faq')} rows={rows} filters={filters}
       columns={[
         { key: 'category', label: t(lang, 'category'), render: (f) => catChip(f.category, lang) },
@@ -52,5 +54,6 @@ export default function FAQ({ lang, data, focusId, focusKey }) {
           <div className="mt-3 text-xs text-ink-400 text-right">{fmtDate(f.updated_at, lang)}</div>
         </article>
       )} />
+    </div>
   )
 }

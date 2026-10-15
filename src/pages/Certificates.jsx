@@ -19,9 +19,9 @@ export { certStatus, splitProducts }
 export function CertThumb({ c, lang, size = 'card' }) {
   const [src, setSrc] = useState(c.thumb || null)
   useEffect(() => { let live = true; if (!c.thumb) certThumb(c.id).then((d) => live && d && setSrc(d)); return () => { live = false } }, [c.id, c.thumb])
-  const box = size === 'card' ? 'w-full aspect-[4/3]' : 'w-12 h-16'
+  const box = size === 'card' ? 'w-full aspect-[4/5]' : 'w-20 h-24'
   const inner = src
-    ? <img src={src} alt={`${t(lang, 'certificates')} ${c.company}`} loading="lazy" className={`${box} object-cover object-top rounded-lg border border-line bg-white`} />
+    ? <img src={src} alt={`${t(lang, 'certificates')} ${c.company}`} loading="lazy" className={`${box} object-contain rounded-lg border border-line bg-white`} />
     : <div className={`${box} rounded-lg border border-line bg-paper flex flex-col items-center justify-center gap-1 text-ink-400`}>
         <img src="./brand/jakim-halal-logo.png" alt="" className={size === 'card' ? 'h-12 w-12 opacity-30' : 'h-6 w-6 opacity-30'} />
         {size === 'card' && <span className="text-xs">{t(lang, 'no_preview')}</span>}

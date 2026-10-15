@@ -30,7 +30,7 @@ export async function loadData({ force = false } = {}) {
 // Delete or Hide in Admin takes the row off every page at once: this browser's
 // saved copy and the page in memory (App listens for "he:drop"), before Apps
 // Script has even answered. If the server refuses, "he:refresh" reloads.
-const TAB_KEY = { FAQ: 'faq', Guidelines: 'guidelines', Events: 'events', Certificates: 'certificates', Documents: 'documents', News: 'news', References: 'references' }
+const TAB_KEY = { FAQ: 'faq', Guidelines: 'guidelines', Events: 'events', Certificates: 'certificates', Documents: 'documents', News: 'news', References: 'references', FHCB: 'fhcb', Directory: 'directory' }
 export function dropLocal(tab, id) {
   const key = TAB_KEY[tab] || tab
   try {

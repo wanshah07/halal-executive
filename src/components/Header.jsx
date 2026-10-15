@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { SITE_NAME, SITE_SUB, SHEET_URL, DRIVE_FOLDER_URL } from '../lib/config'
+import { SITE_NAME, SHEET_URL, DRIVE_FOLDER_URL } from '../lib/config'
 import { t } from '../lib/i18n'
 import { NAV } from './Sidebar'
 import { IconBar, IconBarItem } from '@/components/ui/icon-bar'
@@ -26,7 +26,6 @@ export default function Header({ lang, setLang, tab, setTab, onRefresh, onExport
                 {/* Phones: the name on two short lines so it never runs under the buttons */}
                 <div className="sm:hidden text-[13px] font-bold tracking-wide leading-[1.1] uppercase"><div>Halal</div><div>Executive</div></div>
                 <div className="hidden sm:block text-lg font-bold tracking-wide leading-tight uppercase truncate">{SITE_NAME}</div>
-                <div className="text-xs text-ink-600 truncate hidden sm:block">{SITE_SUB}</div>
               </div>
             </a>
           </div>

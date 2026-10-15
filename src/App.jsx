@@ -27,6 +27,8 @@ const Guidelines = lazyPage(() => import('./pages/Guidelines'))
 const References = lazyPage(() => import('./pages/References'))
 const Documents = lazyPage(() => import('./pages/Documents'))
 const Events = lazyPage(() => import('./pages/Events'))
+const Fhcb = lazyPage(() => import('./pages/Fhcb'))
+const Directory = lazyPage(() => import('./pages/Directory'))
 const News = lazyPage(() => import('./pages/News'))
 const Admin = lazyPage(() => import('./pages/Admin'))
 
@@ -57,7 +59,9 @@ const EXPORT = (lang, data) => ({
   certificates: { title: t(lang, 'certificates'), rows: (data.certificates || []).map((c) => ({ ...c, validity: certStatus(c), products: splitProducts(c.products).join('; ') })), cols: ['id', 'validity', 'company', 'cert_no', 'scheme', 'category', 'state', 'valid_from', 'valid_to', 'products', 'drive_url', 'updated_at'] },
   guidelines: { title: t(lang, 'guidelines'), rows: data.guidelines || [], cols: ['id', 'category', 'title', 'title_bm', 'issuer', 'summary_en', 'summary_bm', 'link', 'effective_date', 'updated_at'] },
   documents: { title: t(lang, 'documents'), rows: data.documents || [], cols: ['id', 'status', 'title', 'kind', 'category', 'version', 'supersedes_id', 'received_at', 'updated_at', 'drive_url'] },
-  events: { title: t(lang, 'events'), rows: data.events || [], cols: ['id', 'title', 'title_bm', 'date_start', 'date_end', 'venue', 'link', 'description'] },
+  events: { title: t(lang, 'events'), rows: data.events || [], cols: ['id', 'kind', 'title', 'title_bm', 'date_start', 'date_end', 'venue', 'link', 'description'] },
+  fhcb: { title: t(lang, 'fhcb'), rows: data.fhcb || [], cols: ['id', 'no', 'country', 'name', 'kind', 'address', 'persons', 'tel', 'fax', 'email', 'website', 'source_ref', 'effective_date', 'updated_at'] },
+  directory: { title: t(lang, 'directory'), rows: data.directory || [], cols: ['id', 'type', 'subtype', 'name', 'state', 'country', 'coverage', 'address', 'pic', 'phone', 'email', 'website', 'website2', 'accreditation', 'description', 'source_ref', 'updated_at'] },
   news: { title: t(lang, 'news'), rows: data.news || [], cols: ['id', 'category', 'title', 'source', 'url', 'published_at', 'expires_at', 'summary_en', 'summary_bm'] },
 })
 
@@ -72,8 +76,6 @@ export default function App() {
   const [chatOpen, setChatOpen] = useState(false)
   const [seed, setSeed] = useState(null)
   const [menu, setMenu] = useState(false)
-  const [pinned, setPinnedState] = useState(() => ls('he:pin', '0') === '1')
-  const setPinned = (v) => { setPinnedState(v); try { localStorage.setItem('he:pin', v ? '1' : '0') } catch { /* ignore */ } }
 
   const setTab = (k, id) => { setTabState(k); setFocus(id ? { id, n: Date.now() } : null); if (location.hash !== `#${k}`) history.replaceState(null, '', `#${k}`); window.scrollTo({ top: 0 }) }
   useEffect(() => { const h = () => setTabState(fromHash()); addEventListener('hashchange', h); return () => removeEventListener('hashchange', h) }, [])
@@ -111,13 +113,13 @@ export default function App() {
 
   if (!data) return <div className="p-8 text-ink-600">{err || t(lang, 'loading')}</div>
   const live = (n) => !n.expires_at || Date.parse(n.expires_at) > Date.now()
-  const counts = { references: (data.references || []).length, faq: (data.faq || []).length, certificates: (data.certificates || []).length, guidelines: (data.guidelines || []).length, documents: (data.documents || []).filter((d) => d.status === 'current').length, events: (data.events || []).length, news: (data.news || []).filter(live).length }
+  const counts = { references: (data.references || []).length, faq: (data.faq || []).length, certificates: (data.certificates || []).length, guidelines: (data.guidelines || []).length, documents: (data.documents || []).filter((d) => d.status === 'current').length, events: (data.events || []).length, fhcb: (data.fhcb || []).length || undefined, directory: (data.directory || []).length || undefined, news: (data.news || []).filter(live).length }
 
   return (
     <div className="min-h-screen">
       <Header lang={lang} setLang={setLang} tab={tab} setTab={setTab} onRefresh={() => refresh(true)} onExport={doExport} counts={counts} loading={loading} onMenu={() => setMenu(true)} />
-      <Sidebar lang={lang} tab={tab} setTab={setTab} counts={counts} mobileOpen={menu} setMobileOpen={setMenu} pinned={pinned} setPinned={setPinned} />
-      <div className={`min-h-[calc(100vh-118px)] flex flex-col transition-[padding] duration-200 ${pinned ? 'md:pl-[232px]' : 'md:pl-14'}`}>
+      <Sidebar lang={lang} tab={tab} setTab={setTab} counts={counts} mobileOpen={menu} setMobileOpen={setMenu} />
+      <div className="min-h-[calc(100vh-118px)] flex flex-col md:pl-[232px]">
         <main className="w-full flex-1 max-w-7xl mx-auto px-4 sm:px-6 py-6">
           {err && <div className="card p-3 mb-4 text-sm bg-red-50 border-red-200">{err}</div>}
           <div className="mb-6"><SearchBar lang={lang} data={data} onOpen={(type, id) => setTab(type, id)} onAsk={(q) => setSeed({ q, n: Date.now() })} /></div>
@@ -130,6 +132,8 @@ export default function App() {
           {tab === 'guidelines' && <Guidelines lang={lang} data={data} />}
           {tab === 'documents' && <Documents lang={lang} data={data} />}
           {tab === 'events' && <Events lang={lang} data={data} />}
+          {tab === 'fhcb' && <Fhcb lang={lang} data={data} focusId={focus && focus.id} focusKey={focus && focus.n} />}
+          {tab === 'directory' && <Directory lang={lang} data={data} />}
           {tab === 'news' && <News lang={lang} data={data} />}
           {tab === 'admin' && <Admin lang={lang} data={data} onSaved={() => refresh(true)} />}
           </Suspense>
@@ -137,9 +141,12 @@ export default function App() {
         </main>
         <footer className="border-t border-line bg-white">
           {/* right padding keeps the floating Assistant button off the text */}
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-5 pb-24 sm:pb-5 sm:pr-48 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-ink-400">
-            <div><span className="font-semibold text-ink-600">Halal Executive</span> · halalexecutive.kkmhalalconsultant.com · {t(lang, 'updated')} {new Date(data._fetched).toLocaleString()}</div>
-            <div className="font-medium text-ink-600">{t(lang, 'developed')}</div>
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-5 pb-24 sm:pb-5 sm:pr-48 text-xs text-ink-400">
+            <p className="mb-3 text-ink-600 leading-relaxed"><b>{t(lang, 'disclaimer_title')}.</b> {t(lang, 'disclaimer_body')}</p>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div><span className="font-semibold text-ink-600">Halal Executive</span> · halalexecutive.kkmhalalconsultant.com · {t(lang, 'updated')} {new Date(data._fetched).toLocaleString()}</div>
+              <div className="font-medium text-ink-600">{t(lang, 'developed')}</div>
+            </div>
           </div>
         </footer>
       </div>

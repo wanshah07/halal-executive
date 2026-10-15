@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { adminPost, dropLocal, refreshAll } from '../lib/api'
 import { imageUrl } from '../lib/safe'
-import { CATEGORIES } from '../lib/config'
+import { CATEGORIES, EVENT_KINDS } from '../lib/config'
+import { ICON, Sparkles } from './Icon'
 import { t } from '../lib/i18n'
 import { fmtDateTime } from '../lib/util'
 import { POSTER_ACCEPT, POSTER_MAX } from './Poster'
@@ -74,7 +75,7 @@ export function RefAdmin({ lang }) {
 
 // Events added by hand, with an optional poster: a picture, PDF, PowerPoint or
 // Word file, or a link (a Google Drive share link works too).
-const EMPTY = { id: '', title: '', title_bm: '', date_start: '', date_end: '', venue: '', link: '', description: '', poster_url: '', poster_file: '' }
+const EMPTY = { id: '', title: '', title_bm: '', date_start: '', date_end: '', venue: '', link: '', description: '', poster_url: '', poster_file: '', kind: 'other' }
 export function EventsAdmin({ lang, onChanged }) {
   const [rows, setRows] = useState(null)
   const [e, setE] = useState(EMPTY)
@@ -120,6 +121,7 @@ export function EventsAdmin({ lang, onChanged }) {
       <form id="event-form" onSubmit={save} className="grid sm:grid-cols-2 gap-3 scroll-mt-32">
         <div><label className="label" htmlFor="ev-t">{t(lang, 'title')} (EN)</label><input id="ev-t" className="input" required value={e.title} onChange={(x) => setE({ ...e, title: x.target.value })} /></div>
         <div><label className="label" htmlFor="ev-tb">{t(lang, 'title')} (BM)</label><input id="ev-tb" className="input" value={e.title_bm} onChange={(x) => setE({ ...e, title_bm: x.target.value })} /></div>
+        <div><label className="label" htmlFor="ev-k">{t(lang, 'event_kind')}</label><select id="ev-k" className="input" value={e.kind || 'other'} onChange={(x) => setE({ ...e, kind: x.target.value })}>{EVENT_KINDS.map((k) => <option key={k.id} value={k.id}>{k[lang] || k.en}</option>)}</select></div>
         <div><label className="label" htmlFor="ev-s">{t(lang, 'starts')}</label><input id="ev-s" type="datetime-local" className="input" required value={local(e.date_start)} onChange={(x) => setE({ ...e, date_start: x.target.value })} /></div>
         <div><label className="label" htmlFor="ev-e">{t(lang, 'ends')}</label><input id="ev-e" type="datetime-local" className="input" value={local(e.date_end)} onChange={(x) => setE({ ...e, date_end: x.target.value })} /></div>
         <div><label className="label" htmlFor="ev-v">{t(lang, 'venue')}</label><input id="ev-v" className="input" value={e.venue} onChange={(x) => setE({ ...e, venue: x.target.value })} placeholder="Online / Shah Alam" /></div>
@@ -154,13 +156,29 @@ const MANAGED = [['FAQ', 'faq', (r, lang) => (lang === 'bm' ? r.question_bm || r
   ['Certificates', 'certificates', (r) => `${r.company || ''} · ${r.cert_no || ''}`],
   ['Documents', 'documents', (r) => r.title],
   ['News', 'news', (r) => r.title]]
+const FAQ_EDIT = [['category', 'Category'], ['subcategory', 'Subcategory'], ['question_en', 'Question (EN)'], ['question_bm', 'Soalan (BM)'], ['answer_formal_en', 'Answer, formal (EN)', 1], ['answer_layman_en', 'Answer, simple (EN)', 1], ['answer_formal_bm', 'Jawapan, rasmi (BM)', 1], ['answer_layman_bm', 'Jawapan, mudah (BM)', 1]]
 export function ContentManager({ lang, data, onChanged }) {
   const [tab, setTab] = useState('FAQ')
   const [q, setQ] = useState('')
   const [msg, setMsg] = useState('')
   const [gone, setGone] = useState({})
+  const [edit, setEdit] = useState(null) // { id, fields }
+  const [busy, setBusy] = useState(false)
+  const [patched, setPatched] = useState({})
+  const startEdit = (r) => { const f = {}; FAQ_EDIT.forEach(([k]) => { f[k] = r[k] ?? '' }); setEdit({ id: r.id, fields: f }); setMsg('') }
+  async function rephrase(r) {
+    if (!edit || edit.id !== r.id) startEdit(r)
+    setBusy(true); setMsg(t(lang, 'rephrasing'))
+    try { const x = await adminPost('faq_rephrase', { id: r.id }); setEdit((e) => ({ id: r.id, fields: { ...(e && e.id === r.id ? e.fields : Object.fromEntries(FAQ_EDIT.map(([k]) => [k, r[k] ?? '']))), ...x.fields } })); setMsg(t(lang, 'rephrased')) }
+    catch (e) { setMsg(e.message) } finally { setBusy(false) }
+  }
+  async function saveEdit() {
+    setBusy(true); setMsg('')
+    try { await adminPost('review_save', { tab: 'FAQ', id: edit.id, fields: edit.fields }); setPatched((p) => ({ ...p, [edit.id]: edit.fields })); setEdit(null); setMsg(t(lang, 'saved')); onChanged && onChanged() }
+    catch (e) { setMsg(e.message) } finally { setBusy(false) }
+  }
   const [, key, label] = MANAGED.find((m) => m[0] === tab)
-  const rows = ((data && data[key]) || []).filter((r) => !gone[tab + r.id] && (!q || JSON.stringify(r).toLowerCase().includes(q.toLowerCase())))
+  const rows = ((data && data[key]) || []).map((r) => patched[r.id] ? { ...r, ...patched[r.id] } : r).filter((r) => !gone[tab + r.id] && (!q || JSON.stringify(r).toLowerCase().includes(q.toLowerCase())))
   async function del(r) {
     try { if (await deleteForGood(lang, tab, r.id, label(r, lang), () => setGone((g) => ({ ...g, [tab + r.id]: 1 })))) { setMsg(t(lang, 'deleted')) } } catch (e) { setGone((g) => { const n = { ...g }; delete n[tab + r.id]; return n }); setMsg(e.message) }
   }
@@ -174,12 +192,32 @@ export function ContentManager({ lang, data, onChanged }) {
         </select>
         <input className="input flex-1 min-w-40" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t(lang, 'search_ph')} />
       </div>
+      {tab === 'FAQ' && <p className="text-xs text-ink-400">{t(lang, 'manage_faq_hint')}</p>}
       {msg && <div className="text-sm text-ink-600">{msg}</div>}
-      <ul className="divide-y divide-line max-h-96 overflow-auto">
+      <ul className="divide-y divide-line max-h-[32rem] overflow-auto">
         {rows.map((r) => (
-          <li key={r.id} className="py-2 flex items-start gap-3 text-sm">
-            <div className="min-w-0 flex-1"><span className="text-ink-400 text-xs mr-2">{r.id}</span>{label(r, lang)}</div>
-            <button className="btn text-red-700 shrink-0" onClick={() => del(r)}>{t(lang, 'delete')}</button>
+          <li key={r.id} className="py-2 text-sm">
+            <div className="flex items-start gap-3">
+              <div className="min-w-0 flex-1"><span className="text-ink-400 text-xs mr-2">{r.id}</span>{label(r, lang)}</div>
+              {tab === 'FAQ' && <button className="btn px-2.5 shrink-0" onClick={() => startEdit(r)}>{t(lang, 'edit')}</button>}
+              {tab === 'FAQ' && <button className="btn px-2.5 shrink-0" disabled={busy} onClick={() => rephrase(r)}><Sparkles {...ICON} size={15} />{t(lang, 'rephrase')}</button>}
+              <button className="btn text-red-700 shrink-0" onClick={() => del(r)}>{t(lang, 'delete')}</button>
+            </div>
+            {edit && edit.id === r.id && (
+              <div className="mt-2 grid sm:grid-cols-2 gap-3 border border-brand-200 rounded-lg p-3 bg-brand-50/40">
+                {FAQ_EDIT.map(([k, lab, long]) => (
+                  <div key={k} className={long ? 'sm:col-span-2' : ''}><label className="label" htmlFor={`cm-${r.id}-${k}`}>{lab}</label>
+                    {long ? <textarea id={`cm-${r.id}-${k}`} className="input" rows={4} value={edit.fields[k]} onChange={(e) => setEdit({ ...edit, fields: { ...edit.fields, [k]: e.target.value } })} />
+                      : <input id={`cm-${r.id}-${k}`} className="input" value={edit.fields[k]} onChange={(e) => setEdit({ ...edit, fields: { ...edit.fields, [k]: e.target.value } })} />}
+                  </div>
+                ))}
+                <div className="sm:col-span-2 flex flex-wrap gap-2">
+                  <button className="btn-brand" disabled={busy} onClick={saveEdit}>{busy ? '…' : t(lang, 'save_changes')}</button>
+                  <button className="btn" disabled={busy} onClick={() => rephrase(r)}><Sparkles {...ICON} size={15} />{t(lang, 'rephrase')}</button>
+                  <button className="btn" onClick={() => setEdit(null)}>{t(lang, 'cancel')}</button>
+                </div>
+              </div>
+            )}
           </li>
         ))}
         {!rows.length && <li className="py-2 text-sm text-ink-400">{t(lang, 'no_data')}</li>}

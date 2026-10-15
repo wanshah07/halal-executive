@@ -5,9 +5,11 @@ import { t } from '../lib/i18n'
 import { fmtDateTime } from '../lib/util'
 import { safeUrl, imageUrl } from '../lib/safe'
 import { RefAdmin, EventsAdmin, ContentManager, deleteForGood } from '../components/AdminExtra'
+import { RowManager } from '../components/AdminRows'
+import { EVENT_KINDS } from '../lib/config'
 import { POSTER_ACCEPT, POSTER_MAX } from '../components/Poster'
-import { ICON, Lock, RefreshCw, Upload, X, Play } from '../components/Icon'
-import { subscribe, enqueue, retry, forget } from '../lib/uploadQueue'
+import { ICON, Lock, RefreshCw, Upload, X, Play, Sparkles } from '../components/Icon'
+import { subscribe, enqueue, retry, forget, update, forgetDone } from '../lib/uploadQueue'
 
 // Admin panel, locked. A registered email asks for a code, the code arrives
 // by email from the Sheet's Apps Script, and the session lasts 6 hours.
@@ -68,6 +70,7 @@ function UploadBox({ lang }) {
   const [note, setNote] = useState('')
   const [files, setFiles] = useState([])
   const [queue, setQueue] = useState([])
+  const [editing, setEditing] = useState(null)
   const [err, setErr] = useState('')
   useEffect(() => subscribe(setQueue), [])
   async function send(e) {
@@ -107,16 +110,37 @@ function UploadBox({ lang }) {
       <div className="flex items-center gap-3"><button className="btn-brand" disabled={!files.length && !note.trim()}>{t(lang, 'upload_send')}</button><span className="text-xs text-ink-400">{t(lang, 'q_note')}</span></div>
       {err && <div className="text-sm text-red-600">{err}</div>}
       {!!queue.length && (
-        <ul className="text-sm space-y-1">
-          {queue.slice().reverse().map((x) => (
-            <li key={x.id} className={`flex flex-wrap items-center gap-x-2 ${x.state === 'failed' ? 'text-red-600' : x.state === 'sent' ? 'text-brand-700' : 'text-ink-600'}`}>
-              <span>{x.state === 'sent' ? '✓' : x.state === 'failed' ? '✕' : '⏳'} {x.name || t(lang, 'note_only')} · {t(lang, 'kind_' + (x.kind === 'certificate' ? 'cert' : x.kind))}</span>
-              <span className="text-ink-400">· {line(x)}</span>
-              {x.state === 'failed' && <button type="button" className="underline" onClick={() => retry(x.id)}>{t(lang, 'q_retry')}</button>}
-              {(x.state === 'failed' || x.state === 'sent') && <button type="button" className="underline text-ink-400" onClick={() => forget(x.id)}>{t(lang, 'q_clear')}</button>}
-            </li>
-          ))}
-        </ul>
+        <div className="border border-line rounded-lg overflow-hidden">
+          <div className="flex items-center justify-between px-3 py-2 bg-paper text-xs text-ink-600">
+            <span>{queue.filter((x) => x.state === 'waiting' || x.state === 'sending').length} {t(lang, 'q_queued').toLowerCase()} · {queue.filter((x) => x.state === 'sent').length} {t(lang, 'q_sent_short').toLowerCase()} · {queue.filter((x) => x.state === 'failed').length} {t(lang, 'q_failed').toLowerCase()}</span>
+            {queue.some((x) => x.state === 'sent' || x.state === 'failed') && <button type="button" className="underline" onClick={() => forgetDone()}>{t(lang, 'q_clear_done')}</button>}
+          </div>
+          <ul className="divide-y divide-line text-sm">
+            {queue.slice().reverse().map((x) => {
+              const tone = x.state === 'failed' ? 'bg-red-100 text-red-700' : x.state === 'sent' ? 'bg-brand-100 text-brand-700' : x.state === 'sending' ? 'bg-amber-100 text-amber-800' : 'bg-paper border border-line text-ink-600'
+              const word = x.state === 'failed' ? t(lang, 'q_failed') : x.state === 'sent' ? t(lang, 'q_sent_short') : x.state === 'sending' ? t(lang, 'q_sending') : t(lang, 'q_queued')
+              return (
+                <li key={x.id} className="px-3 py-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <span className={`chip ${tone} shrink-0`}>{word}</span>
+                  <span className="font-medium min-w-0 flex-1 truncate" title={x.name}>{x.name || t(lang, 'note_only')}</span>
+                  {editing === x.id
+                    ? <span className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                        <select className="input w-auto py-1" value={x.kind} onChange={(e) => update(x.id, { kind: e.target.value })} aria-label={t(lang, 'upload_kind')}>{['faq', 'certificate', 'guideline', 'event'].map((k) => <option key={k} value={k}>{t(lang, 'kind_' + (k === 'certificate' ? 'cert' : k))}</option>)}</select>
+                        <input className="input w-auto py-1 min-w-40" value={x.note || ''} onChange={(e) => update(x.id, { note: e.target.value })} placeholder={t(lang, 'upload_note')} aria-label={t(lang, 'upload_note')} />
+                        <button type="button" className="btn px-2.5 py-1" onClick={() => setEditing(null)}>{t(lang, 'done')}</button>
+                      </span>
+                    : <span className="text-ink-600 text-xs">{t(lang, 'kind_' + (x.kind === 'certificate' ? 'cert' : x.kind))}{x.note ? ` · ${String(x.note).slice(0, 60)}` : ''}</span>}
+                  <span className="text-ink-400 text-xs basis-full sm:basis-auto sm:ml-auto">{line(x)}</span>
+                  <span className="flex gap-1 shrink-0">
+                    {x.state === 'waiting' && editing !== x.id && <button type="button" className="btn px-2.5 py-1" onClick={() => setEditing(x.id)}>{t(lang, 'q_edit')}</button>}
+                    {x.state === 'failed' && <button type="button" className="btn px-2.5 py-1" onClick={() => retry(x.id)}>{t(lang, 'q_retry')}</button>}
+                    {x.state !== 'sending' && <button type="button" className="btn px-2.5 py-1 text-ink-600" onClick={() => forget(x.id)}>{t(lang, 'q_clear')}</button>}
+                  </span>
+                </li>
+              )
+            })}
+          </ul>
+        </div>
       )}
     </form>
   )
@@ -269,7 +293,7 @@ const REVIEW_KINDS = ['FAQ', 'Events', 'Documents', 'Certificates', 'Guidelines'
 // [field, label, long?, editable?]
 const FULL = {
   FAQ: [['category', 'Category'], ['subcategory', 'Subcategory'], ['question_en', 'Question (EN)'], ['question_bm', 'Soalan (BM)'], ['answer_formal_en', 'Answer, formal (EN)', 1], ['answer_layman_en', 'Answer, simple (EN)', 1], ['answer_formal_bm', 'Jawapan, rasmi (BM)', 1], ['answer_layman_bm', 'Jawapan, mudah (BM)', 1]],
-  Events: [['title', 'Title'], ['title_bm', 'Tajuk (BM)'], ['date_start', 'Start (YYYY-MM-DD)'], ['date_end', 'End (YYYY-MM-DD)'], ['venue', 'Venue'], ['link', 'Registration link'], ['poster_url', 'Poster link'], ['description', 'Description', 1]],
+  Events: [['kind', 'Training type'], ['title', 'Title'], ['title_bm', 'Tajuk (BM)'], ['date_start', 'Start (YYYY-MM-DD)'], ['date_end', 'End (YYYY-MM-DD)'], ['venue', 'Venue'], ['link', 'Registration link'], ['poster_url', 'Poster link'], ['description', 'Description', 1]],
   Documents: [['title', 'Title'], ['kind', 'Kind'], ['category', 'Category'], ['drive_url', 'File', 0, 0], ['notes', 'Notes', 0, 0]],
   Certificates: [['issuer', 'Issuing Body', 1], ['legal_authority', 'Legal Authority', 1], ['cert_no', 'Certificate Number'], ['reg_no', 'Registration No.'], ['issue_date', 'Issue Date (YYYY-MM-DD)'], ['valid_from', 'Valid from (YYYY-MM-DD)'], ['valid_to', 'Valid until (YYYY-MM-DD)'], ['company', 'Entrepreneur / Company Certified'], ['office_address', 'Office Address', 1], ['factory_address', 'Factory Address', 1], ['scheme', 'Scheme'], ['state', 'State'], ['category', 'Category'], ['products', 'Approved Product Types (separate with ;)', 1], ['scope', 'Certification Scope', 1], ['drive_url', 'File', 0, 0]],
   Guidelines: [['category', 'Category'], ['title', 'Title'], ['title_bm', 'Tajuk (BM)'], ['issuer', 'Issuer'], ['summary_en', 'Summary (EN)', 1], ['summary_bm', 'Ringkasan (BM)', 1], ['link', 'Link']],
@@ -290,6 +314,11 @@ function DraftItem({ lang, tab, r, onSet, onDelete, onSaved }) {
     try { await adminPost('review_save', { tab, id: r.id, fields: edit }); onSaved({ ...r, ...edit }); setEdit(null); if (publish) onSet('published') }
     catch (e) { setErr(e.message) } finally { setBusy(false) }
   }
+  // Rephrase with the AI: the four answers come back for checking; Save keeps them.
+  async function rephrase() {
+    setBusy(true); setErr('')
+    try { const x = await adminPost('faq_rephrase', { id: r.id }); setEdit((e) => ({ ...e, ...x.fields })); setErr(t(lang, 'rephrased')) } catch (e) { setErr(e.message) } finally { setBusy(false) }
+  }
   const poster = tab === 'Events' && imageUrl(r.poster_url)
   return (
     <li className="py-3 flex flex-col gap-3">
@@ -302,6 +331,7 @@ function DraftItem({ lang, tab, r, onSet, onDelete, onSaved }) {
         </div>
         <div className="flex flex-wrap gap-2 shrink-0">
           {!edit && <button className="btn" onClick={startEdit}>{t(lang, 'edit')}</button>}
+          {!edit && tab === 'FAQ' && <button className="btn" onClick={() => { startEdit(); setTimeout(rephrase, 0) }}><Sparkles {...ICON} size={15} />{t(lang, 'rephrase')}</button>}
           <button className="btn-brand" onClick={() => onSet('published')}>{t(lang, 'publish')}</button>
           <button className="btn" onClick={() => onSet('hidden')}>{t(lang, 'hide')}</button>
           <button className="btn text-red-700" onClick={onDelete}>{t(lang, 'delete')}</button>
@@ -326,7 +356,9 @@ function DraftItem({ lang, tab, r, onSet, onDelete, onSaved }) {
         <div className="grid sm:grid-cols-2 gap-3 text-sm">
           {fields.filter(([, , , ed]) => ed !== 0).map(([k, label, long]) => (
             <div key={k} className={long ? 'sm:col-span-2' : ''}><label className="label" htmlFor={`ed-${r.id}-${k}`}>{label}</label>
-              {long
+              {k === 'kind'
+                ? <select id={`ed-${r.id}-${k}`} className="input" value={edit[k] || 'other'} onChange={(e) => setEdit({ ...edit, [k]: e.target.value })}>{EVENT_KINDS.map((x) => <option key={x.id} value={x.id}>{x[lang] || x.en}</option>)}</select>
+                : long
                 ? <textarea id={`ed-${r.id}-${k}`} className="input" rows={4} value={edit[k]} onChange={(e) => setEdit({ ...edit, [k]: e.target.value })} />
                 : <input id={`ed-${r.id}-${k}`} className="input" value={edit[k]} onChange={(e) => setEdit({ ...edit, [k]: e.target.value })} />}
             </div>
@@ -348,6 +380,7 @@ function DraftItem({ lang, tab, r, onSet, onDelete, onSaved }) {
             </div>
           )}
           <div className="sm:col-span-2 flex flex-wrap items-center gap-2">
+            {tab === 'FAQ' && <button className="btn" disabled={busy} onClick={rephrase}><Sparkles {...ICON} size={15} />{busy ? t(lang, 'rephrasing') : t(lang, 'rephrase')}</button>}
             <button className="btn-brand" disabled={busy} onClick={() => save(true)}>{busy ? '…' : t(lang, 'save_publish')}</button>
             <button className="btn" disabled={busy} onClick={() => save(false)}>{t(lang, 'save_changes')}</button>
             <button className="btn" disabled={busy} onClick={() => setEdit(null)}>{t(lang, 'cancel')}</button>
@@ -477,6 +510,8 @@ export default function Admin({ lang, data, onSaved, onSession }) {
       <UploadBox lang={lang} />
       <RefAdmin lang={lang} />
       <EventsAdmin lang={lang} onChanged={onSaved} />
+      <RowManager lang={lang} tab="FHCB" data={data} onChanged={onSaved} />
+      <RowManager lang={lang} tab="Directory" data={data} onChanged={onSaved} />
 
       <div className="card p-5 mb-4 space-y-3">
         <h3 className="font-semibold">Hero</h3>
@@ -488,9 +523,9 @@ export default function Admin({ lang, data, onSaved, onSession }) {
       <div className="card p-5 mb-4 space-y-3">
         <h3 className="font-semibold">{t(lang, 'notice')}</h3>
         <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={String(s.notice_enabled) === 'true'} onChange={(e) => set('notice_enabled', e.target.checked ? 'true' : 'false')} /> {t(lang, 'notice_enabled')}</label>
-        <div><label className="label" htmlFor="f-nt">{t(lang, 'notice_title')}</label><input id="f-nt" className="input" value={s.notice_title || ''} onChange={(e) => set('notice_title', e.target.value)} /></div>
-        <div><label className="label" htmlFor="f-nb">{t(lang, 'notice_body')} (EN)</label><textarea id="f-nb" className="input" rows={3} value={s.notice_body || ''} onChange={(e) => set('notice_body', e.target.value)} /></div>
-        <div><label className="label" htmlFor="f-nbm">{t(lang, 'notice_body')} (BM)</label><textarea id="f-nbm" className="input" rows={3} value={s.notice_body_bm || ''} onChange={(e) => set('notice_body_bm', e.target.value)} /></div>
+        <div><label className="label" htmlFor="f-nt">{t(lang, 'notice_title')}</label><input id="f-nt" className="input" value={s.notice_title || ''} onChange={(e) => set('notice_title', e.target.value)} placeholder="Please read before you rely on this hub" /></div>
+        <div><label className="label" htmlFor="f-nb">{t(lang, 'notice_body')} (EN)</label><textarea id="f-nb" className="input" rows={3} value={s.notice_body || ''} onChange={(e) => set('notice_body', e.target.value)} placeholder="Halal Executive is a reference drafted with AI help from group discussions, uploaded documents and public JAKIM lists, then reviewed. It is not a ruling or the final word of JAKIM, JAIN/MAIN, KKM or NPRA, and it can be wrong or out of date. Check the current instrument before you act. Use at your own responsibility." /></div>
+        <div><label className="label" htmlFor="f-nbm">{t(lang, 'notice_body')} (BM)</label><textarea id="f-nbm" className="input" rows={3} value={s.notice_body_bm || ''} onChange={(e) => set('notice_body_bm', e.target.value)} placeholder="Halal Executive ialah rujukan yang digubal dengan bantuan AI daripada perbincangan kumpulan, dokumen yang dimuat naik dan senarai awam JAKIM, kemudian disemak. Ia bukan keputusan atau kata putus JAKIM, JAIN/MAIN, KKM atau NPRA, dan boleh tersilap atau tidak dikemas kini. Semak instrumen semasa sebelum bertindak. Gunakan atas tanggungjawab anda sendiri." /></div>
         <div className="grid grid-cols-2 gap-3">
           <div><label className="label" htmlFor="f-nl">{t(lang, 'notice_level')}</label><select id="f-nl" className="input" value={s.notice_level || 'info'} onChange={(e) => set('notice_level', e.target.value)}><option value="info">info</option><option value="warning">warning</option><option value="danger">danger</option></select></div>
           <div><label className="label" htmlFor="f-nu">{t(lang, 'notice_until')}</label><input id="f-nu" className="input" value={s.notice_until || ''} onChange={(e) => set('notice_until', e.target.value)} placeholder="2026-12-31" /></div>

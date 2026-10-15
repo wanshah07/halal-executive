@@ -35,18 +35,22 @@ var TABS = {
   Guidelines: ['id','category','title','title_bm','summary_en','summary_bm','link','issuer','effective_date','updated_at','status','source'],
   Documents:  ['id','title','kind','category','drive_file_id','drive_url','content_hash','version','supersedes_id','source_msg_id','received_at','updated_at','status','notes'],
   Certificates: ['id','company','cert_no','scheme','category','state','valid_from','valid_to','products','drive_url','doc_id','status','updated_at','notes','issuer','legal_authority','reg_no','issue_date','office_address','factory_address','scope'],
-  Events:     ['id','title','title_bm','date_start','date_end','venue','poster_url','link','description','status','source','poster_file'],
+  Events:     ['id','title','title_bm','date_start','date_end','venue','poster_url','link','description','status','source','poster_file','kind'],
   News:       ['id','title','url','source','published_at','fetched_at','expires_at','summary_en','summary_bm','category'],
   Settings:   ['key','value'],
   Runs:       ['ts','job','provider','model','processed','ok','error'],
   References: ['id','title','issuer','edition','category','drive_file_id','drive_url','mime','pages','chunks','summary_en','summary_bm','key_points','status','added_by','added_at','indexed_at','error'],
   RefChunks:  ['id','ref_id','page','text','terms'],
+  // Foreign halal certification bodies recognised by JAKIM (Admin → FHCB) and
+  // the directory of training and service providers (Admin → Directory).
+  FHCB:       ['id','no','country','name','kind','address','persons','tel','fax','email','website','logo_url','logo_file','note','source_ref','source_page','effective_date','status','updated_at'],
+  Directory:  ['id','type','subtype','name','coverage','state','country','address','pic','phone','email','website','website2','accreditation','description','trainers','logo_url','logo_file','source_ref','status','updated_at'],
 };
 
 // Tabs the pipeline may write with upsert/delete. Settings, Raw and Runs have
 // their own narrow actions, so an ingest token can never rewrite the hero,
 // the notice or the admin list.
-var WRITABLE = ['FAQ', 'Guidelines', 'Documents', 'Certificates', 'Events', 'News', 'References', 'RefChunks'];
+var WRITABLE = ['FAQ', 'Guidelines', 'Documents', 'Certificates', 'Events', 'News', 'References', 'RefChunks', 'FHCB', 'Directory'];
 
 var PROVIDERS = {
   MIRELD: { base: 'https://api.mireld.my/v1', keyProp: 'MIRELD_API_KEY', modelProp: 'MIRELD_MODEL' },
@@ -135,7 +139,7 @@ function showSecrets() {
 // Rotate a token: run, then update the GitHub secret / Admin panel.
 function rotateTokens() { props().setProperty('ADMIN_TOKEN', newToken()); props().setProperty('INGEST_TOKEN', newToken()); showSecrets(); }
 
-function sheet(name) { var sh = ss().getSheetByName(name); if (!sh) throw new Error('Missing tab ' + name); return sh; }
+function sheet(name) { var sh = ss().getSheetByName(name); if (!sh) { if (!TABS[name]) throw new Error('Missing tab ' + name); sh = ss().insertSheet(name); sh.appendRow(TABS[name]); sh.setFrozenRows(1); } return sh; }
 
 // Columns are only ever appended, so an older tab gets the new names written
 // after its last header cell and every existing value stays where it was.
@@ -146,7 +150,9 @@ function ensureHeader(sh, cols) {
 }
 
 function readTab(name) {
-  var sh = sheet(name), v = sh.getDataRange().getValues();
+  var sh = ss().getSheetByName(name);
+  if (!sh) { if (!TABS[name]) throw new Error('Missing tab ' + name); sh = ss().insertSheet(name); sh.appendRow(TABS[name]); sh.setFrozenRows(1); return []; }
+  var v = sh.getDataRange().getValues();
   if (v.length < 2) return [];
   var h = v[0];
   return v.slice(1).filter(function (r) { return r.join('') !== ''; }).map(function (r) {
@@ -248,6 +254,8 @@ function publicData() {
     certificates: noMarks(readTab('Certificates').filter(function (r) { return r.status !== 'hidden' && r.status !== 'draft' && r.status !== 'expired'; })),
     events: noMarks(readTab('Events').filter(function (r) { return r.status !== 'hidden' && r.status !== 'draft' && !eventOver(r, now); })),
     news: readTab('News').filter(function (r) { return !r.expires_at || Date.parse(r.expires_at) > now; }),
+    fhcb: readTab('FHCB').filter(function (r) { return r.status !== 'hidden' && r.status !== 'draft'; }),
+    directory: readTab('Directory').filter(function (r) { return r.status !== 'hidden' && r.status !== 'draft'; }),
     references: readTab('References').filter(function (r) { return r.status === 'indexed'; }).map(function (r) {
       return { id: r.id, title: r.title, issuer: r.issuer, edition: r.edition, category: r.category, pages: r.pages, summary_en: r.summary_en, summary_bm: r.summary_bm, key_points: r.key_points, indexed_at: r.indexed_at };
     }),
@@ -313,6 +321,11 @@ function doPost(e) {
       if (a === 'run_now')       { needAdmin(); return json(runNow(body)); }
       if (a === 'admin_delete')  { needAdmin(); return json(adminDelete(String(body.tab || ''), String(body.id || ''))); }
       if (a === 'poster_upload') { needAdmin(); return json(posterUpload(body)); }
+      if (a === 'row_save')      { needAdmin(); return json(rowSave(String(body.tab || ''), body.row || {})); }
+      if (a === 'seed_rows')     { needAdmin(); return json(seedRows(String(body.tab || ''), body.rows || [])); }
+      if (a === 'logo_upload')   { needAdmin(); return json(logoUpload(body)); }
+      if (a === 'fhcb_doc_upload') { needAdmin(); return json(fhcbDocUpload(body, sessEmail || 'token')); }
+      if (a === 'faq_rephrase')  { needAdmin(); return json(faqRephrase(body)); }
       if (a === 'ingest')        return json(ingest(body.rows || []));
       if (a === 'raw_update')    return json(updateByIds('Raw', body.ids || [], body.patch || {}));
       if (a === 'upsert')        { if (WRITABLE.indexOf(body.tab) < 0) throw new Error('tab not writable'); return json(upsert(body.tab, body.rows || [])); }
@@ -478,7 +491,7 @@ function purgePastEvents() {
 // deletes that file permanently too (skips the Drive bin when the Drive
 // service allows it). A reference also loses its passages, so the Q&A forgets
 // it. Asked for by Wan, 14 Oct 2026; the page confirms before calling this.
-var DELETABLE = ['FAQ', 'Guidelines', 'Events', 'Certificates', 'Documents', 'References', 'News'];
+var DELETABLE = ['FAQ', 'Guidelines', 'Events', 'Certificates', 'Documents', 'References', 'News', 'FHCB', 'Directory'];
 function removeDriveFile(id) {
   if (!id) return false;
   try { Drive.Files.remove(id); return true; } catch (e) {
@@ -503,6 +516,12 @@ function adminDelete(tab, id) {
   } else if (tab === 'Events') {
     var m = String(row.poster_file || row.poster_url || '').match(/(?:\/d\/|[?&]id=)([\w-]{20,})/);
     if (m) { try { var f = DriveApp.getFileById(m[1]), par = f.getParents(); if (par.hasNext() && par.next().getId() === folder('30 Posters').getId()) file = m[1]; } catch (e) { /* not ours */ } }
+  } else if (tab === 'FHCB' || tab === 'Directory') {
+    var lm = String(row.logo_file || '').match(/(?:\/d\/|[?&]id=)([\w-]{20,})/);
+    if (lm) { try { var lf = DriveApp.getFileById(lm[1]), lp = lf.getParents(); if (lp.hasNext() && lp.next().getId() === folder('50 Logos').getId()) file = lm[1]; } catch (e) { /* not ours */ } }
+  } else if (tab === 'Certificates') {
+    // The certificate's document row and file go with it.
+    if (row.doc_id) { var cd = readTab('Documents').filter(function (d) { return String(d.id) === String(row.doc_id); })[0]; if (cd) { file = cd.drive_file_id; deleteByIds('Documents', [cd.id]); } }
   }
   var fileGone = file ? removeDriveFile(file) : false;
   deleteByIds(tab, [id]);
@@ -587,8 +606,19 @@ function tickWatch() {
 // dispatchRun and the same GITHUB_TOKEN). Run installTriggers() once from the
 // editor; run it again after changing the times here. Pipeline cadence is
 // rule 14 in CLAUDE.md.
+// An expired halal certificate is deleted for good one day after valid_to,
+// with its document row and file, like a finished event (Wan, 15 Oct 2026).
+function purgeExpiredCerts() {
+  var now = Date.now(), gone = readTab('Certificates').filter(function (c) { return c.valid_to && eventOver({ date_start: c.valid_to }, now); });
+  gone.forEach(function (c) { try { adminDelete('Certificates', String(c.id)); } catch (e) { console.error('cert purge ' + c.id + ': ' + e); } });
+  // Documents marked expired by the organiser with no certificate row left.
+  var docs = readTab('Documents').filter(function (d) { return String(d.status) === 'expired' && d.updated_at && Date.parse(d.updated_at) + 864e5 < now; });
+  docs.forEach(function (d) { try { adminDelete('Documents', String(d.id)); } catch (e) { console.error('doc purge ' + d.id + ': ' + e); } });
+  return gone.length + docs.length;
+}
 function tickPipeline() {
   try { purgePastEvents(); } catch (e) { console.error('purge: ' + e); }
+  try { purgeExpiredCerts(); } catch (e) { console.error('cert purge: ' + e); }
   try { rawTriage(); } catch (e) { console.error('triage: ' + e); }
   dispatchRun('process_whatsapp');
   // Files lane: certificates and documents from the group and from Admin.
@@ -689,7 +719,7 @@ function reviewSet(tab, id, status) {
 // changed; links must be http(s).
 var EDITABLE = {
   FAQ: ['category', 'subcategory', 'question_en', 'question_bm', 'answer_formal_en', 'answer_layman_en', 'answer_formal_bm', 'answer_layman_bm'],
-  Events: ['title', 'title_bm', 'date_start', 'date_end', 'venue', 'link', 'description', 'poster_url', 'poster_file'],
+  Events: ['title', 'title_bm', 'date_start', 'date_end', 'venue', 'link', 'description', 'poster_url', 'poster_file', 'kind'],
   Documents: ['title', 'kind', 'category'],
   Certificates: ['company', 'cert_no', 'scheme', 'state', 'category', 'valid_from', 'valid_to', 'products', 'issuer', 'legal_authority', 'reg_no', 'issue_date', 'office_address', 'factory_address', 'scope'],
   Guidelines: ['category', 'title', 'title_bm', 'issuer', 'summary_en', 'summary_bm', 'link'],
@@ -1481,7 +1511,7 @@ function posterFromDrive(fileId) {
 // (OCR for pictures and scanned PDFs) and the AI fills the event fields, the
 // same way an uploaded halal certificate is read. The admin checks and saves;
 // nothing is published by this call (Wan, 15 Oct 2026).
-var EVENT_READ = 'You read a poster or announcement for an event in Malaysia (seminar, course, training, talk, expo) for halal executives. Return JSON {"is_event":true|false,"title":"","title_bm":"","date_start":"YYYY-MM-DDTHH:MM","date_end":"YYYY-MM-DDTHH:MM or empty","venue":"","link":"","description":""}. Dates in Malaysia time as printed; if the year is not printed use the next date on or after TODAY. Time 09:00 if no time is printed. title in English, title_bm in Bahasa Malaysia (Malaysian, never Indonesian); keep the official name as printed in the language it is printed. venue as printed (or "Online" / the platform). link: a registration or info URL printed on the poster, else empty. description: 2-4 short sentences: organiser, who it is for, fee if printed, contact as printed. Never invent a date, fee or link that is not on the poster.';
+var EVENT_READ = 'You read a poster or announcement for an event in Malaysia (seminar, course, training, talk, expo) for halal executives. Return JSON {"is_event":true|false,"kind":"competency|awareness|executive|auditor|other","title":"","title_bm":"","date_start":"YYYY-MM-DDTHH:MM","date_end":"YYYY-MM-DDTHH:MM or empty","venue":"","link":"","description":""}. kind: competency for a halal competency course (Pensijilan Halal, Jurusertu, SJH), awareness for a halal awareness talk or briefing, executive for a Halal Executive course or certificate, auditor for an internal halal auditor course, else other. Dates in Malaysia time as printed; if the year is not printed use the next date on or after TODAY. Time 09:00 if no time is printed. title in English, title_bm in Bahasa Malaysia (Malaysian, never Indonesian); keep the official name as printed in the language it is printed. venue as printed (or "Online" / the platform). link: a registration or info URL printed on the poster, else empty. description: 2-4 short sentences: organiser, who it is for, fee if printed, contact as printed. Never invent a date, fee or link that is not on the poster.';
 function eventFromPoster(b) {
   var p = posterStore(b.b64, b.name, b.mime), f = DriveApp.getFileById(p.id), text = '';
   try { text = extractText(f, f.getBlob()); } catch (e) { text = ''; }
@@ -1490,7 +1520,8 @@ function eventFromPoster(b) {
   var today = Utilities.formatDate(new Date(), 'Asia/Kuala_Lumpur', 'yyyy-MM-dd');
   var r = complete([{ role: 'system', content: EVENT_READ.replace('TODAY', today) }, { role: 'user', content: String(text).slice(0, 8000) }], { json: true, max_tokens: 900, temperature: 0 });
   var j = r.json || {};
-  ['title', 'title_bm', 'date_start', 'date_end', 'venue', 'link', 'description'].forEach(function (k) { if (j[k]) out.fields[k] = String(j[k]).slice(0, k === 'description' ? 2000 : 300); });
+  ['title', 'title_bm', 'date_start', 'date_end', 'venue', 'link', 'description', 'kind'].forEach(function (k) { if (j[k]) out.fields[k] = String(j[k]).slice(0, k === 'description' ? 2000 : 300); });
+  if (out.fields.kind && ['competency', 'awareness', 'executive', 'auditor', 'other'].indexOf(out.fields.kind) < 0) out.fields.kind = 'other';
   if (out.fields.link && !/^https?:\/\//i.test(out.fields.link)) delete out.fields.link;
   out.is_event = j.is_event !== false; out.provider = r.provider;
   return out;
@@ -1508,6 +1539,97 @@ function eventSave(b) {
   var clean = function (u) { u = String(u || '').trim(); return /^https?:\/\//i.test(u) ? u.slice(0, 500) : ''; };
   upsert('Events', [{ id: id, title: String(e.title).slice(0, 200), title_bm: String(e.title_bm || '').slice(0, 200), date_start: e.date_start || '', date_end: e.date_end || '',
     venue: String(e.venue || '').slice(0, 200), poster_url: clean(poster), link: clean(e.link), description: String(e.description || '').slice(0, 2000),
-    status: e.status === 'hidden' ? 'hidden' : 'published', source: 'admin', poster_file: clean(file) }]);
+    status: e.status === 'hidden' ? 'hidden' : 'published', source: 'admin', poster_file: clean(file), kind: ['competency', 'awareness', 'executive', 'auditor', 'other'].indexOf(e.kind) >= 0 ? e.kind : 'other' }]);
   return { ok: true, id: id };
+}
+
+// ---------- FHCB and Directory rows (Admin) ----------
+// Both tabs are edited by hand in Admin: one row at a time, the fields below
+// and nothing else. A row with no id is new. Links must be http(s) or the
+// page's own ./fhcb/ and ./directory/ logo paths.
+var ROW_FIELDS = {
+  FHCB: ['no', 'country', 'name', 'kind', 'address', 'persons', 'tel', 'fax', 'email', 'website', 'logo_url', 'logo_file', 'note', 'source_ref', 'source_page', 'effective_date', 'status'],
+  Directory: ['type', 'subtype', 'name', 'coverage', 'state', 'country', 'address', 'pic', 'phone', 'email', 'website', 'website2', 'accreditation', 'description', 'trainers', 'logo_url', 'logo_file', 'source_ref', 'status'],
+};
+function cleanRow(tab, r) {
+  var out = {};
+  ROW_FIELDS[tab].forEach(function (k) {
+    var v = r[k]; if (v === undefined || v === null) return;
+    v = String(v).slice(0, k === 'trainers' || k === 'description' || k === 'address' ? 4000 : 500).trim();
+    if ((k === 'logo_url' || k === 'website' || k === 'website2' || k === 'logo_file') && v && !/^(https?:\/\/|\.\/(fhcb|directory)\/[\w.-]+$)/i.test(v)) {
+      if (k === 'website' || k === 'website2') v = v.split(/;\s*/).map(function (w) { return /^https?:\/\//i.test(w) ? w : w ? 'https://' + w : ''; }).filter(String).join('; ');
+      else throw new Error(k + ' must be a link');
+    }
+    out[k] = v;
+  });
+  if (!out.name) throw new Error('Give it a name.');
+  if (tab === 'FHCB') { out.kind = out.kind === 'authority' ? 'authority' : 'body'; if (!out.country) throw new Error('Country is needed.'); }
+  if (tab === 'Directory') { if (!out.subtype) out.subtype = out.type === 'service' ? 'consult' : 'jakim_plh'; out.type = ['jurusertu', 'consult', 'lab'].indexOf(out.subtype) >= 0 ? 'service' : 'training'; }
+  out.status = ['published', 'hidden', 'draft'].indexOf(out.status) >= 0 ? out.status : 'published';
+  out.updated_at = new Date().toISOString();
+  return out;
+}
+function rowSave(tab, row) {
+  if (!ROW_FIELDS[tab]) throw new Error('unknown tab');
+  var clean = cleanRow(tab, row);
+  clean.id = String(row.id || '').trim() || ((tab === 'FHCB' ? 'FHCB-M' : 'DIR-M') + Utilities.formatDate(new Date(), 'Asia/Kuala_Lumpur', 'yyMMddHHmmss'));
+  if (!row.id && tab === 'FHCB' && !clean.no) { var max = 0; readTab('FHCB').forEach(function (r) { max = Math.max(max, Number(r.no) || 0); }); clean.no = max + 1; }
+  if (row.id) { var old = readTab(tab).filter(function (r) { return String(r.id) === clean.id; })[0]; if (old) ROW_FIELDS[tab].forEach(function (k) { if (clean[k] === undefined) clean[k] = old[k]; }); }
+  upsert(tab, [clean]);
+  return { ok: true, id: clean.id, row: clean };
+}
+// Load the page's bundled list (FHCB 21 Aug 2026, JAKIM training providers
+// Jun 2026) into the Sheet: only ids not there yet, nothing overwritten.
+function seedRows(tab, rows) {
+  if (!ROW_FIELDS[tab]) throw new Error('unknown tab');
+  var have = {}; readTab(tab).forEach(function (r) { have[String(r.id)] = 1; });
+  var add = [];
+  rows.slice(0, 500).forEach(function (r) { if (!r.id || have[String(r.id)]) return; var c = cleanRow(tab, r); c.id = String(r.id); add.push(c); have[c.id] = 1; });
+  if (add.length) upsert(tab, add);
+  return { ok: true, added: add.length };
+}
+// A logo for a body or provider: stored in Drive "50 Logos", shared view-only
+// so the page can show it.
+function logoUpload(b) {
+  if (!b.b64) throw new Error('Choose an image.');
+  if (b.b64.length > 3 * 1024 * 1024) throw new Error('Logo too large (max 2 MB).');
+  var mime = String(b.mime || '').toLowerCase();
+  if (!/^image\/(jpeg|png|webp|gif|svg\+xml)$/.test(mime)) throw new Error('Logo must be a JPG, PNG, WEBP, GIF or SVG picture.');
+  var f = folder('50 Logos').createFile(Utilities.newBlob(Utilities.base64Decode(b.b64), mime, String(b.name || 'logo').slice(0, 120)));
+  f.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  return { ok: true, url: 'https://lh3.googleusercontent.com/d/' + f.getId(), file: 'https://drive.google.com/file/d/' + f.getId() + '/view' };
+}
+// The FHCB list PDF or a related circular: kept in Drive "40 FHCB", shared
+// view-only so the page can embed Drive's viewer, and filed as a Document of
+// category fhcb (kind fhcb_list or fhcb_circular). A new list supersedes the
+// previous one, which is archived.
+function fhcbDocUpload(b, email) {
+  if (!b.b64) throw new Error('Choose a file.');
+  if (b.b64.length > 34 * 1024 * 1024) throw new Error('File too large (max 25 MB).');
+  var kind = b.kind === 'fhcb_list' ? 'fhcb_list' : 'fhcb_circular';
+  var mime = String(b.mime || 'application/pdf');
+  var f = folder('40 FHCB').createFile(Utilities.newBlob(Utilities.base64Decode(b.b64), mime, String(b.name || 'fhcb.pdf').slice(0, 150)));
+  f.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  var now = new Date().toISOString(), id = 'DOC-FHCB-' + Utilities.formatDate(new Date(), 'Asia/Kuala_Lumpur', 'yyMMddHHmmss');
+  var prev = '';
+  if (kind === 'fhcb_list') {
+    var olds = readTab('Documents').filter(function (d) { return d.category === 'fhcb' && d.kind === 'fhcb_list' && d.status === 'current'; });
+    if (olds.length) { prev = olds[0].id; updateByIds('Documents', olds.map(function (d) { return d.id; }), { status: 'archived', updated_at: now }); }
+  }
+  upsert('Documents', [{ id: id, title: String(b.title || b.name || 'FHCB document').slice(0, 200), kind: kind, category: 'fhcb', drive_file_id: f.getId(), drive_url: 'https://drive.google.com/file/d/' + f.getId() + '/view',
+    content_hash: '', version: String(b.version || ''), supersedes_id: prev, source_msg_id: '', received_at: now, updated_at: now, status: 'current', notes: 'from:admin ' + email }]);
+  return { ok: true, id: id, url: 'https://drive.google.com/file/d/' + f.getId() + '/view' };
+}
+// Rephrase a FAQ answer with the AI: same facts, clearer words, nothing
+// added. Returns the four answers for the admin to check and save.
+var REPHRASE = 'You rewrite answers for a halal executive knowledge hub in Malaysia. Rephrase each answer given so it reads clearly and plainly, keeping every fact, number, clause and reference exactly as given and adding nothing new. answer_formal_en and answer_layman_en in English; answer_formal_bm and answer_layman_bm in Bahasa Malaysia (Malaysian register: boleh, ubat, syarikat, kualiti; never Indonesian). Keep regulatory terms as written (Notifikasi Kosmetik, Garis Panduan, Borang, MPPHM, SPHM). Return JSON with exactly those four keys.';
+function faqRephrase(b) {
+  var r = readTab('FAQ').filter(function (x) { return String(x.id) === String(b.id || ''); })[0];
+  if (!r) throw new Error('Not found');
+  var src = { question_en: r.question_en, question_bm: r.question_bm, answer_formal_en: r.answer_formal_en, answer_layman_en: r.answer_layman_en, answer_formal_bm: r.answer_formal_bm, answer_layman_bm: r.answer_layman_bm };
+  var out = complete([{ role: 'system', content: REPHRASE }, { role: 'user', content: JSON.stringify(src).slice(0, 12000) }], { json: true, max_tokens: 2500, temperature: 0.3 });
+  var j = out.json || {}, fields = {};
+  ['answer_formal_en', 'answer_layman_en', 'answer_formal_bm', 'answer_layman_bm'].forEach(function (k) { if (j[k] && String(j[k]).trim()) fields[k] = String(j[k]).slice(0, 6000); });
+  if (!Object.keys(fields).length) throw new Error('The AI returned nothing usable; try again.');
+  return { ok: true, fields: fields, provider: out.provider };
 }
