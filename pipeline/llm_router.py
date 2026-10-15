@@ -209,7 +209,43 @@ def complete_json(messages, **kw):
     return complete(messages, json_mode=True, **kw)
 
 
+def bench(rounds=4):
+    """Same questions to each provider, timed end to end (a real answer, not a
+    ping). Prints a table and returns {provider: [seconds...]}. Wan, 15 Oct 2026:
+    "check MIRELD that faster than current based on response rate"."""
+    qs = ["Apakah tempoh sah Sijil Pengesahan Halal Malaysia? Jawab dalam 3 ayat.",
+          "List three documents a food manufacturer needs for a halal application in Malaysia, one line each.",
+          "Return JSON {\"ok\": true, \"terms\": [5 Malay words about halal audit]}.",
+          "Terangkan secara ringkas maksud sertu dalam pensijilan halal."]
+    res = {}
+    for name in available():
+        times, fails = [], 0
+        for i in range(rounds):
+            t0 = time.time()
+            try:
+                _call(name, [{"role": "user", "content": qs[i % len(qs)]}], max_tokens=400)
+                times.append(round(time.time() - t0, 2))
+            except (LLMError, requests.RequestException, ValueError) as e:
+                fails += 1
+                print(f"  {name} call {i + 1} failed after {time.time() - t0:.1f}s: {str(e)[:120]}")
+        res[name] = {"times": times, "fails": fails, "model": _picked.get(name, "")}
+        med = sorted(times)[len(times) // 2] if times else None
+        print(f"{name:7} {res[name]['model']:<16} answered {len(times)}/{rounds}  median {med}s  each {times}")
+    return res
+
+
 if __name__ == "__main__":
+    import sys as _sys
+    if "--bench" in _sys.argv:
+        r = bench()
+        try:
+            import he_api
+            for n, v in r.items():
+                t = sorted(v["times"]); med = t[len(t) // 2] if t else 0
+                he_api.run_log("bench", n, v["model"], len(t), not v["fails"], f"median {med}s over {len(t)} answers, {v['fails']} failed; each {v['times']}")
+        except Exception as e:  # noqa: BLE001
+            print("not logged:", e)
+        _sys.exit(0)
     for n in ORDER:
         key = os.environ.get(PROVIDERS[n]["key"])
         try:

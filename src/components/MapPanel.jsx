@@ -8,7 +8,7 @@ import { t } from '../lib/i18n'
 // certificates on file there (events fall back in when there are none).
 // Tiles are OpenStreetMap; the page needs network for them and renders the
 // counts list underneath regardless.
-export default function MapPanel({ lang, byState }) {
+export default function MapPanel({ lang, byState, abroad = {} }) {
   const ref = useRef(null)
   const mapRef = useRef(null)
   useEffect(() => {
@@ -37,8 +37,12 @@ export default function MapPanel({ lang, byState }) {
       <p className="text-xs text-ink-400 mb-3">{t(lang, 'map_hint')}</p>
       {/* isolate: Leaflet panes use z-index 400-1000 and would sit over the assistant panel */}
       <div ref={ref} className="relative z-0 isolate h-64 rounded-lg overflow-hidden border border-line" />
-      {!list.length && <div className="text-sm text-ink-400 mt-3">{t(lang, 'no_data')}</div>}
+      {!list.length && !Object.keys(abroad).length && <div className="text-sm text-ink-400 mt-3">{t(lang, 'no_data')}</div>}
       {!!list.length && <div className="mt-3 flex flex-wrap gap-2">{list.map(([k, v]) => <span key={k} className="chip bg-paper border border-line">{k} <b className="ml-1">{v}</b></span>)}</div>}
+      {!!Object.keys(abroad).length && (
+        <div className="mt-3 text-sm"><span className="text-ink-400">{t(lang, 'abroad')}:</span>{' '}
+          {Object.entries(abroad).sort((a, b) => b[1] - a[1]).map(([k, v]) => <span key={k} className="chip bg-paper border border-line mr-1">{k} <b className="ml-1">{v}</b></span>)}</div>
+      )}
     </div>
   )
 }

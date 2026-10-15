@@ -32,7 +32,7 @@ export const STRINGS = {
     certificates: 'Halal Certificates', company: 'Company', cert_no: 'Certificate no.', scheme: 'Scheme', valid_from: 'Valid from', valid_to: 'Valid to', validity: 'Validity', products: 'Products', state: 'State',
     valid: 'Valid', expiring: 'Expiring ≤ 90 days', expired: 'Expired', unfold: 'Unfold all', fold: 'Fold all', show_products: 'products', hide_products: 'Hide products',
     export_csv: 'CSV', export_pdf: 'PDF', export_docx: 'Word', pin: 'Pin sidebar', unpin: 'Unpin sidebar', menu: 'Menu',
-    per_month: 'FAQ added per month', by_state: 'Certificates by state', map_hint: 'Marker size = certificates on file for that state; click for the count.', expiry_month: 'Certificate expiries by month',
+    per_month: 'FAQ added per month', by_state: 'Certificates and events by state', map_hint: 'Marker size = certificates and events in that state; touch or hover a marker for the count.', abroad: 'Certificates from abroad', other_country: 'Other country', expiry_month: 'Certificate expiries by month',
     developed: 'Developed by Wanshah', nothing_in_range: 'Nothing in range yet.',
   },
   bm: {
@@ -66,7 +66,7 @@ export const STRINGS = {
     certificates: 'Sijil Halal', company: 'Syarikat', cert_no: 'No. sijil', scheme: 'Skim', valid_from: 'Sah dari', valid_to: 'Sah hingga', validity: 'Tempoh sah', products: 'Produk', state: 'Negeri',
     valid: 'Sah', expiring: 'Tamat ≤ 90 hari', expired: 'Tamat tempoh', unfold: 'Buka semua', fold: 'Lipat semua', show_products: 'produk', hide_products: 'Sembunyi produk',
     export_csv: 'CSV', export_pdf: 'PDF', export_docx: 'Word', pin: 'Pin bar sisi', unpin: 'Nyahpin bar sisi', menu: 'Menu',
-    per_month: 'Soalan Lazim ditambah sebulan', by_state: 'Sijil mengikut negeri', map_hint: 'Saiz penanda = bilangan sijil dalam fail untuk negeri itu; klik untuk jumlah.', expiry_month: 'Tamat tempoh sijil mengikut bulan',
+    per_month: 'Soalan Lazim ditambah sebulan', by_state: 'Sijil dan acara mengikut negeri', map_hint: 'Saiz penanda = bilangan sijil dan acara di negeri itu; sentuh atau halakan tetikus pada penanda untuk jumlah.', abroad: 'Sijil dari luar negara', other_country: 'Negara lain', expiry_month: 'Tamat tempoh sijil mengikut bulan',
     developed: 'Dibangunkan oleh Wanshah', nothing_in_range: 'Tiada data dalam julat lagi.',
   },
 }

@@ -216,6 +216,12 @@ def main():
         # answer could never be written back when its reference arrives.
         print("FAQ tab has no verify_notes column yet: paste the new Code.gs and run setup. Markers stay hidden on the page meanwhile.")
         return 0
+    # An answer with points the references do not state yet is not published:
+    # it goes back to Admin → Drafts until a reference confirms it (Wan, 15 Oct 2026).
+    back = [dict(r, status="draft", updated_at=now()) for r in faq if r.get("status") == "published" and len(str(r.get("verify_notes") or "")) > 2]
+    if back:
+        he_api.upsert("FAQ", back)
+        print(f"{len(back)} published answers with unconfirmed points moved to drafts")
     todo = [r for r in faq if needs_pass(r, latest)][: a.limit]
     print(f"{len(todo)} FAQ entries to complete; {len(docs)} reference passages indexed")
     done, errs, provider, model, closed, still = 0, [], "", "", 0, 0
@@ -245,6 +251,8 @@ def main():
         for f in ANSWERS:
             new[f] = str(out[f]).strip()
         new["verify_notes"] = json.dumps(open_left, ensure_ascii=False) if open_left else ""
+        if open_left and new.get("status") == "published":
+            new["status"] = "draft"  # unconfirmed points: back to Drafts
         new["verified_at"] = now()
         if any(new[f] != row.get(f) for f in ANSWERS):
             new["updated_at"] = now()

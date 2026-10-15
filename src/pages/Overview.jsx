@@ -7,7 +7,7 @@ import { count, daysAgo, fmtDateTime } from '../lib/util'
 import { catChip } from '../components/CategoryFilter'
 import { lazy, Suspense, useState } from 'react'
 import { monthlySeries } from '../lib/series'
-import { guessState } from '../lib/config'
+import { guessState, guessCountry } from '../lib/config'
 import { certStatus } from '../lib/certs'
 import AiTeam from '../components/AiTeam'
 import NewsCarousel from '../components/NewsCarousel'
@@ -29,9 +29,15 @@ export default function Overview({ lang, data, setTab }) {
   const topics = Object.entries(count(faq, 'subcategory')).sort((a, b) => b[1] - a[1]).slice(0, 8)
   const certs = data.certificates || []
   const monthly = monthlySeries(faq, 'created_at')
-  const byState = {}
-  const src = certs.length ? certs : events
-  src.forEach((x) => { const st = x.state || guessState(x.venue || x.company); if (st) byState[st] = (byState[st] || 0) + 1 })
+  // Map: Malaysian certificates and event venues by state; certificates from
+  // abroad are counted by country beside it (they have no state to plot).
+  const byState = {}, abroad = {}
+  certs.forEach((c) => {
+    const st = guessState(c.state) || guessState(c.company)
+    if (st) byState[st] = (byState[st] || 0) + 1
+    else { const k = guessCountry(`${c.state} ${c.company}`) || t(lang, 'other_country'); abroad[k] = (abroad[k] || 0) + 1 }
+  })
+  events.forEach((e) => { const st = guessState(e.venue); if (st) byState[st] = (byState[st] || 0) + 1 })
   const certStat = count(certs.map((c) => ({ s: certStatus(c) })), 's')
 
   // Newest FAQ first, 10 to a page (Wan, 14 Oct 2026).
@@ -76,7 +82,7 @@ export default function Overview({ lang, data, setTab }) {
 
       <UpcomingEvents lang={lang} events={events} posters={posters} setTab={setTab} />
 
-      <div className="mb-4"><Suspense fallback={<Slot />}><MapPanel lang={lang} byState={byState} /></Suspense></div>
+      <div className="mb-4"><Suspense fallback={<Slot />}><MapPanel lang={lang} byState={byState} abroad={abroad} /></Suspense></div>
 
       <section className="card p-5 mb-4">
         <div className="mb-4">

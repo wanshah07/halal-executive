@@ -15,14 +15,14 @@ on:
   workflow_dispatch:
     inputs:
       job:
-        description: process_whatsapp | uploads | process_facebook | news | organise | references | sahkan
+        description: process_whatsapp | uploads | bench | process_facebook | news | organise | references | sahkan
         default: process_whatsapp
 permissions: { contents: read, actions: write }  # actions: start the uploads lane
 # Uploads and filing have their own lane, so a certificate uploaded in Admin
 # is read and filed in minutes instead of waiting behind a 45-minute backlog
 # run. Only the files lane runs drive_organiser, so two runs never file the
 # same document.
-concurrency: { group: "${{ (inputs.job == 'uploads' || inputs.job == 'organise') && 'files' || 'pipeline' }}", cancel-in-progress: false }
+concurrency: { group: "${{ (inputs.job == 'uploads' || inputs.job == 'organise' || inputs.job == 'bench') && 'files' || 'pipeline' }}", cancel-in-progress: false }
 jobs:
   run:
     runs-on: ubuntu-latest
@@ -80,6 +80,7 @@ jobs:
               # beside this one and is done in minutes.
               GH_TOKEN="${{ github.token }}" gh workflow run pipeline.yml --repo "${{ github.repository }}" --ref main -f job=uploads && python phase.py "$JOB" running "uploads lane started" || python phase.py "$JOB" failed "could not start the uploads lane"
               phase 24 "Read group messages" python process_raw.py --source whatsapp,telegram --attachments none --minutes 20
+              phase 6  "Merge repeated FAQ" python dedupe_faq.py
               phase 10 "Read new references" python index_references.py
               phase 6  "Fill SAHKAN from references" python resolve_sahkan.py ;;
             process_facebook)
@@ -93,6 +94,7 @@ jobs:
             references)
               phase 40 "Review references" python index_references.py --audit
               phase 10 "Fill SAHKAN from references" python resolve_sahkan.py ;;
+            bench)      phase 10 "Time MIRELD and AFIQ" python llm_router.py --bench ;;
             sahkan)     phase 20 "Fill SAHKAN from references" python resolve_sahkan.py ;;
             *) echo "unknown job"; exit 1 ;;
           esac

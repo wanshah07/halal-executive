@@ -31,6 +31,13 @@ export const MY_STATES = [
   { id: 'Terengganu', lat: 4.9, lng: 103.0 }, { id: 'Kuala Lumpur', lat: 3.14, lng: 101.69 }, { id: 'Putrajaya', lat: 2.93, lng: 101.69 }, { id: 'Labuan', lat: 5.3, lng: 115.2 },
 ]
 export const STATE_ALIASES = { 'wp kuala lumpur': 'Kuala Lumpur', 'w.p. kuala lumpur': 'Kuala Lumpur', kl: 'Kuala Lumpur', penang: 'Pulau Pinang', malacca: 'Melaka', 'n. sembilan': 'Negeri Sembilan', 'wp putrajaya': 'Putrajaya', 'wp labuan': 'Labuan' }
+// Countries a foreign halal certificate may come from (shown beside the map).
+const COUNTRIES = ['United Kingdom', 'India', 'Pakistan', 'Indonesia', 'Thailand', 'Singapore', 'China', 'Vietnam', 'Philippines', 'Australia', 'New Zealand', 'Brazil', 'Argentina', 'United States', 'USA', 'Canada', 'France', 'Germany', 'Netherlands', 'Belgium', 'Italy', 'Spain', 'Ireland', 'Denmark', 'Poland', 'Turkey', 'Saudi Arabia', 'United Arab Emirates', 'UAE', 'Japan', 'Korea', 'Taiwan', 'Bangladesh', 'Sri Lanka', 'Egypt', 'South Africa']
+export const guessCountry = (text) => {
+  const t = String(text || '').toLowerCase()
+  const c = COUNTRIES.find((x) => new RegExp(`\\b${x.toLowerCase()}\\b`).test(t))
+  return c === 'USA' ? 'United States' : c === 'UAE' ? 'United Arab Emirates' : c || ''
+}
 export const guessState = (text) => {
   const t = String(text || '').toLowerCase()
   for (const [k, v] of Object.entries(STATE_ALIASES)) if (t.includes(k)) return v
