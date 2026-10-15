@@ -30,6 +30,10 @@ const SALT = process.env.HE_SALT || 'halal-executive'
 const MAX_MB = Number(process.env.HE_MAX_MB || 15)
 const BACKFILL_LIMIT = Number(process.env.HE_BACKFILL_LIMIT || 5000)
 const BACKFILL = process.argv.includes('--backfill')
+// --files-only: send only messages carrying a picture, PDF or document. Used to
+// recover posters and certificates whose text was already imported from a
+// chat-export .txt (which has no files): the Sheet adds each file to its row.
+const FILES_ONLY = process.argv.includes('--files-only')
 const LIST = process.argv.includes('--list-groups')
 const STATE = new URL('./state.json', import.meta.url)
 const state = fs.existsSync(STATE) ? JSON.parse(fs.readFileSync(STATE, 'utf8')) : { lastTs: 0 }
@@ -150,19 +154,21 @@ client.on('ready', async () => {
       const chat = new Chat(client, { id: { _serialized: groupId }, formattedTitle: GROUP, isGroup: true })
       console.log(`Backfill: loading up to ${BACKFILL_LIMIT} messages (large groups take a few minutes)…`)
       await loadHistory(groupId)
-      const msgs = await chat.fetchMessages({ limit: BACKFILL_LIMIT })
+      let msgs = await chat.fetchMessages({ limit: BACKFILL_LIMIT })
+      if (FILES_ONLY) { msgs = msgs.filter((m) => m.hasMedia && ['image', 'document'].includes(m.type)); console.log(`Files only: ${msgs.length} messages with a picture or document (videos and stickers skipped)`) }
       const ids = new Set(msgs.map(msgIdOf))
       if (ids.size < msgs.length) console.warn(`Warning: ${msgs.length - ids.size} messages share an id; tell Claude.`)
       console.log(`Backfill: ${msgs.length} messages, sending to the Sheet in batches of 10`)
-      let added = 0, skipped = 0, failed = 0
-      for (let i = 0; i < msgs.length; i += 10) {
+      let added = 0, skipped = 0, failed = 0, filled = 0
+      const STEP = FILES_ONLY ? 3 : 10 // files are big: fewer per request
+      for (let i = 0; i < msgs.length; i += STEP) {
         const rows = []
-        for (const m of msgs.slice(i, i + 10)) { try { rows.push(await toRow(m)) } catch (e) { failed++ } }
-        try { const r = await ingest(rows); added += r.added; skipped += r.skipped } catch (e) { failed += rows.length; console.error('  batch failed:', e.message) }
-        console.log(`  ${Math.min(i + 10, msgs.length)}/${msgs.length}  added ${added}  already there ${skipped}  failed ${failed}`)
+        for (const m of msgs.slice(i, i + STEP)) { try { rows.push(await toRow(m)) } catch (e) { failed++ } }
+        try { const r = await ingest(rows); added += r.added; skipped += r.skipped; filled += r.filled || 0 } catch (e) { failed += rows.length; console.error('  batch failed:', e.message) }
+        console.log(`  ${Math.min(i + STEP, msgs.length)}/${msgs.length}  added ${added}  files added to existing ${filled}  already there ${skipped}  failed ${failed}`)
       }
       state.lastTs = Date.now(); save()
-      console.log(`Backfill done: ${added} new rows in the Raw tab.`)
+      console.log(`Backfill done: ${added} new rows, ${filled} files added to rows already in the Raw tab.`)
       if (!process.argv.includes('--listen')) { await client.destroy(); process.exit(failed ? 1 : 0) }
     }
     // Heartbeat every 5 minutes: the site's Overview shows "WhatsApp: live"

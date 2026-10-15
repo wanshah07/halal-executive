@@ -5,6 +5,7 @@
   "scripts": {
     "start": "node collect.js",
     "backfill": "node collect.js --backfill",
+    "backfill-files": "node collect.js --backfill --files-only",
     "groups": "node collect.js --list-groups",
     "import": "node import.js"
   },

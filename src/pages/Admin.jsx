@@ -146,6 +146,10 @@ function RunNow({ lang, runs, stats }) {
         <button className="btn-brand" onClick={go} disabled={busy}><Play {...ICON} size={16} />{busy ? '…' : t(lang, 'run_now')}</button>
         {msg && <span className="text-sm text-ink-600">{msg}</span>}
       </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <button className="btn" disabled={busy} onClick={async () => { setBusy(true); setMsg(''); try { const r = await adminPost('requeue_files'); setMsg(t(lang, 'requeued').replace('{n}', r.requeued)) } catch (e) { setMsg(e.message) } finally { setBusy(false) } }}>{t(lang, 'requeue_files')}</button>
+        <span className="text-xs text-ink-400">{t(lang, 'requeue_hint')}</span>
+      </div>
       {stats && (() => {
         const waiting = stats.new || 0, done = stats.processed || 0, skipped = stats.skipped || 0, all = waiting + done + skipped
         return (

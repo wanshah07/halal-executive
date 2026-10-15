@@ -303,6 +303,7 @@ function doPost(e) {
       if (a === 'admins_set')    { needAdmin(); return json(setAdminEmails(body.emails || [])); }
       if (a === 'manual_upload') { needAdmin(); var mu = manualUpload(body, sessEmail || 'token'); mu.run = autoRun(mu.chat ? 'process_whatsapp' : 'uploads'); return json(mu); }
       if (a === 'review_set')    { needAdmin(); return json(reviewSet(body.tab, body.id, body.status)); }
+      if (a === 'requeue_files') { needAdmin(); return json(requeueFiles()); }
       if (a === 'review_save')   { needAdmin(); return json(reviewSave(String(body.tab || ''), String(body.id || ''), body.fields || {})); }
       if (a === 'settings')      { needAdmin(); return json(writeSettings(body.settings || {})); }
       if (a === 'ref_upload')    { needAdmin(); var ru = refUpload(body, sessEmail || 'token'); ru.run = autoRun('references'); return json(ru); }
@@ -747,6 +748,24 @@ function rawRelevant(text, att) {
 
 // Prefilter rows already in Raw (the chat export imported before the filter
 // existed). Runs on the 30-minute timer; touches only rows still "new".
+// Admin → Re-read group files: every WhatsApp row that carries a file goes
+// back to the fast lane, so posters, certificates and documents read before
+// the draft route existed are tracked again. The pipeline matches files by
+// Drive id and content hash, so nothing already filed is filed twice.
+function requeueFiles() {
+  var sh = sheet('Raw'), n = sh.getLastRow() - 1, C = TABS.Raw;
+  if (n < 1) return { ok: true, requeued: 0 };
+  var st = sh.getRange(2, C.indexOf('status') + 1, n, 1).getValues(), at = sh.getRange(2, C.indexOf('attachments') + 1, n, 1).getValues(),
+      src = sh.getRange(2, C.indexOf('source') + 1, n, 1).getValues(), k = 0;
+  for (var i = 0; i < n; i++) {
+    if (src[i][0] === 'manual' || st[i][0] === 'new') continue;
+    if (String(at[i][0] || '').indexOf('"drive_file_id"') < 0) continue;
+    st[i][0] = 'new'; k++;
+  }
+  if (k) { sh.getRange(2, C.indexOf('status') + 1, n, 1).setValues(st); pubBust(); }
+  return { ok: true, requeued: k, run: k ? autoRun('uploads') : '' };
+}
+
 function rawTriage() {
   var sh = sheet('Raw'), n = sh.getLastRow() - 1, C = TABS.Raw;
   if (n < 1) return 0;
@@ -785,26 +804,52 @@ function ingest(rows) {
   ensureHeader(sh, TABS.Raw);
   // Only the three key columns are read: Raw holds tens of thousands of rows
   // once a chat export is in, and this runs under the lock for every message.
+  // Each key remembers its sheet row, so a file can be added to a row later.
   var n = sh.getLastRow() - 1, C = TABS.Raw;
   if (n > 0) {
     var src = sh.getRange(2, C.indexOf('source') + 1, n, 1).getValues(), mid = sh.getRange(2, C.indexOf('msg_id') + 1, n, 1).getValues(), fpc = sh.getRange(2, C.indexOf('fp') + 1, n, 1).getValues();
-    for (var i = 0; i < n; i++) { have[src[i][0] + ':' + mid[i][0]] = 1; if (fpc[i][0]) fps[fpc[i][0]] = 1; }
+    for (var i = 0; i < n; i++) { have[src[i][0] + ':' + mid[i][0]] = i + 2; if (fpc[i][0]) fps[fpc[i][0]] = i + 2; }
   }
-  var added = 0, skipped = 0, lines = [];
-  rows.forEach(function (r) {
-    var key = r.source + ':' + r.msg_id, fp = rawFp(r);
-    if (have[key] || (fp.length && (fps[fp[0]] || fps[fp[1]] || fps[fp[2]]))) { skipped++; return; }
-    var att = (r.attachments || []).map(function (a) {
+  var added = 0, skipped = 0, filled = 0, lines = [];
+  var aCol = C.indexOf('attachments') + 1, sCol = C.indexOf('status') + 1, nCol = C.indexOf('notes') + 1;
+  var save = function (r) {
+    return (r.attachments || []).map(function (a) {
       if (a.b64) { var f = saveToInbox(a, r); return { name: f.name, drive_file_id: f.id, drive_url: f.url, mime: a.mime, sha256: a.sha256 || sha256(Utilities.base64Decode(a.b64)) }; }
       return a;
     });
+  };
+  rows.forEach(function (r) {
+    var key = r.source + ':' + r.msg_id, fp = rawFp(r);
+    var at = have[key] || (fp.length && (fps[fp[0]] || fps[fp[1]] || fps[fp[2]]));
+    if (at === -1) { skipped++; return; } // twice in this same batch
+    if (at) {
+      // Same message already on file. A chat-export .txt carries no pictures
+      // or PDFs, so when the WhatsApp collector sends the same message WITH
+      // its file, the file is added to the existing row and the row is read
+      // again (14 Oct 2026: posters and certificates were dropped as
+      // "already there"). A row that already has its files is left alone.
+      var hasFile = (r.attachments || []).some(function (a) { return a.b64; });
+      if (hasFile) {
+        var cur = []; try { cur = JSON.parse(sh.getRange(at, aCol).getValue() || '[]'); } catch (e) { cur = []; }
+        var curHas = cur.some(function (a) { return a && a.drive_file_id; });
+        if (!curHas) {
+          sh.getRange(at, aCol).setValue(JSON.stringify(save(r)));
+          sh.getRange(at, sCol).setValue('new');
+          sh.getRange(at, nCol).setValue('file added by the WhatsApp collector');
+          filled++; return;
+        }
+      }
+      skipped++; return;
+    }
+    var att = save(r);
     var keep = rawRelevant(r.text, att);
     lines.push([r.source + '-' + r.msg_id, r.source, r.group || '', String(r.msg_id), r.sender_hash || '', r.ts || new Date().toISOString(), r.text || '', JSON.stringify(att), keep ? 'new' : 'skipped', '', '', keep ? '' : 'prefilter', fp[0] || '']);
-    have[key] = 1; if (fp.length) fps[fp[0]] = 1; added++;
+    have[key] = -1; if (fp.length) fps[fp[0]] = -1; added++;
   });
   // One write for the whole batch (a chat export can hold thousands of rows).
   if (lines.length) sh.getRange(sh.getLastRow() + 1, 1, lines.length, TABS.Raw.length).setValues(lines);
-  return { ok: true, added: added, skipped: skipped };
+  if (filled) pubBust();
+  return { ok: true, added: added, skipped: skipped, filled: filled };
 }
 
 function folder(path) {
