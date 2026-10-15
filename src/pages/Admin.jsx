@@ -215,6 +215,7 @@ function ProgressBox({ lang }) {
             <div className="font-semibold">{waiting.toLocaleString()} {t(lang, 'waiting')}</div>
             <div className="h-1.5 bg-line rounded-full mt-1 overflow-hidden"><div className="h-full bg-brand-600" style={{ width: all ? `${Math.round(((all - waiting) / all) * 100)}%` : '0%' }} /></div>
             <div className="text-xs text-ink-600 mt-1">{done.toLocaleString()} {t(lang, 'read_done')} · {skipped.toLocaleString()} {t(lang, 'filtered')}{failedRows ? ` · ${failedRows} ${t(lang, 'p_row_errors')}` : ''}</div>
+            {raw.files_waiting !== undefined && <div className={`text-xs mt-1 ${raw.files_waiting ? 'text-amber-700' : 'text-brand-700'}`}>{raw.files_waiting ? `${raw.files_waiting.toLocaleString()} ${t(lang, 'p_files_waiting')}` : t(lang, 'p_files_done')}</div>}
           </div>
         </div>
         {st.llm_speed && (st.llm_speed.MIRELD || st.llm_speed.AFIQ) && (() => {

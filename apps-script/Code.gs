@@ -219,8 +219,14 @@ function cachedPublicData() {
 function rawStats() {
   var stats = { new: 0, processed: 0, skipped: 0, by_source: {} }, sh = sheet('Raw'), n = sh.getLastRow() - 1;
   if (n < 1) return stats;
-  var cols = TABS.Raw, src = sh.getRange(2, cols.indexOf('source') + 1, n, 1).getValues(), st = sh.getRange(2, cols.indexOf('status') + 1, n, 1).getValues();
-  for (var i = 0; i < n; i++) { if (!src[i][0] && !st[i][0]) continue; stats[st[i][0]] = (stats[st[i][0]] || 0) + 1; stats.by_source[src[i][0]] = (stats.by_source[src[i][0]] || 0) + 1; }
+  var cols = TABS.Raw, src = sh.getRange(2, cols.indexOf('source') + 1, n, 1).getValues(), st = sh.getRange(2, cols.indexOf('status') + 1, n, 1).getValues(),
+      at = sh.getRange(2, cols.indexOf('attachments') + 1, n, 1).getValues();
+  stats.files_waiting = 0; // posters, certificates and documents not read yet (the fast lane's queue)
+  for (var i = 0; i < n; i++) {
+    if (!src[i][0] && !st[i][0]) continue;
+    stats[st[i][0]] = (stats[st[i][0]] || 0) + 1; stats.by_source[src[i][0]] = (stats.by_source[src[i][0]] || 0) + 1;
+    if (st[i][0] === 'new' && String(at[i][0] || '').indexOf('"name"') >= 0) stats.files_waiting++;
+  }
   return stats;
 }
 
