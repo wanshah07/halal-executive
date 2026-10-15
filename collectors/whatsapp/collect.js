@@ -159,16 +159,25 @@ client.on('ready', async () => {
       const ids = new Set(msgs.map(msgIdOf))
       if (ids.size < msgs.length) console.warn(`Warning: ${msgs.length - ids.size} messages share an id; tell Claude.`)
       console.log(`Backfill: ${msgs.length} messages, sending to the Sheet in batches of 10`)
-      let added = 0, skipped = 0, failed = 0, filled = 0
+      let added = 0, skipped = 0, failed = 0, filled = 0, nofile = 0
       const STEP = FILES_ONLY ? 3 : 10 // files are big: fewer per request
       for (let i = 0; i < msgs.length; i += STEP) {
         const rows = []
-        for (const m of msgs.slice(i, i + STEP)) { try { rows.push(await toRow(m)) } catch (e) { failed++ } }
+        for (const m of msgs.slice(i, i + STEP)) {
+          try {
+            const row = await toRow(m)
+            // WhatsApp keeps old media on its servers for a limited time; past
+            // that, the file cannot be downloaded from a linked device.
+            if (m.hasMedia && !row.attachments.some((a) => a.b64)) nofile++
+            rows.push(row)
+          } catch (e) { failed++ }
+        }
         try { const r = await ingest(rows); added += r.added; skipped += r.skipped; filled += r.filled || 0 } catch (e) { failed += rows.length; console.error('  batch failed:', e.message) }
-        console.log(`  ${Math.min(i + STEP, msgs.length)}/${msgs.length}  added ${added}  files added to existing ${filled}  already there ${skipped}  failed ${failed}`)
+        console.log(`  ${Math.min(i + STEP, msgs.length)}/${msgs.length}  added ${added}  files added to existing ${filled}  already there ${skipped}  file not downloadable ${nofile}  failed ${failed}`)
       }
       state.lastTs = Date.now(); save()
       console.log(`Backfill done: ${added} new rows, ${filled} files added to rows already in the Raw tab.`)
+      if (nofile) console.log(`${nofile} files could not be downloaded (WhatsApp no longer holds old media for linked devices). Get them from the phone: Export chat → Include media, then npm run import-files -- <zip>.`)
       if (!process.argv.includes('--listen')) { await client.destroy(); process.exit(failed ? 1 : 0) }
     }
     // Heartbeat every 5 minutes: the site's Overview shows "WhatsApp: live"

@@ -20,6 +20,10 @@ const GROUP = (process.env.HE_GROUP_NAME || 'Halal Executive').trim()
 const SALT = process.env.HE_SALT || 'halal-executive'
 const MAX_MB = Number(process.env.HE_MAX_MB || 15)
 const SINCE = process.env.HE_IMPORT_SINCE ? new Date(process.env.HE_IMPORT_SINCE) : null
+// --files-only: send only messages that carry a picture or document from the
+// export. Their text is usually on file already (an earlier .txt import); the
+// Sheet adds each file to its existing row and the AI reads it again.
+const FILES_ONLY = process.argv.includes('--files-only')
 const hash = (s) => crypto.createHash('sha256').update(SALT + String(s)).digest('hex').slice(0, 16)
 
 const MIME = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif', pdf: 'application/pdf', doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', xls: 'application/vnd.ms-excel', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', ppt: 'application/vnd.ms-powerpoint', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation', txt: 'text/plain', csv: 'text/csv', mp4: 'video/mp4', opus: 'audio/ogg', mp3: 'audio/mpeg', vcf: 'text/vcard' }
@@ -82,13 +86,13 @@ const ATT = [/<attached:\s*([^>]+)>/i, /^\u200e?(.+?\.[A-Za-z0-9]{2,5})\s*\((?:f
 function attachmentName(t) { for (const r of ATT) { const m = t.match(r); if (m) return m[1].trim() } return null }
 
 async function main() {
-  const p = process.argv[2]
+  const p = process.argv.slice(2).find((a) => !a.startsWith('--'))
   if (!p) { console.error('Usage: npm run import -- "<path to the .zip, folder or .txt>"'); process.exit(1) }
   const { text, files } = readExport(p)
   let msgs = parse(text)
   if (SINCE) msgs = msgs.filter((m) => m.ts >= SINCE)
   console.log(`${msgs.length} messages from ${msgs[0]?.ts.toISOString().slice(0, 10)} to ${msgs.at(-1)?.ts.toISOString().slice(0, 10)}, ${files.size} files in the export`)
-  let added = 0, skipped = 0, failed = 0, media = 0
+  let added = 0, skipped = 0, failed = 0, media = 0, filled = 0
   const toRow = (m) => {
     const row = { source: 'whatsapp', group: GROUP, msg_id: 'exp-' + hash(m.ts.toISOString() + '|' + m.sender + '|' + m.text), sender_hash: hash(m.sender), ts: m.ts.toISOString(), text: m.text.replace(/<attached:[^>]+>/gi, '').replace(/^\u200e?.+?\.[A-Za-z0-9]{2,5}\s*\((?:file attached|fail dilampirkan)\)\s*$/gim, '').replace(/[\u200e\u200f]/g, '').trim(), attachments: [] }
     const an = attachmentName(m.text)
@@ -106,19 +110,20 @@ async function main() {
   let batch = [], size = 0
   const flush = async () => {
     if (!batch.length) return
-    try { const r = await ingest(batch); added += r.added; skipped += r.skipped } catch (e) { failed += batch.length; console.error('  batch failed:', e.message) }
+    try { const r = await ingest(batch); added += r.added; skipped += r.skipped; filled += r.filled || 0 } catch (e) { failed += batch.length; console.error('  batch failed:', e.message) }
     batch = []; size = 0
   }
   for (let i = 0; i < msgs.length; i++) {
     const row = toRow(msgs[i])
     if (!row.text && !row.attachments.length) continue
+    if (FILES_ONLY && !row.attachments.some((a) => a.b64)) continue
     const s = JSON.stringify(row).length
     if (batch.length >= 25 || size + s > 8e6) await flush()
     batch.push(row); size += s
-    if ((i + 1) % 100 === 0) console.log(`  ${i + 1}/${msgs.length}  added ${added}  already there ${skipped}  failed ${failed}`)
+    if ((i + 1) % 100 === 0) console.log(`  ${i + 1}/${msgs.length}  added ${added}  files added to existing ${filled}  already there ${skipped}  failed ${failed}`)
   }
   await flush()
-  console.log(`Import done: ${added} new rows (${media} with a file), ${skipped} already there, ${failed} failed.`)
+  console.log(`Import done: ${added} new rows, ${filled} files added to rows already there, ${media} files in all, ${skipped} already there, ${failed} failed.`)
   process.exit(failed ? 1 : 0)
 }
 main().catch((e) => { console.error(e.message || e); process.exit(1) })
