@@ -270,6 +270,7 @@ const FULL = {
   Certificates: [['company', 'Company'], ['cert_no', 'Certificate no.'], ['scheme', 'Scheme'], ['state', 'State'], ['category', 'Category'], ['valid_from', 'Valid from (YYYY-MM-DD)'], ['valid_to', 'Valid to (YYYY-MM-DD)'], ['products', 'Products (separate with ;)', 1], ['drive_url', 'File', 0, 0]],
   Guidelines: [['category', 'Category'], ['title', 'Title'], ['title_bm', 'Tajuk (BM)'], ['issuer', 'Issuer'], ['summary_en', 'Summary (EN)', 1], ['summary_bm', 'Ringkasan (BM)', 1], ['link', 'Link']],
 }
+const notesOf = (r) => { try { const n = JSON.parse(r.verify_notes || '[]'); return Array.isArray(n) ? n.filter(Boolean) : [String(n)] } catch { return r.verify_notes ? [String(r.verify_notes)] : [] } }
 const isoDay = (v) => { const d = new Date(v); return v && !isNaN(d) ? new Date(d.getTime() + 8 * 3600e3).toISOString().slice(0, 10) : (v || '') }
 function DraftItem({ lang, tab, r, onSet, onDelete, onSaved }) {
   const [openFull, setOpenFull] = useState(false)
@@ -302,6 +303,13 @@ function DraftItem({ lang, tab, r, onSet, onDelete, onSaved }) {
           <button className="btn text-red-700" onClick={onDelete}>{t(lang, 'delete')}</button>
         </div>
       </div>
+      {tab === 'FAQ' && notesOf(r).length > 0 && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm">
+          <div className="font-medium text-amber-800">{t(lang, 'not_in_refs')} ({notesOf(r).length})</div>
+          <ul className="list-disc pl-5 text-ink-600">{notesOf(r).map((n, i) => <li key={i}>{n}</li>)}</ul>
+          <p className="text-xs text-ink-600 mt-1">{t(lang, 'not_in_refs_hint')}</p>
+        </div>
+      )}
       {openFull && !edit && (
         <dl className="space-y-2 text-sm">
           {fields.filter(([k]) => r[k]).map(([k, label]) => (

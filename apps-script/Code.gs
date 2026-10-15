@@ -650,12 +650,16 @@ function certThumb(id) {
 var REVIEW_TABS = ['FAQ', 'Events', 'Documents', 'Certificates', 'Guidelines'];
 function reviewList() {
   var out = {};
+  // A published answer with points the references do not state yet goes back
+  // to drafts, so it is edited or confirmed before readers see it (Wan, 15 Oct 2026).
+  var unconfirmed = readTab('FAQ').filter(function (r) { return r.status === 'published' && String(r.verify_notes || '').length > 2 && String(r.verify_notes) !== '[]'; }).map(function (r) { return r.id; });
+  if (unconfirmed.length) updateByIds('FAQ', unconfirmed, { status: 'draft', updated_at: new Date().toISOString() });
   var now = Date.now();
   REVIEW_TABS.forEach(function (t) { out[t] = readTab(t).filter(function (r) { return r.status === 'draft' && !(t === 'Events' && eventOver(r, now)) && !(t === 'Certificates' && r.valid_to && eventOver({ date_start: r.valid_to }, now)); }); });
   // Points the pipeline could not confirm from the references library: they
   // were left out of the published answer and wait here until a reference
   // that states them is uploaded.
-  var open = readTab('FAQ').filter(function (r) { return r.status !== 'hidden' && String(r.verify_notes || '').length > 2; }).map(function (r) {
+  var open = readTab('FAQ').filter(function (r) { return r.status !== 'hidden' && r.status !== 'draft' && r.status !== 'duplicate' && String(r.verify_notes || '').length > 2; }).map(function (r) {
     var notes = []; try { notes = JSON.parse(r.verify_notes); } catch (e) { notes = [String(r.verify_notes)]; }
     return { id: r.id, question_en: r.question_en, question_bm: r.question_bm, notes: notes, verified_at: r.verified_at };
   }).filter(function (r) { return r.notes.length; });
@@ -667,6 +671,9 @@ function reviewSet(tab, id, status) {
   if ((tab === 'Certificates' || tab === 'Documents') && status === 'published') status = 'current';
   var patch = { status: status };
   if (TABS[tab].indexOf('updated_at') >= 0) patch.updated_at = new Date().toISOString();
+  // An admin publishing an answer confirms it: its open points are cleared,
+  // or the next Drafts load would move it straight back.
+  if (tab === 'FAQ' && status === 'published') { patch.verify_notes = ''; patch.verified_at = new Date().toISOString(); }
   var r = updateByIds(tab, [id], patch);
   // A certificate and its document are one item: publishing or hiding one does the other.
   try {
