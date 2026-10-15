@@ -83,7 +83,7 @@ function UploadBox({ lang }) {
   const line = (x) => {
     if (x.state === 'sent') {
       const r = x.result || {}
-      return [r.chat ? t(lang, 'chat_imported').replace('{n}', r.messages).replace('{a}', r.added).replace('{s}', r.skipped) : t(lang, 'q_sent'), r.run === 'started' ? t(lang, 'ai_started') : t(lang, 'q_next_run')].join(' · ')
+      return [r.chat ? t(lang, 'chat_imported').replace('{n}', r.messages).replace('{a}', r.added).replace('{s}', r.skipped) : t(lang, 'q_sent'), r.run === 'started' ? t(lang, 'ai_started_' + (['certificate', 'event', 'guideline'].includes(x.kind) ? x.kind : 'faq')) : t(lang, 'q_next_run')].join(' · ')
     }
     return x.state === 'failed' ? x.msg : x.state === 'sending' ? t(lang, 'q_sending') : t(lang, 'q_waiting') + (x.msg ? ` (${x.msg})` : '')
   }
