@@ -99,7 +99,7 @@ export function EventsAdmin({ lang, onChanged }) {
   return (
     <div className="card p-5 mb-4 space-y-3">
       <h3 className="font-semibold">{t(lang, 'events_admin')}</h3>
-      <form onSubmit={save} className="grid sm:grid-cols-2 gap-3">
+      <form id="event-form" onSubmit={save} className="grid sm:grid-cols-2 gap-3 scroll-mt-32">
         <div><label className="label" htmlFor="ev-t">{t(lang, 'title')} (EN)</label><input id="ev-t" className="input" required value={e.title} onChange={(x) => setE({ ...e, title: x.target.value })} /></div>
         <div><label className="label" htmlFor="ev-tb">{t(lang, 'title')} (BM)</label><input id="ev-tb" className="input" value={e.title_bm} onChange={(x) => setE({ ...e, title_bm: x.target.value })} /></div>
         <div><label className="label" htmlFor="ev-s">{t(lang, 'starts')}</label><input id="ev-s" type="datetime-local" className="input" required value={local(e.date_start)} onChange={(x) => setE({ ...e, date_start: x.target.value })} /></div>
@@ -115,7 +115,11 @@ export function EventsAdmin({ lang, onChanged }) {
         {(rows || []).filter((r) => r.status !== 'hidden').map((r) => (
           <li key={r.id} className="py-2.5 flex flex-col sm:flex-row sm:items-center gap-2 text-sm">
             <div className="min-w-0 flex-1"><b>{r.title}</b> <span className="text-ink-400">· {fmtDateTime(r.date_start, lang)}{r.venue ? ` · ${r.venue}` : ''} · {r.status || 'published'}{r.source === 'admin' ? '' : ' · AI'}</span></div>
-            <div className="flex gap-2 shrink-0"><button className="btn" onClick={() => { setE({ ...EMPTY, ...r }); window.scrollTo({ top: 0, behavior: 'smooth' }) }}>{t(lang, 'edit')}</button><button className="btn" onClick={() => hide(r)}>{t(lang, 'hide')}</button><button className="btn text-red-700" onClick={() => remove(r)}>{t(lang, 'delete')}</button></div>
+            <div className="flex gap-2 shrink-0"><button className="btn" onClick={() => {
+              setE({ ...EMPTY, ...r })
+              // To the event form in this panel (not the top of the page), title ready to type.
+              requestAnimationFrame(() => { const f = document.getElementById('event-form'); if (f) { f.scrollIntoView({ behavior: 'smooth', block: 'start' }); f.querySelector('input')?.focus({ preventScroll: true }) } })
+            }}>{t(lang, 'edit')}</button><button className="btn" onClick={() => hide(r)}>{t(lang, 'hide')}</button><button className="btn text-red-700" onClick={() => remove(r)}>{t(lang, 'delete')}</button></div>
           </li>
         ))}
       </ul>
