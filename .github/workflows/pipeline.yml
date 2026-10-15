@@ -104,7 +104,7 @@ jobs:
           # Backlog: a run that stopped at its time limit with messages still
           # waiting starts the next one now instead of waiting for the timer.
           # Only when it read something, so a provider outage cannot loop.
-          if [ "$JOB" = process_whatsapp ] && [ "$(cat "$STATE_DIR/more_waiting" 2>/dev/null)" = 1 ]; then
-            GH_TOKEN="${{ github.token }}" gh workflow run pipeline.yml --repo "${{ github.repository }}" --ref main -f job=process_whatsapp && python phase.py "$JOB" running "more messages waiting: next run started" || true
+          if { [ "$JOB" = process_whatsapp ] || [ "$JOB" = uploads ]; } && [ "$(cat "$STATE_DIR/more_waiting" 2>/dev/null)" = 1 ]; then
+            GH_TOKEN="${{ github.token }}" gh workflow run pipeline.yml --repo "${{ github.repository }}" --ref main -f job="$JOB" && python phase.py "$JOB" running "more waiting: next run started" || true
           fi
           exit $RC
