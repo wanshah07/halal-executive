@@ -7,6 +7,7 @@ import { t } from '../lib/i18n'
 import { fmtDate, fmtDateTime } from '../lib/util'
 import { certStatus, splitProducts } from '../lib/certs'
 import { ICON, ChevronDown, ChevronRight, ExternalLink } from '../components/Icon'
+import Lightbox from '../components/Lightbox'
 
 // Halal certificates picked out of the groups: holder, certificate number,
 // scheme, validity and the product list. Each entry folds; the product list
@@ -19,9 +20,21 @@ export { certStatus, splitProducts }
 export function CertThumb({ c, lang, size = 'card' }) {
   const [src, setSrc] = useState(c.thumb || null)
   useEffect(() => { let live = true; if (!c.thumb) certThumb(c.id).then((d) => live && d && setSrc(d)); return () => { live = false } }, [c.id, c.thumb])
-  const box = size === 'card' ? 'w-full aspect-[4/5]' : 'w-20 h-24'
+  const [zoom, setZoom] = useState(false)
+  // Table: a fixed 96 x 128 tile that the column can never squeeze
+  // (max-w-none, shrink-0). Card: the full card width, tall enough to read.
+  const box = size === 'card' ? 'w-full aspect-[3/4]' : 'w-24 h-32 min-w-24 max-w-none shrink-0'
+  const name = c.company || c.cert_no || t(lang, 'untitled_cert')
+  if (src) return (
+    <>
+      <button type="button" title={t(lang, 'view_larger')} onClick={() => setZoom(true)} className={`${box} block rounded-lg border border-line bg-white p-1 cursor-zoom-in hover:ring-2 hover:ring-brand-300`}>
+        <img src={src} alt={`${t(lang, 'certificates')} ${name}`} loading="lazy" className="w-full h-full object-contain" />
+      </button>
+      <Lightbox src={zoom ? src : null} alt={name} href={safeUrl(c.drive_url)} onClose={() => setZoom(false)} />
+    </>
+  )
   const inner = src
-    ? <img src={src} alt={`${t(lang, 'certificates')} ${c.company}`} loading="lazy" className={`${box} object-contain rounded-lg border border-line bg-white`} />
+    ? null
     : <div className={`${box} rounded-lg border border-line bg-paper flex flex-col items-center justify-center gap-1 text-ink-400`}>
         <img src="./brand/jakim-halal-logo.png" alt="" className={size === 'card' ? 'h-12 w-12 opacity-30' : 'h-6 w-6 opacity-30'} />
         {size === 'card' && <span className="text-xs">{t(lang, 'no_preview')}</span>}
@@ -75,9 +88,9 @@ export default function Certificates({ lang, data }) {
   return (
     <Segment id="certificates" cardGrid="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5" lang={lang} title={t(lang, 'certificates')} rows={rows} filters={filters}
       columns={[
-        { key: '_thumb', label: '', render: (c) => <CertThumb c={c} lang={lang} size="row" /> },
+        { key: '_thumb', label: '', render: (c) => <div className="w-24"><CertThumb c={c} lang={lang} size="row" /></div> },
         { key: '_status', label: t(lang, 'validity'), render: badge },
-        { key: 'company', label: t(lang, 'company'), render: (c) => <span className="font-medium">{c.company}</span> },
+        { key: 'company', label: t(lang, 'company'), render: (c) => c.company ? <span className="font-medium">{c.company}</span> : <span className="italic text-ink-400">{t(lang, 'untitled_cert')}</span> },
         { key: 'cert_no', label: t(lang, 'cert_no') },
         { key: 'scheme', label: t(lang, 'scheme') },
         { key: 'category', label: t(lang, 'category'), render: (c) => catChip(c.category, lang) },
@@ -95,7 +108,7 @@ export default function Certificates({ lang, data }) {
           <div className="mb-3"><CertThumb c={c} lang={lang} /></div>
           <div className="flex items-center justify-between gap-2 mb-2">{badge(c)}{catChip(c.category, lang)}</div>
           <button className="text-left w-full" onClick={() => toggle(c.id)}>
-            <div className="font-semibold leading-snug">{c.company}</div>
+            <div className="font-semibold leading-snug">{c.company || <span className="italic text-ink-400 font-normal">{t(lang, 'untitled_cert')}</span>}</div>
             <div className="text-xs text-ink-600 mt-0.5">{c.scheme}{c.state && ` · ${c.state}`} · {c.cert_no}</div>
             <div className="text-xs text-ink-400 mt-1">{t(lang, 'validity')}: {fmtDate(c.valid_from, lang)} → {fmtDate(c.valid_to, lang)}</div>
           </button>

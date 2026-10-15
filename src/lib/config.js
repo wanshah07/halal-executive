@@ -68,9 +68,11 @@ export const EVENT_KINDS = [
   { id: 'other', en: 'Others', bm: 'Lain-lain' },
 ]
 // Directory groups: training providers and services.
+// Each is a sub-section of Directory in the header and the sidebar
+// (#directory/plh, /consult, /sertu, /lab).
 export const DIRECTORY_TYPES = [
-  { id: 'jakim_plh', group: 'training', en: 'Halal Training Providers (JAKIM)', bm: 'Penyedia Latihan Halal (JAKIM)' },
-  { id: 'jurusertu', group: 'service', en: 'Jurusertu', bm: 'Jurusertu' },
-  { id: 'consult', group: 'service', en: 'Training & Consultancy', bm: 'Latihan & Konsultasi' },
-  { id: 'lab', group: 'service', en: 'Laboratory', bm: 'Makmal', soon: true },
+  { id: 'jakim_plh', sub: 'plh', group: 'training', en: 'Halal Training Providers (JAKIM)', bm: 'Penyedia Latihan Halal (JAKIM)' },
+  { id: 'consult', sub: 'consult', group: 'service', en: 'Training & Consultancy', bm: 'Latihan & Konsultasi' },
+  { id: 'jurusertu', sub: 'sertu', group: 'service', en: 'Sertu', bm: 'Sertu' },
+  { id: 'lab', sub: 'lab', group: 'service', en: 'Laboratory', bm: 'Makmal', soon: true },
 ]

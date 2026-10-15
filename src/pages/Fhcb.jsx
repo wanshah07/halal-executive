@@ -7,6 +7,7 @@ import { fmtDate } from '../lib/util'
 import { countryCoords } from '../lib/config'
 import seed from '../data/fhcb.json'
 import { ICON, Mail, Phone, MapPin, ExternalLink } from '../components/Icon'
+import Lightbox from '../components/Lightbox'
 
 const MapView = lazy(() => import('../components/MapView'))
 
@@ -24,6 +25,7 @@ const siteHref = (w) => { const s = String(w || '').trim(); return safeUrl(/^htt
 export default function Fhcb({ lang, data, focusId, focusKey }) {
   const [country, setCountry] = useState('all')
   const [q, setQ] = useState('')
+  const [zoom, setZoom] = useState(null)
   const all = useMemo(() => fhcbRows(data), [data])
   const docs = (data.documents || []).filter((d) => d.category === 'fhcb')
   const list = docs.filter((d) => d.kind === 'fhcb_list'), circulars = docs.filter((d) => d.kind !== 'fhcb_list')
@@ -46,7 +48,10 @@ export default function Fhcb({ lang, data, focusId, focusKey }) {
       {r.note && <li className="text-xs text-ink-600">{r.note}</li>}
     </ul>
   )
-  const logo = (r, cls) => safeUrl(r.logo_url) ? <img src={safeUrl(r.logo_url)} alt="" loading="lazy" className={`${cls} object-contain bg-white rounded-lg border border-line p-1`} /> : <div className={`${cls} rounded-lg border border-line bg-paper`} />
+  // A logo opens full size on click (Wan, 15 Oct 2026).
+  const logo = (r, cls) => safeUrl(r.logo_url)
+    ? <button type="button" title={t(lang, 'view_larger')} onClick={() => setZoom({ src: safeUrl(r.logo_url), alt: r.name })} className={`${cls} shrink-0 bg-white rounded-lg border border-line p-1 hover:ring-2 hover:ring-brand-300 cursor-zoom-in`}><img src={safeUrl(r.logo_url)} alt={`${r.name} halal logo`} loading="lazy" className="w-full h-full object-contain" /></button>
+    : <div className={`${cls} rounded-lg border border-line bg-paper`} />
   const filters = (
     <>
       <select className="input w-auto" value={country} onChange={(e) => setCountry(e.target.value)} aria-label={t(lang, 'country')}>
@@ -109,6 +114,7 @@ export default function Fhcb({ lang, data, focusId, focusKey }) {
             <div className="mt-3 pt-2 border-t border-line text-xs text-ink-400">{r.source_ref}{r.updated_at ? ` · ${t(lang, 'updated')} ${fmtDate(r.updated_at, lang)}` : ''}</div>
           </article>
         )} />
+      <Lightbox src={zoom && zoom.src} alt={zoom && zoom.alt} onClose={() => setZoom(null)} />
     </div>
   )
 }

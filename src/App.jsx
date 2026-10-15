@@ -51,6 +51,7 @@ class PageGuard extends Component {
 
 const TABS = NAV.map(([k]) => k)
 const fromHash = () => { const h = location.hash.replace('#', '').split('/')[0]; return TABS.includes(h) ? h : 'overview' }
+const subFromHash = () => location.hash.replace('#', '').split('/')[1] || ''
 const ls = (k, d) => { try { return localStorage.getItem(k) ?? d } catch { return d } }
 
 // Export columns per segment: the same fields the table view shows.
@@ -70,6 +71,7 @@ export default function App() {
   const setLang = (l) => { setLangState(l); try { localStorage.setItem('he:lang', l) } catch { /* ignore */ } }
   const [tab, setTabState] = useState(fromHash)
   const [focus, setFocus] = useState(null)
+  const [sub, setSub] = useState(subFromHash)
   const [data, setData] = useState(savedData)
   const [err, setErr] = useState('')
   const [loading, setLoading] = useState(true)
@@ -77,8 +79,10 @@ export default function App() {
   const [seed, setSeed] = useState(null)
   const [menu, setMenu] = useState(false)
 
-  const setTab = (k, id) => { setTabState(k); setFocus(id ? { id, n: Date.now() } : null); if (location.hash !== `#${k}`) history.replaceState(null, '', `#${k}`); window.scrollTo({ top: 0 }) }
-  useEffect(() => { const h = () => setTabState(fromHash()); addEventListener('hashchange', h); return () => removeEventListener('hashchange', h) }, [])
+  // 'directory/sertu' opens a sub-section; the hash keeps it so a link or a
+  // reload lands on the same place.
+  const setTab = (k, id) => { const [base, s2 = ''] = String(k).split('/'); setTabState(base); setSub(s2); setFocus(id ? { id, n: Date.now() } : null); if (location.hash !== `#${k}`) history.replaceState(null, '', `#${k}`); window.scrollTo({ top: 0 }) }
+  useEffect(() => { const h = () => { setTabState(fromHash()); setSub(subFromHash()) }; addEventListener('hashchange', h); return () => removeEventListener('hashchange', h) }, [])
   // Admin Delete / Hide: drop the row at once (lib/api.js dropLocal).
   useEffect(() => {
     const drop = (e) => { const { key, id } = e.detail; setData((d) => (d && Array.isArray(d[key]) ? { ...d, [key]: d[key].filter((r) => String(r.id) !== id) } : d)) }
@@ -117,8 +121,8 @@ export default function App() {
 
   return (
     <div className="min-h-screen">
-      <Header lang={lang} setLang={setLang} tab={tab} setTab={setTab} onRefresh={() => refresh(true)} onExport={doExport} counts={counts} loading={loading} onMenu={() => setMenu(true)} />
-      <Sidebar lang={lang} tab={tab} setTab={setTab} counts={counts} mobileOpen={menu} setMobileOpen={setMenu} />
+      <Header lang={lang} setLang={setLang} tab={tab} sub={sub} setTab={setTab} onRefresh={() => refresh(true)} onExport={doExport} counts={counts} loading={loading} onMenu={() => setMenu(true)} />
+      <Sidebar lang={lang} tab={tab} sub={sub} setTab={setTab} counts={counts} mobileOpen={menu} setMobileOpen={setMenu} />
       <div className="min-h-[calc(100vh-118px)] flex flex-col md:pl-[232px]">
         <main className="w-full flex-1 max-w-7xl mx-auto px-4 sm:px-6 py-6">
           {err && <div className="card p-3 mb-4 text-sm bg-red-50 border-red-200">{err}</div>}
@@ -133,7 +137,7 @@ export default function App() {
           {tab === 'documents' && <Documents lang={lang} data={data} />}
           {tab === 'events' && <Events lang={lang} data={data} />}
           {tab === 'fhcb' && <Fhcb lang={lang} data={data} focusId={focus && focus.id} focusKey={focus && focus.n} />}
-          {tab === 'directory' && <Directory lang={lang} data={data} />}
+          {tab === 'directory' && <Directory lang={lang} data={data} sub={sub} setTab={setTab} />}
           {tab === 'news' && <News lang={lang} data={data} />}
           {tab === 'admin' && <Admin lang={lang} data={data} onSaved={() => refresh(true)} />}
           </Suspense>

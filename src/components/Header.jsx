@@ -1,16 +1,24 @@
 import { useEffect, useRef, useState } from 'react'
-import { SITE_NAME, SHEET_URL, DRIVE_FOLDER_URL } from '../lib/config'
+import { SITE_NAME, SHEET_URL, DRIVE_FOLDER_URL, DIRECTORY_TYPES } from '../lib/config'
 import { t } from '../lib/i18n'
 import { NAV } from './Sidebar'
 import { IconBar, IconBarItem } from '@/components/ui/icon-bar'
 import { ICON, Menu, ExternalLink, ChevronDown, RefreshCw, Lock } from './Icon'
 
-export default function Header({ lang, setLang, tab, setTab, onRefresh, onExport, counts, loading, onMenu }) {
+export default function Header({ lang, setLang, tab, sub, setTab, onRefresh, onExport, counts, loading, onMenu }) {
   const [exp, setExp] = useState(false)
   const ref = useRef(null)
+  // The header never hides; its height (it grows with the Directory row) is
+  // shared as --hh so the sidebar starts right under it.
+  const head = useRef(null)
+  useEffect(() => {
+    const el = head.current; if (!el) return
+    const ro = new ResizeObserver(() => document.documentElement.style.setProperty('--hh', el.offsetHeight + 'px')); ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
   useEffect(() => { const h = (e) => { if (ref.current && !ref.current.contains(e.target)) setExp(false) }; addEventListener('click', h); return () => removeEventListener('click', h) }, [])
   return (
-    <header className="bg-white border-b border-line sticky top-0 z-30">
+    <header ref={head} className="bg-white border-b border-line sticky top-0 z-30">
       <div className="max-w-7xl mx-auto px-4 sm:px-6">
         <div className="flex items-center justify-between gap-2 sm:gap-4 py-3">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
@@ -46,10 +54,18 @@ export default function Header({ lang, setLang, tab, setTab, onRefresh, onExport
             <a className="btn-dark px-2.5 sm:px-3.5" href="#admin" onClick={() => setTab('admin')} aria-label={t(lang, 'admin')} title={t(lang, 'admin')}><Lock {...ICON} size={17} /><span className="hidden sm:inline">{t(lang, 'admin')}</span></a>
           </div>
         </div>
-        {/* Main navigation: IconBar (src/components/ui/icon-bar.tsx). The open
-            tab shows its name; the others show it on hover or keyboard focus.
-            Selected colour is the site green instead of the component's grey. */}
-        <nav aria-label={t(lang, 'menu')} className="pb-3 -mx-1 px-1 overflow-x-auto">
+        {/* Tablets and desktops: every tab shows its icon and name, nothing
+            hides (Wan, 15 Oct 2026). */}
+        <nav aria-label={t(lang, 'menu')} className="hidden md:flex flex-wrap gap-1.5 pb-3">
+          {NAV.map(([k, Icon]) => (
+            <a key={k} href={`#${k}`} onClick={(e) => { e.preventDefault(); setTab(k) }} aria-current={tab === k ? 'page' : undefined}
+              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition ${tab === k ? 'bg-brand-100 text-brand-700' : 'text-ink-600 hover:bg-paper hover:text-ink-900'}`}>
+              <Icon {...ICON} size={16} />{t(lang, k)}{counts && counts[k] != null && <span className="text-xs opacity-70">({counts[k]})</span>}
+            </a>
+          ))}
+        </nav>
+        {/* Phones: IconBar (src/components/ui/icon-bar.tsx); the open tab shows its name. */}
+        <nav aria-label={t(lang, 'menu')} className="md:hidden pb-3 -mx-1 px-1 overflow-x-auto">
           <IconBar value={tab} onValueChange={(v) => v && setTab(v)}
             className="flex-nowrap [--ic-accent:#d2efdf] [--ic-accent-foreground:#08542e] [--ic-muted:#f8fafc] [--ic-muted-foreground:#475569]">
             {NAV.map(([k, Icon]) => (
@@ -58,6 +74,19 @@ export default function Header({ lang, setLang, tab, setTab, onRefresh, onExport
             ))}
           </IconBar>
         </nav>
+        {tab === 'directory' && (
+          <nav aria-label={t(lang, 'directory')} className="flex gap-1.5 pb-3 -mt-1 overflow-x-auto">
+            {DIRECTORY_TYPES.map((d) => {
+              const on = (sub || 'plh') === d.sub
+              return (
+                <a key={d.sub} href={`#directory/${d.sub}`} onClick={(e) => { e.preventDefault(); setTab(`directory/${d.sub}`) }} aria-current={on ? 'page' : undefined}
+                  className={`shrink-0 inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm whitespace-nowrap ${on ? 'bg-ink-900 text-white border-ink-900' : 'border-line text-ink-600 hover:bg-paper'}`}>
+                  {d[lang] || d.en}{d.soon && <span className="rounded bg-gold-500 px-1.5 text-[10px] font-semibold uppercase text-white">{t(lang, 'soon')}</span>}
+                </a>
+              )
+            })}
+          </nav>
+        )}
       </div>
     </header>
   )

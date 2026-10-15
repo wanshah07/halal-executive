@@ -98,3 +98,11 @@
 19. **Disclaimer.** The footer, the FAQ page and the popup notice say the hub
     is AI-drafted, reviewed, not a ruling, can be wrong, and is used at the
     reader's own responsibility. Keep that wording on every public page.
+20. **Sheet cells: `cellSafe` on every write.** A value starting with + = - @
+    is stored with a leading apostrophe, and so is a number with a leading
+    zero, or Sheets turns "+61 8 ..." into #ERROR! and drops the 0 of a phone
+    number (15 Oct 2026). Admin's FHCB/Directory "Load" also repairs cells an
+    earlier load damaged; it never overwrites a value Wan edited.
+21. **Popup notice is the card-8 AlertCard** (`src/components/ui/alert-card.tsx`),
+    colour from `notice_color`, posters from `notice_posters` sliding under
+    the message, each shown whole. It shows only while `notice_enabled` is ticked.

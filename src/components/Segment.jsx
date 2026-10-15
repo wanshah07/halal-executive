@@ -35,9 +35,9 @@ export default function Segment({ lang, title, rows, columns, renderCard, filter
       {!rows.length && <div className="card p-6 text-sm text-ink-400">{empty || t(lang, 'no_data')}</div>}
       {!!rows.length && view === 'cards' && <div className={cardGrid}>{shown.map(renderCard)}</div>}
       {!!rows.length && view === 'table' && (
-        <div className="card overflow-x-auto">
+        <div className="card overflow-auto max-h-[75vh]">
           <table className="table">
-            <thead><tr>{columns.map((c) => <th key={c.key}>{c.label}</th>)}</tr></thead>
+            <thead className="sticky top-0 z-10"><tr>{columns.map((c) => <th key={c.key} className="whitespace-nowrap">{c.label}</th>)}</tr></thead>
             <tbody>{shown.map((r) => <tr key={r.id} id={`row-${r.id}`} className="hover:bg-paper">{columns.map((c) => <td key={c.key}>{c.render ? c.render(r) : r[c.key]}</td>)}</tr>)}</tbody>
           </table>
         </div>

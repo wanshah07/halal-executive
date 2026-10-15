@@ -6,6 +6,7 @@ import { fmtDateTime } from '../lib/util'
 import { safeUrl, imageUrl } from '../lib/safe'
 import { RefAdmin, EventsAdmin, ContentManager, deleteForGood } from '../components/AdminExtra'
 import { RowManager } from '../components/AdminRows'
+import Notice, { NOTICE_COLORS, textOn, parsePosters } from '../components/Notice'
 import { EVENT_KINDS } from '../lib/config'
 import { POSTER_ACCEPT, POSTER_MAX } from '../components/Poster'
 import { ICON, Lock, RefreshCw, Upload, X, Play, Sparkles } from '../components/Icon'
@@ -445,6 +446,70 @@ function ReviewBox({ lang, onChanged }) {
   )
 }
 
+// Popup notice (Wan, 15 Oct 2026): the card-8 AlertCard, its background
+// colour picked here, and posters that slide underneath the message.
+function NoticeAdmin({ lang, s, set }) {
+  const [preview, setPreview] = useState(false)
+  const [up, setUp] = useState(-1)
+  const [msg, setMsg] = useState('')
+  const posters = (() => { try { const a = JSON.parse(s.notice_posters || '[]'); return Array.isArray(a) ? a : [] } catch { return [] } })()
+  const setP = (list) => set('notice_posters', JSON.stringify(list))
+  const color = /^#[0-9a-f]{6}$/i.test(s.notice_color || '') ? s.notice_color : '#0b6b3a'
+  async function upload(i, f) {
+    if (!f) return
+    if (f.size > POSTER_MAX) { setMsg(t(lang, 'too_big_10')); return }
+    setUp(i); setMsg('')
+    try { const r = await adminPost('poster_upload', { name: f.name, mime: f.type || '', b64: await toB64(f) }); setP(posters.map((x, j) => (j === i ? { ...x, url: r.url, file: r.file } : x))) }
+    catch (er) { setMsg(er.message) } finally { setUp(-1) }
+  }
+  const on = String(s.notice_enabled) === 'true'
+  return (
+    <div className="card p-5 mb-4 space-y-3">
+      <h3 className="font-semibold">{t(lang, 'notice')}</h3>
+      <label className={`flex items-center gap-2 text-sm rounded-lg border p-2.5 ${on ? 'border-brand-200 bg-brand-50' : 'border-amber-200 bg-amber-50'}`}><input type="checkbox" checked={on} onChange={(e) => set('notice_enabled', e.target.checked ? 'true' : 'false')} /> <b>{t(lang, 'notice_enabled')}</b> <span className="text-xs text-ink-600">· {t(lang, on ? 'notice_on' : 'notice_off')}</span></label>
+      <div className="grid sm:grid-cols-2 gap-3">
+        <div><label className="label" htmlFor="f-nt">{t(lang, 'notice_title')} (EN)</label><input id="f-nt" className="input" value={s.notice_title || ''} onChange={(e) => set('notice_title', e.target.value)} placeholder="Please read before you rely on this hub" /></div>
+        <div><label className="label" htmlFor="f-ntb">{t(lang, 'notice_title')} (BM)</label><input id="f-ntb" className="input" value={s.notice_title_bm || ''} onChange={(e) => set('notice_title_bm', e.target.value)} placeholder="Sila baca sebelum bergantung pada hab ini" /></div>
+      </div>
+      <div><label className="label" htmlFor="f-nb">{t(lang, 'notice_body')} (EN)</label><textarea id="f-nb" className="input" rows={3} value={s.notice_body || ''} onChange={(e) => set('notice_body', e.target.value)} placeholder="Halal Executive is a reference drafted with AI help from group discussions, uploaded documents and public JAKIM lists, then reviewed. It is not a ruling or the final word of JAKIM, JAIN/MAIN, KKM or NPRA, and it can be wrong or out of date. Check the current instrument before you act. Use at your own responsibility." /></div>
+      <div><label className="label" htmlFor="f-nbm">{t(lang, 'notice_body')} (BM)</label><textarea id="f-nbm" className="input" rows={3} value={s.notice_body_bm || ''} onChange={(e) => set('notice_body_bm', e.target.value)} placeholder="Halal Executive ialah rujukan yang digubal dengan bantuan AI daripada perbincangan kumpulan, dokumen yang dimuat naik dan senarai awam JAKIM, kemudian disemak. Ia bukan keputusan atau kata putus JAKIM, JAIN/MAIN, KKM atau NPRA, dan boleh tersilap atau tidak dikemas kini. Semak instrumen semasa sebelum bertindak. Gunakan atas tanggungjawab anda sendiri." /></div>
+      <div className="grid sm:grid-cols-3 gap-3">
+        <div><label className="label" htmlFor="f-nbt">{t(lang, 'notice_button')} (EN)</label><input id="f-nbt" className="input" value={s.notice_button || ''} onChange={(e) => set('notice_button', e.target.value)} placeholder="Okay, I understand" /></div>
+        <div><label className="label" htmlFor="f-nbtb">{t(lang, 'notice_button')} (BM)</label><input id="f-nbtb" className="input" value={s.notice_button_bm || ''} onChange={(e) => set('notice_button_bm', e.target.value)} placeholder="Baik, saya faham" /></div>
+        <div><label className="label" htmlFor="f-nu">{t(lang, 'notice_until')}</label><input id="f-nu" type="date" className="input" value={String(s.notice_until || '').slice(0, 10)} onChange={(e) => set('notice_until', e.target.value)} /></div>
+      </div>
+      <div>
+        <div className="label">{t(lang, 'notice_color')}</div>
+        <div className="flex flex-wrap items-center gap-2">
+          {NOTICE_COLORS.map((c) => <button key={c} type="button" aria-label={c} title={c} onClick={() => set('notice_color', c)} className={`h-9 w-9 rounded-full border-2 ${color.toLowerCase() === c ? 'border-ink-900 ring-2 ring-brand-300' : 'border-line'}`} style={{ background: c }} />)}
+          <label className="flex items-center gap-2 text-sm ml-1">{t(lang, 'notice_custom')} <input type="color" value={color} onChange={(e) => set('notice_color', e.target.value)} className="h-9 w-12 rounded border border-line bg-white p-0.5" /></label>
+          <span className="chip font-mono" style={{ background: color, color: textOn(color) }}>{color} · Aa</span>
+        </div>
+      </div>
+      <div className="space-y-2">
+        <div className="flex justify-between items-center"><div className="label mb-0">{t(lang, 'notice_posters')}</div><button type="button" className="btn" onClick={() => setP([...posters, { title: '', url: '', link: '' }])}>+ {t(lang, 'add_poster')}</button></div>
+        <p className="text-xs text-ink-400">{t(lang, 'notice_posters_hint')}</p>
+        {posters.map((p, i) => (
+          <div key={i} className="grid md:grid-cols-[56px_1fr_2fr_2fr_auto_auto] gap-2 items-center">
+            {imageUrl(p.url) ? <img src={imageUrl(p.url)} alt="" className="w-14 h-14 object-contain rounded border border-line bg-white" /> : <span className="hidden md:block w-14 h-14 rounded border border-line bg-paper" />}
+            <input className="input" placeholder="Title" value={p.title || ''} onChange={(e) => setP(posters.map((x, j) => (j === i ? { ...x, title: e.target.value } : x)))} />
+            <input className="input" placeholder="Image URL" value={p.url || ''} onChange={(e) => setP(posters.map((x, j) => (j === i ? { ...x, url: e.target.value, file: '' } : x)))} />
+            <input className="input" placeholder="Click-through link" value={p.link || ''} onChange={(e) => setP(posters.map((x, j) => (j === i ? { ...x, link: e.target.value } : x)))} />
+            <label className="btn cursor-pointer whitespace-nowrap" title={t(lang, 'poster_formats')}>{up === i ? '…' : <><Upload {...ICON} size={16} /> {t(lang, 'upload')}</>}<input type="file" accept={POSTER_ACCEPT} className="sr-only" disabled={up >= 0} onChange={(e) => { upload(i, e.target.files[0]); e.target.value = '' }} /></label>
+            <button type="button" className="btn" onClick={() => setP(posters.filter((_, j) => j !== i))} aria-label="remove"><X {...ICON} size={16} /></button>
+          </div>
+        ))}
+      </div>
+      <div className="flex flex-wrap items-center gap-3">
+        <button type="button" className="btn" onClick={() => setPreview(true)}>{t(lang, 'notice_preview')}</button>
+        <span className="text-xs text-ink-400">{t(lang, 'notice_save_hint')}</span>
+        {msg && <span className="text-sm text-red-600">{msg}</span>}
+      </div>
+      {preview && <Notice lang={lang} settings={{ ...s, notice_posters: JSON.stringify(parsePosters(s.notice_posters)) }} preview onClose={() => setPreview(false)} />}
+    </div>
+  )
+}
+
 export default function Admin({ lang, data, onSaved, onSession }) {
   const [sess, setSess] = useState(() => { const s = getSession(); return s && s.until > Date.now() ? s : null })
   // Signing in or out in another tab applies here too.
@@ -520,17 +585,7 @@ export default function Admin({ lang, data, onSaved, onSession }) {
         ))}
       </div>
 
-      <div className="card p-5 mb-4 space-y-3">
-        <h3 className="font-semibold">{t(lang, 'notice')}</h3>
-        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={String(s.notice_enabled) === 'true'} onChange={(e) => set('notice_enabled', e.target.checked ? 'true' : 'false')} /> {t(lang, 'notice_enabled')}</label>
-        <div><label className="label" htmlFor="f-nt">{t(lang, 'notice_title')}</label><input id="f-nt" className="input" value={s.notice_title || ''} onChange={(e) => set('notice_title', e.target.value)} placeholder="Please read before you rely on this hub" /></div>
-        <div><label className="label" htmlFor="f-nb">{t(lang, 'notice_body')} (EN)</label><textarea id="f-nb" className="input" rows={3} value={s.notice_body || ''} onChange={(e) => set('notice_body', e.target.value)} placeholder="Halal Executive is a reference drafted with AI help from group discussions, uploaded documents and public JAKIM lists, then reviewed. It is not a ruling or the final word of JAKIM, JAIN/MAIN, KKM or NPRA, and it can be wrong or out of date. Check the current instrument before you act. Use at your own responsibility." /></div>
-        <div><label className="label" htmlFor="f-nbm">{t(lang, 'notice_body')} (BM)</label><textarea id="f-nbm" className="input" rows={3} value={s.notice_body_bm || ''} onChange={(e) => set('notice_body_bm', e.target.value)} placeholder="Halal Executive ialah rujukan yang digubal dengan bantuan AI daripada perbincangan kumpulan, dokumen yang dimuat naik dan senarai awam JAKIM, kemudian disemak. Ia bukan keputusan atau kata putus JAKIM, JAIN/MAIN, KKM atau NPRA, dan boleh tersilap atau tidak dikemas kini. Semak instrumen semasa sebelum bertindak. Gunakan atas tanggungjawab anda sendiri." /></div>
-        <div className="grid grid-cols-2 gap-3">
-          <div><label className="label" htmlFor="f-nl">{t(lang, 'notice_level')}</label><select id="f-nl" className="input" value={s.notice_level || 'info'} onChange={(e) => set('notice_level', e.target.value)}><option value="info">info</option><option value="warning">warning</option><option value="danger">danger</option></select></div>
-          <div><label className="label" htmlFor="f-nu">{t(lang, 'notice_until')}</label><input id="f-nu" className="input" value={s.notice_until || ''} onChange={(e) => set('notice_until', e.target.value)} placeholder="2026-12-31" /></div>
-        </div>
-      </div>
+      <NoticeAdmin lang={lang} s={s} set={set} />
 
       <div className="card p-5 mb-4 space-y-3">
         <div className="flex justify-between items-center"><h3 className="font-semibold">{t(lang, 'posters')}</h3><button className="btn" onClick={() => setPosters((p) => [...p, { title: '', url: '', link: '' }])}>+ {t(lang, 'add_poster')}</button></div>

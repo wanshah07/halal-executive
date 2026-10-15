@@ -1029,6 +1029,14 @@ function sha256(bytes) {
   return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, bytes).map(function (x) { return ('0' + (x & 0xff).toString(16)).slice(-2); }).join('');
 }
 
+// Sheets reads a typed value as a formula when it starts with + = - @ (a
+// phone number "+61 8 ..." became #ERROR!) and drops the leading zero of
+// "068501999". A leading apostrophe stores the text exactly; Sheets never
+// shows it and getValues() returns the text without it (15 Oct 2026).
+function cellSafe(x) {
+  if (typeof x !== 'string') return x;
+  return /^[=+@]|^-(?!\d+(\.\d+)?$)|^0\d/.test(x) ? "'" + x : x;
+}
 function upsert(tab, rows) {
   var cols = TABS[tab]; if (!cols) throw new Error('unknown tab ' + tab);
   var sh = sheet(tab); ensureHeader(sh, cols); pubBust();
@@ -1036,7 +1044,7 @@ function upsert(tab, rows) {
   v.forEach(function (r, i) { if (i) idx[String(r[0])] = i + 1; });
   var ins = 0, upd = 0;
   rows.forEach(function (r) {
-    var line = cols.map(function (c) { var x = r[c]; return x === undefined || x === null ? '' : (typeof x === 'object' ? JSON.stringify(x) : x); });
+    var line = cols.map(function (c) { var x = r[c]; return x === undefined || x === null ? '' : cellSafe(typeof x === 'object' ? JSON.stringify(x) : x); });
     if (r.id && idx[String(r.id)]) { sh.getRange(idx[String(r.id)], 1, 1, cols.length).setValues([line]); upd++; }
     else { sh.appendRow(line); idx[String(r.id)] = sh.getLastRow(); ins++; }
   });
@@ -1049,7 +1057,7 @@ function updateByIds(tab, ids, patch) {
   var want = {}; ids.forEach(function (i) { want[String(i)] = 1; });
   v.forEach(function (r, i) {
     if (!i || !want[String(r[0])]) return;
-    Object.keys(patch).forEach(function (k) { var c = cols.indexOf(k); if (c >= 0) sh.getRange(i + 1, c + 1).setValue(patch[k]); });
+    Object.keys(patch).forEach(function (k) { var c = cols.indexOf(k); if (c >= 0) sh.getRange(i + 1, c + 1).setValue(cellSafe(patch[k])); });
     n++;
   });
   return { ok: true, updated: n };
@@ -1582,11 +1590,26 @@ function rowSave(tab, row) {
 // Jun 2026) into the Sheet: only ids not there yet, nothing overwritten.
 function seedRows(tab, rows) {
   if (!ROW_FIELDS[tab]) throw new Error('unknown tab');
-  var have = {}; readTab(tab).forEach(function (r) { have[String(r.id)] = 1; });
-  var add = [];
-  rows.slice(0, 500).forEach(function (r) { if (!r.id || have[String(r.id)]) return; var c = cleanRow(tab, r); c.id = String(r.id); add.push(c); have[c.id] = 1; });
-  if (add.length) upsert(tab, add);
-  return { ok: true, added: add.length };
+  var have = {}; readTab(tab).forEach(function (r) { have[String(r.id)] = r; });
+  var add = [], fix = [];
+  rows.slice(0, 500).forEach(function (r) {
+    if (!r.id) return;
+    var c = cleanRow(tab, r); c.id = String(r.id);
+    var cur = have[c.id];
+    if (!cur) { add.push(c); have[c.id] = c; return; }
+    // Repair a cell an earlier load damaged (#ERROR! from a "+" phone number,
+    // a lost leading zero) or left empty; a value Wan edited stays as it is.
+    var changed = false, out = {};
+    ROW_FIELDS[tab].forEach(function (k) { out[k] = cur[k]; });
+    ROW_FIELDS[tab].forEach(function (k) {
+      var want = c[k], got = cur[k] === undefined || cur[k] === null ? '' : String(cur[k]);
+      if (want === undefined || want === '') return;
+      if (got === '' || /^#(ERROR|NAME|VALUE|REF|N\/A)/.test(got) || (/^0\d/.test(want) && got === want.replace(/^0+/, ''))) { out[k] = want; changed = true; }
+    });
+    if (changed) { out.id = c.id; out.updated_at = new Date().toISOString(); fix.push(out); }
+  });
+  if (add.length || fix.length) upsert(tab, add.concat(fix));
+  return { ok: true, added: add.length, repaired: fix.length };
 }
 // A logo for a body or provider: stored in Drive "50 Logos", shared view-only
 // so the page can show it.

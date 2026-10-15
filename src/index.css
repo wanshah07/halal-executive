@@ -12,6 +12,15 @@
   --color-accent: #f3f5f8;
   --color-accent-foreground: #111111;
   --color-ring: rgba(17, 17, 17, 0.16);
+  /* shadcn Button tokens (src/components/ui/button.tsx) mapped to the site theme */
+  --color-primary: #0b6b3a;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #f1f5f9;
+  --color-secondary-foreground: #0f172a;
+  --color-destructive: #dc2626;
+  --color-destructive-foreground: #ffffff;
+  --color-input: #e2e8f0;
+  --color-ring-offset-background: #ffffff;
   --color-brand-50:  #ecf8f1;
   --color-brand-100: #d2efdf;
   --color-brand-200: #a6dfbf;

@@ -48,7 +48,7 @@ export function RowManager({ lang, tab, data, onChanged }) {
   }
   async function load() {
     setBusy(true); setMsg('')
-    try { const r = await adminPost('seed_rows', { tab, rows: seed }); setMsg(t(lang, 'seeded').replace('{n}', r.added)); refreshAll(); onChanged && onChanged() } catch (er) { setMsg(er.message) } finally { setBusy(false) }
+    try { const r = await adminPost('seed_rows', { tab, rows: seed }); setMsg(t(lang, 'seeded').replace('{n}', r.added).replace('{r}', r.repaired || 0)); refreshAll(); onChanged && onChanged() } catch (er) { setMsg(er.message) } finally { setBusy(false) }
   }
   const edit = (r) => { setRow({ ...r }); setLogo(null); requestAnimationFrame(() => document.getElementById(`${tab}-form`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })) }
   const set = (k, v) => setRow((x) => ({ ...x, [k]: v }))

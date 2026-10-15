@@ -6,6 +6,7 @@ import { fmtDate } from '../lib/util'
 import { DIRECTORY_TYPES, countryCoords, stateCoords, guessState } from '../lib/config'
 import seed from '../data/directory.json'
 import { ICON, Mail, Phone, MapPin, ExternalLink } from '../components/Icon'
+import Lightbox from '../components/Lightbox'
 
 const MapView = lazy(() => import('../components/MapView'))
 
@@ -21,15 +22,14 @@ const splitList = (s) => String(s || '').split(/;\s*/).map((x) => x.trim()).filt
 const siteHref = (w) => { const s = String(w || '').trim(); return safeUrl(/^https?:\/\//i.test(s) ? s : 'https://' + s) }
 export const typeName = (id, lang) => { const x = DIRECTORY_TYPES.find((d) => d.id === id); return x ? x[lang] || x.en : id || '—' }
 
-export default function Directory({ lang, data }) {
-  const [group, setGroup] = useState('training')
-  const [sub, setSub] = useState('all')
+export default function Directory({ lang, data, sub: subKey, setTab }) {
+  const cur = DIRECTORY_TYPES.find((d) => d.sub === subKey) || DIRECTORY_TYPES[0]
+  const sub = cur.id
   const [place, setPlace] = useState('all')
   const [q, setQ] = useState('')
+  const [zoom, setZoom] = useState(null)
   const all = useMemo(() => directoryRows(data).map((r) => ({ ...r, _state: r.state || guessState(r.address) || '', _type: DIRECTORY_TYPES.find((d) => d.id === r.subtype) || DIRECTORY_TYPES[0] })), [data])
-  const inGroup = all.filter((r) => r._type.group === group)
-  const subs = DIRECTORY_TYPES.filter((d) => d.group === group)
-  const subRows = inGroup.filter((r) => sub === 'all' || r.subtype === sub)
+  const subRows = all.filter((r) => r.subtype === sub)
   // Map: one marker per Malaysian state, and one per country for providers abroad.
   const byPlace = useMemo(() => { const m = {}; subRows.forEach((r) => { const k = r.country && r.country !== 'Malaysia' ? r.country : r._state; if (k) m[k] = (m[k] || 0) + 1 }); return m }, [subRows])
   const markers = Object.entries(byPlace).map(([k, n]) => { const ll = stateCoords(k) || countryCoords(k); return ll && { id: k, lat: ll[0], lng: ll[1], count: n, label: `${k}: ${n}` } }).filter(Boolean)
@@ -51,8 +51,10 @@ export default function Directory({ lang, data }) {
       {r.trainers && <li><details><summary className="cursor-pointer text-brand-700">{t(lang, 'trainers')} ({splitList(r.trainers).length})</summary><ol className="list-decimal pl-5 text-ink-600 mt-1">{splitList(r.trainers).map((x) => <li key={x}>{x}</li>)}</ol></details></li>}
     </ul>
   )
-  const logo = (r, cls) => safeUrl(r.logo_url) ? <img src={safeUrl(r.logo_url)} alt="" loading="lazy" className={`${cls} object-contain bg-white rounded-lg border border-line p-1`} /> : <div className={`${cls} rounded-lg border border-line bg-paper flex items-center justify-center text-ink-400 text-lg font-bold`}>{String(r.name || '?').slice(0, 1)}</div>
-  const soon = sub !== 'all' && (subs.find((d) => d.id === sub) || {}).soon
+  const logo = (r, cls) => safeUrl(r.logo_url)
+    ? <button type="button" title={t(lang, 'view_larger')} onClick={() => setZoom({ src: safeUrl(r.logo_url), alt: r.name })} className={`${cls} shrink-0 bg-white rounded-lg border border-line p-1 hover:ring-2 hover:ring-brand-300 cursor-zoom-in`}><img src={safeUrl(r.logo_url)} alt={`${r.name} logo`} loading="lazy" className="w-full h-full object-contain" /></button>
+    : <div className={`${cls} rounded-lg border border-line bg-paper flex items-center justify-center text-ink-400 text-lg font-bold`}>{String(r.name || '?').slice(0, 1)}</div>
+  const soon = cur.soon
   const filters = (
     <>
       <select className="input w-auto" value={place} onChange={(e) => setPlace(e.target.value)} aria-label={t(lang, 'state')}>
@@ -68,18 +70,14 @@ export default function Directory({ lang, data }) {
         <h2 className="text-xl font-bold">{t(lang, 'directory')}</h2>
         <p className="text-sm text-ink-600 mt-1">{t(lang, 'directory_intro')}</p>
         <div className="mt-3 flex flex-wrap gap-2" role="tablist">
-          {['training', 'service'].map((g) => <button key={g} role="tab" aria-selected={group === g} className={`px-3 py-1.5 rounded-lg border text-sm ${group === g ? 'bg-ink-900 text-white border-ink-900' : 'border-line text-ink-600 hover:bg-paper'}`} onClick={() => { setGroup(g); setSub('all'); setPlace('all') }}>{t(lang, 'dir_' + g)} <span className={group === g ? 'text-white/70' : 'text-ink-400'}>({all.filter((r) => r._type.group === g).length})</span></button>)}
+          {DIRECTORY_TYPES.map((d) => <button key={d.sub} role="tab" aria-selected={cur.sub === d.sub} className={`px-3 py-1.5 rounded-lg border text-sm inline-flex items-center gap-1.5 ${cur.sub === d.sub ? 'bg-ink-900 text-white border-ink-900' : 'border-line text-ink-600 hover:bg-paper'}`} onClick={() => { setPlace('all'); setTab(`directory/${d.sub}`) }}>{d[lang] || d.en} <span className={cur.sub === d.sub ? 'text-white/70' : 'text-ink-400'}>({all.filter((r) => r.subtype === d.id).length})</span>{d.soon && <span className="rounded bg-gold-500 px-1.5 text-[10px] font-semibold uppercase text-white">{t(lang, 'soon')}</span>}</button>)}
         </div>
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          <button className={`chip border ${sub === 'all' ? 'bg-brand-600 text-white border-brand-600' : 'bg-paper border-line'}`} onClick={() => setSub('all')}>{t(lang, 'all')}</button>
-          {subs.map((d) => <button key={d.id} className={`chip border ${sub === d.id ? 'bg-brand-600 text-white border-brand-600' : 'bg-paper border-line'}`} onClick={() => { setSub(d.id); setPlace('all') }}>{d[lang] || d.en} <b className="ml-1">{inGroup.filter((r) => r.subtype === d.id).length}</b>{d.soon && <span className="ml-1 text-[10px] uppercase opacity-80">{t(lang, 'soon')}</span>}</button>)}
-        </div>
-        {group === 'training' && <p className="text-xs text-ink-400 mt-2">{t(lang, 'dir_plh_source')}</p>}
+        {sub === 'jakim_plh' && <p className="text-xs text-ink-400 mt-2">{t(lang, 'dir_plh_source')}</p>}
       </section>
 
-      {soon && <div className="card p-6 mb-4 text-center bg-gradient-to-br from-brand-50 to-white"><div className="chip bg-gold-500 text-white mb-2">{t(lang, 'soon')}</div><div className="font-semibold">{t(lang, 'lab_soon_title')}</div><p className="text-sm text-ink-600 mt-1">{t(lang, 'lab_soon_body')}</p></div>}
+      {soon && <div className="card p-8 mb-4 text-center bg-gradient-to-br from-brand-600 to-brand-900 text-white"><div className="inline-block rounded-full bg-gold-500 px-3 py-1 text-xs font-bold uppercase tracking-wide mb-3">{t(lang, 'soon')}</div><div className="text-xl font-bold">{t(lang, 'lab_soon_title')}</div><p className="text-sm text-white/85 mt-2 max-w-xl mx-auto">{t(lang, 'lab_soon_body')}</p></div>}
 
-      <section className="card p-5 mb-4">
+      {(!soon || subRows.length > 0) && <section className="card p-5 mb-4">
         <h3 className="font-semibold mb-1">{t(lang, 'dir_map')}</h3>
         <p className="text-xs text-ink-400 mb-3">{t(lang, 'dir_map_hint')}</p>
         <Suspense fallback={<div className="h-72 sm:h-96 card animate-pulse bg-paper" />}>
@@ -88,9 +86,9 @@ export default function Directory({ lang, data }) {
         <div className="mt-3 flex flex-wrap gap-1.5">
           {Object.entries(byPlace).sort((a, b) => b[1] - a[1]).map(([k, n]) => <button key={k} className={`chip border ${place === k ? 'bg-brand-600 text-white border-brand-600' : 'bg-paper border-line'}`} onClick={() => pickPlace(k)}>{k} <b className="ml-1">{n}</b></button>)}
         </div>
-      </section>
+      </section>}
 
-      <Segment id="directory" lang={lang} title={place === 'all' ? t(lang, 'dir_' + group) : place} rows={rows} filters={filters} empty={soon ? t(lang, 'lab_soon_body') : undefined}
+      <Segment id="directory" lang={lang} title={place === 'all' ? (cur[lang] || cur.en) : `${cur[lang] || cur.en} · ${place}`} rows={rows} filters={filters} empty={soon ? t(lang, 'lab_soon_body') : undefined}
         cardGrid="grid gap-4 grid-cols-1 sm:grid-cols-2 xl:grid-cols-3"
         columns={[
           { key: 'logo', label: '', render: (r) => logo(r, 'w-12 h-12') },
@@ -113,6 +111,7 @@ export default function Directory({ lang, data }) {
             <div className="mt-3 pt-2 border-t border-line text-xs text-ink-400">{r.source_ref}{r.updated_at ? ` · ${t(lang, 'updated')} ${fmtDate(r.updated_at, lang)}` : ''}</div>
           </article>
         )} />
+      <Lightbox src={zoom && zoom.src} alt={zoom && zoom.alt} onClose={() => setZoom(null)} />
     </div>
   )
 }
