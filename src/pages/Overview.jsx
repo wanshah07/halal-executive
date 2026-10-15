@@ -3,6 +3,7 @@ import Bars from '../components/Bars'
 import Hero from '../components/Hero'
 import { CATEGORIES } from '../lib/config'
 import { t } from '../lib/i18n'
+import Pager from '../components/Pager'
 import { count, daysAgo, fmtDateTime } from '../lib/util'
 import { catChip } from '../components/CategoryFilter'
 import { lazy, Suspense, useState } from 'react'
@@ -66,16 +67,7 @@ export default function Overview({ lang, data, setTab }) {
             </li>
           ))}
         </ul>
-        {pages > 1 && (
-          <nav className="flex flex-wrap items-center justify-center gap-1.5 mt-3" aria-label="FAQ pages">
-            <button className="btn px-2.5 py-1" disabled={page === 0} onClick={() => setPg(page - 1)} aria-label={t(lang, 'prev')}>‹</button>
-            {Array.from({ length: pages }, (_, i) => (
-              <button key={i} onClick={() => setPg(i)} aria-current={i === page ? 'page' : undefined}
-                className={`btn px-3 py-1 ${i === page ? 'bg-brand-600 text-white border-brand-600 hover:bg-brand-700' : ''}`}>{i + 1}</button>
-            ))}
-            <button className="btn px-2.5 py-1" disabled={page === pages - 1} onClick={() => setPg(page + 1)} aria-label={t(lang, 'next')}>›</button>
-          </nav>
-        )}
+        <Pager lang={lang} page={page} pages={pages} onPage={setPg} label="FAQ pages" />
       </section>
 
       <NewsCarousel lang={lang} news={news} />

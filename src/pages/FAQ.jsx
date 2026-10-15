@@ -35,7 +35,7 @@ export default function FAQ({ lang, data, focusId, focusKey }) {
     </>
   )
   return (
-    <Segment id="faq" lang={lang} title={t(lang, 'faq')} rows={rows} filters={filters}
+    <Segment id="faq" focusId={focusId} focusKey={focusKey} lang={lang} title={t(lang, 'faq')} rows={rows} filters={filters}
       columns={[
         { key: 'category', label: t(lang, 'category'), render: (f) => catChip(f.category, lang) },
         { key: 'subcategory', label: 'Topic' },
