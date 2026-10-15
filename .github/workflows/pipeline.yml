@@ -69,9 +69,11 @@ jobs:
             if timeout --signal=INT --kill-after=60 "${min}m" "$@"; then
               python phase.py "$JOB" done "$name: finished" || true
             else
-              local c=$?; RC=1
-              if [ $c -eq 124 ] || [ $c -eq 130 ]; then msg="stopped at its ${min}-minute limit; the next run carries on"; else msg="failed (exit $c); see the GitHub log"; fi
-              python phase.py "$JOB" failed "$name: $msg" || true
+              local c=$?
+              # Stopping at the time limit is the plan, not a failure: the next
+              # run carries on. Only a real error turns the run red.
+              if [ $c -eq 124 ] || [ $c -eq 130 ]; then python phase.py "$JOB" done "$name: stopped at its ${min}-minute limit; the next run carries on" || true
+              else RC=1; python phase.py "$JOB" failed "$name: failed (exit $c); see the GitHub log" || true; fi
             fi
           }
           case "$JOB" in

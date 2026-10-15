@@ -25,6 +25,7 @@ a number, form or clause unstated. This pass, run straight after it:
 import argparse
 import datetime as dt
 import json
+import time
 import math
 import re
 import sys
@@ -200,6 +201,7 @@ def check(row, out, passages):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--limit", type=int, default=25)
+    ap.add_argument("--minutes", type=float, default=5, help="stop cleanly after this long; the next run carries on")
     a = ap.parse_args()
 
     try:
@@ -225,7 +227,10 @@ def main():
     todo = [r for r in faq if needs_pass(r, latest)][: a.limit]
     print(f"{len(todo)} FAQ entries to complete; {len(docs)} reference passages indexed")
     done, errs, provider, model, closed, still = 0, [], "", "", 0, 0
+    t_end = time.time() + a.minutes * 60
     for row in todo:
+        if time.time() > t_end:
+            print("time box reached; the rest wait for the next run"); break
         pts = open_points(row)
         q = " ".join([str(row.get("question_en") or ""), str(row.get("question_bm") or "")] + pts)
         passages = [{"n": i + 1, **d} for i, d in enumerate(rank(q, docs, df, avg))] if docs else []
