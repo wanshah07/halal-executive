@@ -1572,7 +1572,12 @@ function cleanRow(tab, r) {
   });
   if (!out.name) throw new Error('Give it a name.');
   if (tab === 'FHCB') { out.kind = out.kind === 'authority' ? 'authority' : 'body'; if (!out.country) throw new Error('Country is needed.'); }
-  if (tab === 'Directory') { if (!out.subtype) out.subtype = out.type === 'service' ? 'consult' : 'jakim_plh'; out.type = ['jurusertu', 'consult', 'lab'].indexOf(out.subtype) >= 0 ? 'service' : 'training'; }
+  // Directory: Sertu and Laboratory are services; every other category
+  // (JAKIM providers, firms, freelance, any Wan adds) is Training & Consultancy.
+  if (tab === 'Directory') {
+    out.subtype = String(out.subtype || '').toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 40) || 'consult';
+    out.type = ['jurusertu', 'lab'].indexOf(out.subtype) >= 0 ? 'service' : 'training';
+  }
   out.status = ['published', 'hidden', 'draft'].indexOf(out.status) >= 0 ? out.status : 'published';
   out.updated_at = new Date().toISOString();
   return out;

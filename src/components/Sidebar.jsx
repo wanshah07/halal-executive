@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { t } from '../lib/i18n'
-import { DIRECTORY_TYPES } from '../lib/config'
+import { DIRECTORY_SECTIONS } from '../lib/config'
 import { ICON, LayoutDashboard, MessagesSquare, Library, BadgeCheck, ScrollText, FolderOpen, CalendarDays, Newspaper, Settings, Globe, MapPinned } from './Icon'
 
 // Left rail. On tablets and desktops it is always open with its labels (Wan,
@@ -10,19 +10,22 @@ export const NAV = [
   ['overview', LayoutDashboard], ['faq', MessagesSquare], ['references', Library], ['certificates', BadgeCheck], ['guidelines', ScrollText],
   ['fhcb', Globe], ['directory', MapPinned], ['documents', FolderOpen], ['events', CalendarDays], ['news', Newspaper], ['admin', Settings],
 ]
+// Header and sidebar list every page but Admin; Admin is the black button
+// at the top right (Wan, 15 Oct 2026).
+export const MENU = NAV.filter(([k]) => k !== 'admin')
 
 export default function Sidebar({ lang, tab, sub, setTab, counts, mobileOpen, setMobileOpen }) {
   const open = true
   useEffect(() => { setMobileOpen(false) }, [tab, setMobileOpen])
-  const items = NAV.flatMap(([k, Icon]) => [(
+  const items = MENU.flatMap(([k, Icon]) => [(
     <a key={k} href={`#${k}`} onClick={(e) => { e.preventDefault(); setTab(k) }} title={t(lang, k)}
       className={`flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm font-medium transition ${tab === k ? 'bg-brand-600 text-white' : 'text-ink-600 hover:bg-paper hover:text-ink-900'}`}>
       <span className="w-6 flex justify-center shrink-0"><Icon {...ICON} size={19} /></span>
       <span className={`whitespace-nowrap overflow-hidden transition-all ${open || mobileOpen ? 'opacity-100 w-auto' : 'opacity-0 w-0'}`}>{t(lang, k)}{counts && counts[k] != null && <span className="ml-1 text-xs opacity-70">({counts[k]})</span>}</span>
     </a>),
     // Directory's sub-sections sit under it, always listed.
-    ...(k === 'directory' ? DIRECTORY_TYPES.map((d) => {
-      const on = tab === 'directory' && (sub || 'plh') === d.sub
+    ...(k === 'directory' ? DIRECTORY_SECTIONS.map((d) => {
+      const on = tab === 'directory' && (sub === 'sertu' || sub === 'lab' ? sub : 'training') === d.sub
       return (
         <a key={'dir-' + d.sub} href={`#directory/${d.sub}`} onClick={(e) => { e.preventDefault(); setTab(`directory/${d.sub}`) }}
           className={`ml-9 flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-[13px] transition ${on ? 'bg-brand-50 text-brand-700 font-semibold' : 'text-ink-600 hover:bg-paper'}`}>

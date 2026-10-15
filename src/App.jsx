@@ -154,7 +154,7 @@ export default function App() {
           </div>
         </footer>
       </div>
-      <Notice lang={lang} settings={data.settings || {}} />
+      <Notice lang={lang} settings={data.settings || {}} active={tab === 'overview'} />
       <Chatbot lang={lang} data={data} open={chatOpen} setOpen={setChatOpen} seed={seed} />
     </div>
   )

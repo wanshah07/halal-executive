@@ -6,6 +6,7 @@ import { fmtDateTime } from '../lib/util'
 import { safeUrl, imageUrl } from '../lib/safe'
 import { RefAdmin, EventsAdmin, ContentManager, deleteForGood } from '../components/AdminExtra'
 import { RowManager } from '../components/AdminRows'
+import Pager from '../components/Pager'
 import Notice, { NOTICE_COLORS, textOn, parsePosters } from '../components/Notice'
 import { EVENT_KINDS } from '../lib/config'
 import { POSTER_ACCEPT, POSTER_MAX } from '../components/Poster'
@@ -72,6 +73,7 @@ function UploadBox({ lang }) {
   const [files, setFiles] = useState([])
   const [queue, setQueue] = useState([])
   const [editing, setEditing] = useState(null)
+  const [qp, setQp] = useState(0) // upload list page, 10 a page
   const [err, setErr] = useState('')
   useEffect(() => subscribe(setQueue), [])
   async function send(e) {
@@ -117,13 +119,13 @@ function UploadBox({ lang }) {
             {queue.some((x) => x.state === 'sent' || x.state === 'failed') && <button type="button" className="underline" onClick={() => forgetDone()}>{t(lang, 'q_clear_done')}</button>}
           </div>
           <ul className="divide-y divide-line text-sm">
-            {queue.slice().reverse().map((x) => {
+            {queue.slice().reverse().slice(Math.min(qp, Math.max(0, Math.ceil(queue.length / 10) - 1)) * 10, Math.min(qp, Math.max(0, Math.ceil(queue.length / 10) - 1)) * 10 + 10).map((x) => {
               const tone = x.state === 'failed' ? 'bg-red-100 text-red-700' : x.state === 'sent' ? 'bg-brand-100 text-brand-700' : x.state === 'sending' ? 'bg-amber-100 text-amber-800' : 'bg-paper border border-line text-ink-600'
               const word = x.state === 'failed' ? t(lang, 'q_failed') : x.state === 'sent' ? t(lang, 'q_sent_short') : x.state === 'sending' ? t(lang, 'q_sending') : t(lang, 'q_queued')
               return (
                 <li key={x.id} className="px-3 py-2 flex flex-wrap items-center gap-x-3 gap-y-1">
                   <span className={`chip ${tone} shrink-0`}>{word}</span>
-                  <span className="font-medium min-w-0 flex-1 truncate" title={x.name}>{x.name || t(lang, 'note_only')}</span>
+                  <span className="font-medium min-w-0 flex-1 break-all" title={x.name}>{x.name || t(lang, 'note_only')}</span>
                   {editing === x.id
                     ? <span className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
                         <select className="input w-auto py-1" value={x.kind} onChange={(e) => update(x.id, { kind: e.target.value })} aria-label={t(lang, 'upload_kind')}>{['faq', 'certificate', 'guideline', 'event'].map((k) => <option key={k} value={k}>{t(lang, 'kind_' + (k === 'certificate' ? 'cert' : k))}</option>)}</select>
@@ -141,6 +143,7 @@ function UploadBox({ lang }) {
               )
             })}
           </ul>
+          <div className="pb-2"><Pager lang={lang} page={Math.min(qp, Math.max(0, Math.ceil(queue.length / 10) - 1))} pages={Math.ceil(queue.length / 10)} onPage={setQp} label="Upload pages" /></div>
         </div>
       )}
     </form>

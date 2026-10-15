@@ -105,4 +105,12 @@
     earlier load damaged; it never overwrites a value Wan edited.
 21. **Popup notice is the card-8 AlertCard** (`src/components/ui/alert-card.tsx`),
     colour from `notice_color`, posters from `notice_posters` sliding under
-    the message, each shown whole. It shows only while `notice_enabled` is ticked.
+    the message, each shown whole. It shows only while `notice_enabled` is
+    ticked, only on the Overview page, and closes itself after 7 seconds
+    (paused while held) as well as on a click (Wan, 15 Oct 2026).
+22. **Navigation.** Tablet and desktop header: `ui/nav-header.tsx`, text only,
+    no icons; phones: the icon bar. Admin is only the black button at the top
+    right, never in the header tabs or the sidebar (`MENU` in Sidebar.jsx).
+    Directory has three sections (#directory/training, /sertu, /lab); the
+    categories inside Training & Consultancy live in Settings `dir_categories`
+    and are edited in Admin → Directory.

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { adminPost, dropLocal, refreshAll } from '../lib/api'
 import { safeUrl } from '../lib/safe'
 import { t } from '../lib/i18n'
-import { DIRECTORY_TYPES, MY_STATES, COUNTRY_COORDS } from '../lib/config'
+import { dirTypes, dirCategories, MY_STATES, COUNTRY_COORDS } from '../lib/config'
 import { deleteForGood } from './AdminExtra'
 import fhcbSeed from '../data/fhcb.json'
 import dirSeed from '../data/directory.json'
@@ -16,12 +16,12 @@ const toB64 = (file) => new Promise((res, rej) => { const r = new FileReader(); 
 // Jun 2026) once; after that every update is a row added, edited or deleted
 // here as JAKIM gazettes it (Wan, 15 Oct 2026).
 const FHCB_FIELDS = [['no', '#'], ['country', 'Country *'], ['name', 'Name *'], ['kind', 'Type', 'select', [['body', 'Certification body'], ['authority', 'Authority']]], ['address', 'Address', 'long'], ['persons', 'Contact persons (separate with ;)'], ['tel', 'Telephone (separate with ;)'], ['fax', 'Fax'], ['email', 'Email (separate with ;)'], ['website', 'Website (separate with ;)'], ['note', 'Note'], ['source_ref', 'Source (document, page)'], ['effective_date', 'Effective date (YYYY-MM-DD)'], ['status', 'Status', 'select', [['published', 'published'], ['hidden', 'hidden']]]]
-const DIR_FIELDS = [['subtype', 'Category *', 'select', DIRECTORY_TYPES.map((d) => [d.id, d.en])], ['name', 'Name *'], ['coverage', 'Coverage area'], ['state', 'State', 'select', [['', '—'], ...MY_STATES.map((s) => [s.id, s.id])]], ['country', 'Country', 'select', [['Malaysia', 'Malaysia'], ...Object.keys(COUNTRY_COORDS).filter((c) => c !== 'Malaysia').sort().map((c) => [c, c])]], ['address', 'Address', 'long'], ['pic', 'Person in charge'], ['phone', 'Contact (separate with ;)'], ['email', 'Email'], ['website', 'Website'], ['website2', 'Corporate website'], ['accreditation', 'Accreditation / serial no. and validity'], ['description', 'Description', 'long'], ['trainers', 'Halal trainers (separate with ;)', 'long'], ['source_ref', 'Source'], ['status', 'Status', 'select', [['published', 'published'], ['hidden', 'hidden']]]]
+const dirFields = (settings) => [['subtype', 'Category *', 'select', dirTypes(settings).map((d) => [d.id, d.id === 'jurusertu' || d.id === 'lab' ? d.en : `Training & Consultancy › ${d.en}`])], ['name', 'Name *'], ['coverage', 'Coverage area'], ['state', 'State', 'select', [['', '—'], ...MY_STATES.map((s) => [s.id, s.id])]], ['country', 'Country', 'select', [['Malaysia', 'Malaysia'], ...Object.keys(COUNTRY_COORDS).filter((c) => c !== 'Malaysia').sort().map((c) => [c, c])]], ['address', 'Address', 'long'], ['pic', 'Person in charge'], ['phone', 'Contact (separate with ;)'], ['email', 'Email'], ['website', 'Website'], ['website2', 'Corporate website'], ['accreditation', 'Accreditation / serial no. and validity'], ['description', 'Description', 'long'], ['trainers', 'Halal trainers (separate with ;)', 'long'], ['source_ref', 'Source'], ['status', 'Status', 'select', [['published', 'published'], ['hidden', 'hidden']]]]
 const EMPTY = { FHCB: { kind: 'body', status: 'published', country: '', name: '' }, Directory: { subtype: 'consult', status: 'published', country: 'Malaysia', name: '' } }
 
 export function RowManager({ lang, tab, data, onChanged }) {
   const key = tab === 'FHCB' ? 'fhcb' : 'directory'
-  const fields = tab === 'FHCB' ? FHCB_FIELDS : DIR_FIELDS
+  const fields = tab === 'FHCB' ? FHCB_FIELDS : dirFields(data && data.settings)
   const seed = tab === 'FHCB' ? fhcbSeed : dirSeed
   const live = (data && data[key]) || []
   const [q, setQ] = useState('')
@@ -62,6 +62,7 @@ export function RowManager({ lang, tab, data, onChanged }) {
         <span className="text-xs text-ink-400">{t(lang, 'seed_hint')}</span>
       </div>
       {tab === 'FHCB' && <FhcbDocs lang={lang} data={data} onChanged={onChanged} />}
+      {tab === 'Directory' && <DirCategories lang={lang} data={data} rows={live} onChanged={onChanged} />}
       {row && (
         <form id={`${tab}-form`} onSubmit={save} className="grid sm:grid-cols-2 gap-3 border border-brand-200 rounded-lg p-3 bg-brand-50/40 scroll-mt-32">
           <div className="sm:col-span-2 text-sm font-semibold">{row.id ? `${t(lang, 'edit')} · ${row.id}` : t(lang, 'add_row')}</div>
@@ -140,6 +141,59 @@ function FhcbDocs({ lang, data, onChanged }) {
           </li>
         ))}
       </ul>
+    </div>
+  )
+}
+
+// Categories under Directory → Training & Consultancy (Wan, 15 Oct 2026):
+// JAKIM's training providers, firms, freelancers, and any Wan adds. Kept in
+// Settings (dir_categories). A category still used by a row cannot be
+// removed until its rows move to another one.
+const slug = (s) => String(s || '').toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 40)
+function DirCategories({ lang, data, rows, onChanged }) {
+  const [cats, setCats] = useState(() => dirCategories(data && data.settings))
+  const [en, setEn] = useState('')
+  const [bm, setBm] = useState('')
+  const [msg, setMsg] = useState('')
+  const [busy, setBusy] = useState(false)
+  useEffect(() => { setCats(dirCategories(data && data.settings)) }, [data])
+  const used = (id) => rows.filter((r) => r.subtype === id).length
+  async function store(next) {
+    setBusy(true); setMsg('')
+    try { await adminPost('settings', { settings: { dir_categories: JSON.stringify(next) } }); setCats(next); setMsg(t(lang, 'saved')); onChanged && onChanged() }
+    catch (e) { setMsg(e.message) } finally { setBusy(false) }
+  }
+  function add(e) {
+    e.preventDefault()
+    const id = slug(en); if (!id) return
+    if (cats.some((c) => c.id === id) || id === 'jurusertu' || id === 'lab') { setMsg(t(lang, 'cat_exists')); return }
+    store([...cats, { id, en: en.trim(), bm: bm.trim() || en.trim() }]).then(() => { setEn(''); setBm('') })
+  }
+  const rename = (id, k, v) => setCats((cs) => cs.map((c) => (c.id === id ? { ...c, [k]: v } : c)))
+  return (
+    <div className="border border-line rounded-lg p-3 space-y-2">
+      <div className="text-sm font-semibold">{t(lang, 'cat_title')}</div>
+      <p className="text-xs text-ink-400">{t(lang, 'cat_hint')}</p>
+      <ul className="space-y-1.5">
+        {cats.map((c) => (
+          <li key={c.id} className="grid sm:grid-cols-[1fr_1fr_auto_auto] gap-2 items-center text-sm">
+            <input className="input py-1.5" value={c.en} onChange={(e) => rename(c.id, 'en', e.target.value)} aria-label="Name (EN)" />
+            <input className="input py-1.5" value={c.bm || ''} onChange={(e) => rename(c.id, 'bm', e.target.value)} aria-label="Nama (BM)" />
+            <span className="text-xs text-ink-400 whitespace-nowrap">{used(c.id)} {t(lang, 'cat_rows')}</span>
+            <button type="button" className="btn px-2.5 py-1 text-red-700" disabled={busy || used(c.id) > 0} title={used(c.id) ? t(lang, 'cat_in_use') : t(lang, 'delete')}
+              onClick={() => store(cats.filter((x) => x.id !== c.id))} aria-label={t(lang, 'delete')}><Trash2 {...ICON} size={15} /></button>
+          </li>
+        ))}
+      </ul>
+      <div className="flex flex-wrap gap-2">
+        <button type="button" className="btn" disabled={busy} onClick={() => store(cats)}>{t(lang, 'cat_save_names')}</button>
+      </div>
+      <form onSubmit={add} className="grid sm:grid-cols-[1fr_1fr_auto] gap-2 pt-2 border-t border-line">
+        <input className="input" value={en} onChange={(e) => setEn(e.target.value)} placeholder={t(lang, 'cat_new_en')} aria-label={t(lang, 'cat_new_en')} />
+        <input className="input" value={bm} onChange={(e) => setBm(e.target.value)} placeholder={t(lang, 'cat_new_bm')} aria-label={t(lang, 'cat_new_bm')} />
+        <button className="btn-brand" disabled={busy || !en.trim()}>+ {t(lang, 'add_row')}</button>
+      </form>
+      {msg && <div className="text-sm text-ink-600">{msg}</div>}
     </div>
   )
 }

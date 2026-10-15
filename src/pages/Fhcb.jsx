@@ -50,7 +50,7 @@ export default function Fhcb({ lang, data, focusId, focusKey }) {
   )
   // A logo opens full size on click (Wan, 15 Oct 2026).
   const logo = (r, cls) => safeUrl(r.logo_url)
-    ? <button type="button" title={t(lang, 'view_larger')} onClick={() => setZoom({ src: safeUrl(r.logo_url), alt: r.name })} className={`${cls} shrink-0 bg-white rounded-lg border border-line p-1 hover:ring-2 hover:ring-brand-300 cursor-zoom-in`}><img src={safeUrl(r.logo_url)} alt={`${r.name} halal logo`} loading="lazy" className="w-full h-full object-contain" /></button>
+    ? <button type="button" title={t(lang, 'view_larger')} onClick={() => setZoom({ src: safeUrl(r.logo_url), alt: r.name })} className={`${cls} shrink-0 bg-white rounded-lg border border-line p-0.5 hover:ring-2 hover:ring-brand-300 cursor-zoom-in`}><img src={safeUrl(r.logo_url)} alt={`${r.name} halal logo`} loading="lazy" className="w-full h-full object-contain" /></button>
     : <div className={`${cls} rounded-lg border border-line bg-paper`} />
   const filters = (
     <>
@@ -92,7 +92,7 @@ export default function Fhcb({ lang, data, focusId, focusKey }) {
       <Segment id="fhcb" focusId={focusId} focusKey={focusKey} lang={lang} title={country === 'all' ? t(lang, 'fhcb') : country} rows={rows} filters={filters}
         cardGrid="grid gap-4 grid-cols-1 sm:grid-cols-2 xl:grid-cols-3"
         columns={[
-          { key: 'logo', label: '', render: (r) => logo(r, 'w-12 h-12') },
+          { key: 'logo', label: '', render: (r) => logo(r, 'w-24 h-16') },
           { key: 'no', label: '#' },
           { key: 'country', label: t(lang, 'country') },
           { key: 'name', label: t(lang, 'name'), render: (r) => <span className="font-medium">{r.name}</span> },
@@ -103,7 +103,7 @@ export default function Fhcb({ lang, data, focusId, focusKey }) {
         renderCard={(r) => (
           <article key={r.id} id={`fhcb-${r.id}`} className="card p-4 flex flex-col">
             <div className="flex items-start gap-3">
-              {logo(r, 'w-20 h-20 shrink-0')}
+              {logo(r, 'w-28 h-20 shrink-0')}
               <div className="min-w-0">
                 <div className="text-xs text-ink-400">#{r.no} · {r.country}</div>
                 <div className="font-semibold leading-snug break-words">{r.name}</div>
