@@ -106,8 +106,11 @@
 21. **Popup notice is the card-8 AlertCard** (`src/components/ui/alert-card.tsx`),
     colour from `notice_color`, posters from `notice_posters` sliding under
     the message, each shown whole. It shows only while `notice_enabled` is
-    ticked, only on the Overview page, and closes itself after 7 seconds
-    (paused while held) as well as on a click (Wan, 15 Oct 2026).
+    ticked, only on the Overview page, every time it is opened or refreshed
+    (nothing remembered), and closes itself after 7 seconds (paused while
+    held) as well as on a click (Wan, 15 Oct 2026).
+23. **Header and page share one column**: both are `max-w-7xl mx-auto` inside
+    `md:pl-[232px]` (the sidebar width), so their edges line up at any width.
 22. **Navigation.** Tablet and desktop header: `ui/nav-header.tsx`, text only,
     no icons; phones: the icon bar. Admin is only the black button at the top
     right, never in the header tabs or the sidebar (`MENU` in Sidebar.jsx).

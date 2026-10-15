@@ -21,7 +21,9 @@ export default function Header({ lang, setLang, tab, sub, setTab, onRefresh, onE
   useEffect(() => { const h = (e) => { if (ref.current && !ref.current.contains(e.target)) setExp(false) }; addEventListener('click', h); return () => removeEventListener('click', h) }, [])
   return (
     <header ref={head} className="bg-white border-b border-line sticky top-0 z-30">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6">
+      {/* Centred over the same column as the page (right of the sidebar on
+          tablets and desktops), so the header and the content line up. */}
+      <div className="md:pl-[232px]"><div className="max-w-7xl mx-auto px-4 sm:px-6">
         <div className="flex items-center justify-between gap-2 sm:gap-4 py-3">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             <button className="md:hidden btn px-2.5 shrink-0" onClick={onMenu} aria-label={t(lang, 'menu')}><Menu {...ICON} size={20} /></button>
@@ -85,7 +87,7 @@ export default function Header({ lang, setLang, tab, sub, setTab, onRefresh, onE
             })}
           </nav>
         )}
-      </div>
+      </div></div>
     </header>
   )
 }

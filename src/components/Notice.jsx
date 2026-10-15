@@ -10,10 +10,10 @@ import { t } from '../lib/i18n'
 // notice_posters, notice_until). The card is the card-8 AlertCard; its
 // background is the colour Admin picked and the text colour follows it for
 // contrast. Posters added to the notice slide underneath the message, each
-// shown whole (never cropped). It opens on the Overview page only and closes
+// shown whole (never cropped). It opens every time the Overview page is
+// opened or refreshed (nothing is remembered, Wan 15 Oct 2026) and closes
 // itself after 7 seconds (paused while the pointer or a finger is on it), or
-// on a click (Wan, 15 Oct 2026). A click is remembered per notice content, so
-// an edited notice shows again; a timed close is remembered for the visit.
+// on a click.
 const AUTO_MS = 7000
 export const NOTICE_COLORS = ['#0b6b3a', '#08542e', '#0f172a', '#1e3a8a', '#7c2d12', '#b91c1c', '#c9a227', '#ffffff']
 const LEVEL = { info: '#0b6b3a', warning: '#b45309', danger: '#b91c1c' }
@@ -64,29 +64,24 @@ export default function Notice({ lang, settings, preview, onClose, active = true
   const [left, setLeft] = useState(AUTO_MS)
   useEffect(() => {
     if (preview) { setOpen(true); setLeft(AUTO_MS); return }
-    let dismissed = false
-    try { dismissed = localStorage.getItem(key) === '1' || sessionStorage.getItem(key) === '1' } catch { /* ignore */ }
-    const ok = active && enabled && Date.now() < until && !dismissed && !!(settings.notice_title || body || posters.length)
+    const ok = active && enabled && Date.now() < until && !!(settings.notice_title || body || posters.length)
     // A moment after the page appears, so the card animates in over it.
     const id = ok ? setTimeout(() => { setLeft(AUTO_MS); setOpen(true) }, 600) : null
     if (!ok) setOpen(false)
     return () => clearTimeout(id)
   }, [enabled, until, key, preview, active]) // eslint-disable-line react-hooks/exhaustive-deps
-  const close = (byClick = true) => {
-    if (!preview) { try { (byClick ? localStorage : sessionStorage).setItem(key, '1') } catch { /* ignore */ } }
-    setOpen(false); onClose && onClose()
-  }
+  const close = () => { setOpen(false); onClose && onClose() }
   // 7-second countdown, paused while held.
   useEffect(() => {
     if (!open || hold) return
-    const step = 100, id = setInterval(() => setLeft((v) => { if (v <= step) { clearInterval(id); setTimeout(() => close(false), 0); return 0 } return v - step }), step)
+    const step = 100, id = setInterval(() => setLeft((v) => { if (v <= step) { clearInterval(id); setTimeout(() => close(), 0); return 0 } return v - step }), step)
     return () => clearInterval(id)
   }, [open, hold]) // eslint-disable-line react-hooks/exhaustive-deps
   if (!enabled) return null
   return createPortal(
-    <div className={`fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 transition-colors ${open ? 'bg-black/40' : 'pointer-events-none bg-transparent'}`} onClick={() => close(true)}>
+    <div className={`fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 transition-colors ${open ? 'bg-black/40' : 'pointer-events-none bg-transparent'}`} onClick={() => close()}>
       <AlertCard onClick={(e) => e.stopPropagation()} isVisible={open} title={title} description={body} buttonText={button}
-        onButtonClick={() => close(true)} onDismiss={() => close(true)} background={bg} foreground={fg}
+        onButtonClick={() => close()} onDismiss={() => close()} background={bg} foreground={fg}
         onMouseEnter={() => setHold(true)} onMouseLeave={() => setHold(false)} onTouchStart={() => setHold(true)} onTouchEnd={() => setHold(false)}
         icon={<Bell className="h-6 w-6" style={{ color: fg }} />}>
         {posters.length > 0 && <Slides posters={posters} color={fg} />}
