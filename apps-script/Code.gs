@@ -292,6 +292,7 @@ function doPost(e) {
     if (a === 'poster_from_drive') return json(posterFromDrive(body.id));
     if (a === 'raw_stats')    { var rs0 = rawStats(); rs0.ok = true; return json(rs0); }
     if (a === 'pipeline_status') { needAdmin(); return json(pipelineStatus()); }
+    if (a === 'requeue_files') { needAdmin(); return json(requeueFiles()); } // writes only status cells, no lock
 
     // A chat-export .txt can hold tens of thousands of messages: import it
     // without the write lock, so Run now, events and deletes are not blocked
@@ -303,7 +304,6 @@ function doPost(e) {
       if (a === 'admins_set')    { needAdmin(); return json(setAdminEmails(body.emails || [])); }
       if (a === 'manual_upload') { needAdmin(); var mu = manualUpload(body, sessEmail || 'token'); mu.run = autoRun(mu.chat ? 'process_whatsapp' : 'uploads'); return json(mu); }
       if (a === 'review_set')    { needAdmin(); return json(reviewSet(body.tab, body.id, body.status)); }
-      if (a === 'requeue_files') { needAdmin(); return json(requeueFiles()); }
       if (a === 'review_save')   { needAdmin(); return json(reviewSave(String(body.tab || ''), String(body.id || ''), body.fields || {})); }
       if (a === 'settings')      { needAdmin(); return json(writeSettings(body.settings || {})); }
       if (a === 'ref_upload')    { needAdmin(); var ru = refUpload(body, sessEmail || 'token'); ru.run = autoRun('references'); return json(ru); }
@@ -688,7 +688,7 @@ function reviewSet(tab, id, status) {
 // changed; links must be http(s).
 var EDITABLE = {
   FAQ: ['category', 'subcategory', 'question_en', 'question_bm', 'answer_formal_en', 'answer_layman_en', 'answer_formal_bm', 'answer_layman_bm'],
-  Events: ['title', 'title_bm', 'date_start', 'date_end', 'venue', 'link', 'description', 'poster_url'],
+  Events: ['title', 'title_bm', 'date_start', 'date_end', 'venue', 'link', 'description', 'poster_url', 'poster_file'],
   Documents: ['title', 'kind', 'category'],
   Certificates: ['company', 'cert_no', 'scheme', 'state', 'category', 'valid_from', 'valid_to', 'products'],
   Guidelines: ['category', 'title', 'title_bm', 'issuer', 'summary_en', 'summary_bm', 'link'],
@@ -699,7 +699,7 @@ function reviewSave(tab, id, fields) {
   allowed.forEach(function (k) {
     if (fields[k] === undefined) return;
     var v = String(fields[k] == null ? '' : fields[k]).slice(0, k.indexOf('answer') === 0 || k === 'description' || k.indexOf('summary') === 0 ? 6000 : 500);
-    if ((k === 'link' || k === 'poster_url') && v && !/^https?:\/\//i.test(v)) throw new Error(k + ' must start with https://');
+    if ((k === 'link' || k === 'poster_url' || k === 'poster_file') && v && !/^https?:\/\//i.test(v)) throw new Error(k + ' must start with https://');
     patch[k] = v;
   });
   if (tab === 'Events' && patch.poster_url) { var pl = posterFromLink(patch.poster_url); if (pl) { patch.poster_url = pl.url; patch.poster_file = pl.file; } }
@@ -756,15 +756,20 @@ function requeueFiles() {
   var sh = sheet('Raw'), n = sh.getLastRow() - 1, C = TABS.Raw;
   if (n < 1) return { ok: true, requeued: 0 };
   var st = sh.getRange(2, C.indexOf('status') + 1, n, 1).getValues(), at = sh.getRange(2, C.indexOf('attachments') + 1, n, 1).getValues(),
-      src = sh.getRange(2, C.indexOf('source') + 1, n, 1).getValues(), k = 0;
+      src = sh.getRange(2, C.indexOf('source') + 1, n, 1).getValues(), cells = [];
+  var col = colLetter(C.indexOf('status') + 1);
   for (var i = 0; i < n; i++) {
     if (src[i][0] === 'manual' || st[i][0] === 'new') continue;
     if (String(at[i][0] || '').indexOf('"drive_file_id"') < 0) continue;
-    st[i][0] = 'new'; k++;
+    cells.push(col + (i + 2));
   }
-  if (k) { sh.getRange(2, C.indexOf('status') + 1, n, 1).setValues(st); pubBust(); }
-  return { ok: true, requeued: k, run: k ? autoRun('uploads') : '' };
+  // Only the file rows' status cells are written, in one call, so rows the
+  // pipeline marks meanwhile are never overwritten (and no lock is needed).
+  for (var k = 0; k < cells.length; k += 500) sh.getRangeList(cells.slice(k, k + 500)).setValue('new');
+  if (cells.length) pubBust();
+  return { ok: true, requeued: cells.length, run: cells.length ? autoRun('uploads') : '' };
 }
+function colLetter(n) { var s = ''; while (n > 0) { var m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; }
 
 function rawTriage() {
   var sh = sheet('Raw'), n = sh.getLastRow() - 1, C = TABS.Raw;

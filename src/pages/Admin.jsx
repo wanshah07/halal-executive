@@ -147,7 +147,7 @@ function RunNow({ lang, runs, stats }) {
         {msg && <span className="text-sm text-ink-600">{msg}</span>}
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <button className="btn" disabled={busy} onClick={async () => { setBusy(true); setMsg(''); try { const r = await adminPost('requeue_files'); setMsg(t(lang, 'requeued').replace('{n}', r.requeued)) } catch (e) { setMsg(e.message) } finally { setBusy(false) } }}>{t(lang, 'requeue_files')}</button>
+        <button className="btn" disabled={busy} onClick={async () => { setBusy(true); setMsg(t(lang, 'working')); try { const r = await adminPost('requeue_files'); setMsg(t(lang, 'requeued').replace('{n}', r.requeued)) } catch (e) { setMsg(e.message) } finally { setBusy(false) } }}>{t(lang, 'requeue_files')}</button>
         <span className="text-xs text-ink-400">{t(lang, 'requeue_hint')}</span>
       </div>
       {stats && (() => {
@@ -331,6 +331,22 @@ function DraftItem({ lang, tab, r, onSet, onDelete, onSaved }) {
                 : <input id={`ed-${r.id}-${k}`} className="input" value={edit[k]} onChange={(e) => setEdit({ ...edit, [k]: e.target.value })} />}
             </div>
           ))}
+          {tab === 'Events' && (
+            <div className="sm:col-span-2"><label className="label" htmlFor={`ed-${r.id}-poster`}>{t(lang, 'poster')} ({t(lang, 'poster_formats')})</label>
+              <div className="flex flex-wrap items-center gap-3">
+                {imageUrl(edit.poster_url) && <img src={imageUrl(edit.poster_url)} alt="" className="w-16 h-20 object-cover rounded border border-line" />}
+                <input id={`ed-${r.id}-poster`} type="file" accept={POSTER_ACCEPT} className="input flex-1 min-w-48" disabled={busy}
+                  onChange={async (e) => {
+                    const f = e.target.files && e.target.files[0]; e.target.value = ''
+                    if (!f) return
+                    if (f.size > POSTER_MAX) { setErr(t(lang, 'too_big')); return }
+                    setBusy(true); setErr('')
+                    try { const up = await adminPost('poster_upload', { name: f.name, mime: f.type || '', b64: await toB64(f) }); setEdit((x) => ({ ...x, poster_url: up.url, poster_file: up.file })) }
+                    catch (er) { setErr(er.message) } finally { setBusy(false) }
+                  }} />
+              </div>
+            </div>
+          )}
           <div className="sm:col-span-2 flex flex-wrap items-center gap-2">
             <button className="btn-brand" disabled={busy} onClick={() => save(true)}>{busy ? '…' : t(lang, 'save_publish')}</button>
             <button className="btn" disabled={busy} onClick={() => save(false)}>{t(lang, 'save_changes')}</button>
