@@ -244,6 +244,12 @@ def main():
             continue
         provider, model = r["provider"], r["model"]
         out = r["json"] or {}
+        if not isinstance(out, dict):
+            # A model sometimes answers with a bare JSON list; that crashed the
+            # whole phase on 15 Oct 2026. Skip the entry; the next run asks again.
+            print(f"[skip] {row['id']}: reply was a {type(out).__name__}, not an object")
+            errs.append(f"{row['id']}: reply not an object")
+            continue
         why = check(row, out, passages)
         if why:
             print(f"[skip] {row['id']}: " + "; ".join(why)[:400])
