@@ -12,6 +12,7 @@ is logged as failed; nothing is marked processed on a guess.
   python process_raw.py --max-batches 2 --dry-run       (try it)
 """
 import argparse
+import base64
 import datetime as dt
 import json
 import re
@@ -21,6 +22,7 @@ import time
 
 import he_api
 import llm_router
+import qr_links
 from prompts import SYSTEM
 
 # An answer that carries a link or a phone number is never published without
@@ -84,6 +86,39 @@ def poster_for(mid, rows, dry):
             except he_api.ApiError as e:
                 print("poster not copied:", e, file=sys.stderr)
     return "", ""
+
+
+QR_FILE = re.compile(r"(^image/|application/pdf|presentationml|wordprocessingml)|\.(png|jpe?g|webp|gif|bmp|tiff?|heic|pdf|pptx|docx)$", re.I)
+_qr_seen = {}
+
+
+def qr_link_for(mid, rows):
+    """The registration link printed as a QR code on the poster of event
+    message `mid`, or "". A model reading the poster's text never sees a QR
+    code, so it is decoded from the file itself (qr_links.py): pictures, PDF
+    pages and the pictures inside PowerPoint and Word files (Wan, 18 Oct 2026).
+    Admin uploads and group posters both come through here."""
+    r = next((x for x in rows if str(x["id"]) == str(mid)), None)
+    if not r:
+        return ""
+    for a in json.loads(r.get("attachments") or "[]"):
+        fid = a.get("drive_file_id")
+        if not fid or not QR_FILE.search(str(a.get("mime") or "") + " " + str(a.get("name") or "")):
+            continue
+        if fid not in _qr_seen:
+            urls = []
+            try:
+                got = he_api.drive_get(fid, text=False, bytes_=True)
+                if got.get("b64") and int(got.get("size") or 0) <= 25_000_000:
+                    urls = qr_links.links_from_bytes(base64.b64decode(got["b64"]), a.get("name", ""))
+            except (he_api.ApiError, ValueError) as e:
+                print(f"QR: {a.get('name')} not read: {e}", file=sys.stderr)
+            _qr_seen[fid] = urls
+            if urls:
+                print(f"QR: {a.get('name')} holds {urls[0]}" + (f" (+{len(urls) - 1} more)" if len(urls) > 1 else ""))
+        if _qr_seen[fid]:
+            return _qr_seen[fid][0]
+    return ""
 
 
 def _day(v):
@@ -336,8 +371,13 @@ def run(sources, max_batches, dry, minutes=20, attachments=None):
                 seen_events.add(ek)
                 if e.get("title"):
                     poster, poster_file = poster_for(e.get("source_msg_id"), rows, dry)
+                    # The QR code on the poster is the registration link; it wins
+                    # over a link the model guessed from the text.
+                    qr = qr_link_for(e.get("source_msg_id"), rows)
+                    if qr and safe_url(e.get("link")) not in ("", qr):
+                        print(f"event {str(e.get('title'))[:60]!r}: QR link replaces the text link {safe_url(e.get('link'))}")
                     ev_rows.append({"id": ids["EV"](), "title": e["title"], "title_bm": e.get("title_bm", ""), "date_start": e.get("date_start", ""), "date_end": e.get("date_end", ""), "venue": e.get("venue", ""),
-                                    "poster_url": poster, "link": safe_url(e.get("link")), "description": e.get("description", ""),
+                                    "poster_url": poster, "link": qr or safe_url(e.get("link")), "description": e.get("description", ""),
                                     # Admin uploads publish at once; group posters wait in Drafts.
                                     "status": "published" if src_of.get(str(e.get("source_msg_id"))) == "manual" else "draft",
                                     "source": e.get("source_msg_id", ""), "poster_file": poster_file,

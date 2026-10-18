@@ -147,3 +147,21 @@
     page, the counts, Overview, search, export, Admin → Drafts and Manage;
     `reviewList` skips it server-side. Document kinds are shown by name
     (`dk_*` in i18n), never as the raw kind.
+27. **The QR code on an event poster is its registration link** (Wan, 18 Oct 2026).
+    A model reading a poster only gets its words, so QR codes are decoded from
+    the file itself, and only http(s) addresses count (`qr_links.py`; `qr.js`
+    in the page). Pipeline: every event made from an Admin upload or a group
+    poster goes through `qr_link_for` in `process_raw.py` (pictures, PDF pages,
+    pictures inside .pptx/.docx); the QR link beats a link the model guessed.
+    Events form: a picture is read in the browser (jsQR); a PDF or Office
+    poster is read from the first-page preview `eventFromPoster` returns as
+    `qr_image`. A link typed in the form is never replaced. Job `event_qr`
+    (Admin → Run now) fills the empty `link` of upcoming events that already
+    have a poster; it never replaces a link and never touches finished or
+    hidden events.
+28. **The hero globe is a real Earth** (`ui/globe.tsx`, `public/brand/earth.jpg`,
+    NASA Blue Marble): one WebGL shader, no 3D library, turns by itself, pins
+    on the FHCB countries, CSS fallback without WebGL. cobe was tried first
+    and dropped: it is a monochrome dot map and its shader rendered black on
+    software GL. The picture is NASA imagery (generally free to use with
+    credit); Wan to confirm the credit line he wants.

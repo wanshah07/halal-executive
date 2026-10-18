@@ -15,7 +15,7 @@ on:
   workflow_dispatch:
     inputs:
       job:
-        description: process_whatsapp | uploads | bench | process_facebook | news | organise | references | sahkan
+        description: process_whatsapp | uploads | bench | process_facebook | news | organise | references | sahkan | event_qr
         default: process_whatsapp
 permissions: { contents: read, actions: write }  # actions: start the uploads lane
 # Uploads and filing have their own lane, so a certificate uploaded in Admin
@@ -98,6 +98,7 @@ jobs:
               phase 10 "Fill SAHKAN from references" python resolve_sahkan.py ;;
             bench)      phase 10 "Time MIRELD and AFIQ" python llm_router.py --bench ;;
             sahkan)     phase 20 "Fill SAHKAN from references" python resolve_sahkan.py ;;
+            event_qr)   phase 20 "Read QR codes on event posters" python event_qr.py ;;
             *) echo "unknown job"; exit 1 ;;
           esac
           python phase.py "$JOB" $([ $RC -eq 0 ] && echo done || echo failed) "run finished" || true

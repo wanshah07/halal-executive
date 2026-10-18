@@ -431,7 +431,7 @@ function sessionEmail(session) {
 // Property GITHUB_TOKEN (never in the page).
 var GH_REPO = 'wanshah07/halal-executive';
 function runNow(b) {
-  var job = ['process_whatsapp', 'uploads', 'references', 'news', 'organise', 'sahkan', 'process_facebook'].indexOf(b.job) >= 0 ? b.job : 'process_whatsapp';
+  var job = ['process_whatsapp', 'uploads', 'references', 'news', 'organise', 'sahkan', 'process_facebook', 'event_qr'].indexOf(b.job) >= 0 ? b.job : 'process_whatsapp';
   var token = props().getProperty('GITHUB_TOKEN');
   if (!token) throw new Error('Run now is not set up yet: add a GitHub token as the Script Property GITHUB_TOKEN (see SETUP.md).');
   if (!rate('run_now', 1, 120)) throw new Error('A run was started less than 2 minutes ago. It is on its way.');
@@ -1669,10 +1669,24 @@ function posterFromDrive(fileId) {
 // same way an uploaded halal certificate is read. The admin checks and saves;
 // nothing is published by this call (Wan, 15 Oct 2026).
 var EVENT_READ = 'You read a poster or announcement for an event in Malaysia (seminar, course, training, talk, expo) for halal executives. Return JSON {"is_event":true|false,"kind":"competency|awareness|executive|auditor|other","title":"","title_bm":"","date_start":"YYYY-MM-DDTHH:MM","date_end":"YYYY-MM-DDTHH:MM or empty","venue":"","link":"","description":""}. kind: competency for a halal competency course (Pensijilan Halal, Jurusertu, SJH), awareness for a halal awareness talk or briefing, executive for a Halal Executive course or certificate, auditor for an internal halal auditor course, else other. Dates in Malaysia time as printed; if the year is not printed use the next date on or after TODAY. Time 09:00 if no time is printed. title in English, title_bm in Bahasa Malaysia (Malaysian, never Indonesian); keep the official name as printed in the language it is printed. venue as printed (or "Online" / the platform). link: a registration or info URL printed on the poster, else empty. description: 2-4 short sentences: organiser, who it is for, fee if printed, contact as printed. Never invent a date, fee or link that is not on the poster.';
+// First-page preview of a PDF or Office poster, as a data URL, so the page can
+// read a QR code that is part of it (Apps Script cannot decode one itself). A
+// picture poster is read from the file the page already holds.
+function posterPreview(fileId) {
+  try {
+    var meta = Drive.Files.get(fileId, { fields: 'thumbnailLink' });
+    if (!meta.thumbnailLink) return '';
+    var r = UrlFetchApp.fetch(meta.thumbnailLink.replace(/=s\d+$/, '=s2000'), { headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }, muteHttpExceptions: true });
+    if (r.getResponseCode() !== 200 || r.getContent().length > 6e6) return '';
+    return 'data:' + (r.getHeaders()['Content-Type'] || 'image/png') + ';base64,' + Utilities.base64Encode(r.getContent());
+  } catch (e) { return ''; }
+}
+
 function eventFromPoster(b) {
   var p = posterStore(b.b64, b.name, b.mime), f = DriveApp.getFileById(p.id), text = '';
   try { text = extractText(f, f.getBlob()); } catch (e) { text = ''; }
   var out = { ok: true, poster_url: p.url, poster_file: p.file, fields: {}, read: !!String(text).trim() };
+  if (!/^image\//.test(p.mime)) out.qr_image = posterPreview(p.id);
   if (!String(text).trim()) { out.note = 'The poster has no readable text; fill the fields by hand.'; return out; }
   var today = Utilities.formatDate(new Date(), 'Asia/Kuala_Lumpur', 'yyyy-MM-dd');
   var r = complete([{ role: 'system', content: EVENT_READ.replace('TODAY', today) }, { role: 'user', content: String(text).slice(0, 8000) }], { json: true, max_tokens: 900, temperature: 0 });

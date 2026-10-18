@@ -40,6 +40,9 @@ Sheet ──(GET ?action=data)──► this page (Vite + React + Tailwind) ─�
   choose the main and the quick model for each (checked against the gateway's own
   model list) and turn the handover off; Test sends one real question to exactly
   that model. The Runs tab and the Overview show which provider and model answered.
+* **Event posters.** The QR code on a poster becomes the event's registration
+  link (OpenCV in the pipeline, jsQR in Admin's event form); job `event_qr`
+  fills the link of upcoming events that already have a poster.
 * **Cadence.** WhatsApp + Telegram + Admin uploads + new references every 30 minutes for now (2 hours once stable), each run continuing until
   the queue is empty; Facebook once a day, up to 5 hours; news every 6 hours;
   Drive organiser after every pass and once a day. See

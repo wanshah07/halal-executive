@@ -6,6 +6,7 @@ import { ICON, Sparkles } from './Icon'
 import { t } from '../lib/i18n'
 import { fmtDateTime } from '../lib/util'
 import { filedDocs } from '../lib/certs'
+import { qrLinks } from '../lib/qr'
 import { POSTER_ACCEPT, POSTER_MAX } from './Poster'
 
 // Delete for good: the row, and its Drive file where it owns one (Code.gs
@@ -101,14 +102,24 @@ export function EventsAdmin({ lang, onChanged }) {
     if (f.size > POSTER_MAX) { setMsg(t(lang, 'too_big_10')); return }
     setBusy(true); setMsg(t(lang, 'reading_poster'))
     try {
+      // The QR code is read in the browser, from the picture itself, while the
+      // AI reads the words; a PDF or Office poster is read from its preview.
+      const qrNow = /^image\//.test(f.type || '') ? qrLinks(f).catch(() => []) : Promise.resolve([])
       const r = await adminPost('event_from_poster', { b64: await toB64(f), name: f.name, mime: f.type || '' })
       setPoster(null)
+      let qr = (await qrNow)[0]
+      if (!qr && r.qr_image) qr = (await qrLinks(r.qr_image).catch(() => []))[0]
+      let kept = ''
       setE((cur) => {
         const next = { ...cur, poster_url: r.poster_url, poster_file: r.poster_file }
         Object.entries(r.fields || {}).forEach(([k, v]) => { if (!cur[k]) next[k] = v })
+        // The code on the poster is the registration link: it beats a link the AI
+        // guessed from the words, but never a link already typed in the form.
+        if (qr) { if (cur.link && cur.link !== qr) kept = qr; else next.link = qr }
         return next
       })
-      setMsg(r.note || (r.is_event === false ? t(lang, 'poster_not_event') : t(lang, 'poster_read')))
+      const base = r.note || (r.is_event === false ? t(lang, 'poster_not_event') : t(lang, 'poster_read'))
+      setMsg(qr ? `${base} ${kept ? t(lang, 'qr_kept').replace('{u}', kept) : t(lang, 'qr_found').replace('{u}', qr)}` : base)
     } catch (er) { setMsg(er.message) } finally { setBusy(false); const i = document.getElementById('ev-poster'); if (i) i.value = '' }
   }
   async function remove(r) { try { if (await deleteForGood(lang, 'Events', r.id, r.title, () => setRows((rs) => (rs || []).filter((x) => x.id !== r.id)))) onChanged && onChanged() } catch (er) { setMsg(er.message); load() } }
