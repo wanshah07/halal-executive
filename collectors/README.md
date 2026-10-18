@@ -24,6 +24,33 @@ HE_GROUP_NAME=Halal Executive   # exact group title; `npm run groups` lists your
 WhatsApp uses Chrome or Edge already installed on the machine, so npm's
 "install-scripts" warning about puppeteer can be ignored.
 
+## Telegram
+
+The collector is a bot (Telegram Bot API, long polling), so it needs no phone
+session and no QR code, only a token. Setup is four steps in Telegram and one
+script on the server:
+
+1. Chat with **@BotFather**: `/newbot`, copy the token.
+2. BotFather: `/setprivacy` -> your bot -> **Disable** (otherwise it only sees
+   commands, not the group's messages).
+3. Add the bot to the "Halal Executive" group, then send any message there.
+4. On the server that runs the WhatsApp collector, in its SSH window:
+
+       curl -fsSL https://raw.githubusercontent.com/wanshah07/halal-executive/main/collectors/cloud/add-telegram.sh | bash
+
+   It asks for the token, lists the groups the bot can see (`npm run chats`),
+   asks which one, and leaves the collector running under pm2 as `he-telegram`.
+
+It reads text, photos and documents (up to 10 MB; a bigger file is noted, not
+sent), checks in every 5 minutes (Overview -> Collectors shows **Live**; the
+watchdog emails the admins if it stops after its first check-in), and keeps
+any message the Sheet could not take in `collectors/telegram/state.json` and
+sends it again. Sender ids are hashed, like WhatsApp. The pipeline already
+reads `telegram` rows with the group's (`process_raw.py --source
+whatsapp,telegram`). The Bot API only delivers messages from the moment the bot
+joins: export the chat from Telegram Desktop (JSON) and run
+`node collect.js --import result.json` for the history.
+
 ## Older WhatsApp messages: import the chat export
 
 The live collector is a linked device, and a linked device only holds what

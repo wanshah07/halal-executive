@@ -264,8 +264,8 @@ function ProgressBox({ lang }) {
             <p className="text-xs text-ink-600">{t(lang, 'p_speed')}: {['AFIQ', 'MIRELD'].filter((k) => sp[k]).map((k) => `${name[k]} ${(sp[k].ms / 1000).toFixed(1)} s`).join(' · ')}{lead ? ` · ${t(lang, 'p_lead')}: ${name[lead]}` : ` · ${t(lang, 'p_measuring')}`}</p>
           )
         })()}
-        {(watch.whatsapp || watch.pipeline) && (
-          <ul className="text-sm text-red-700 space-y-1">{['whatsapp', 'pipeline'].filter((k) => watch[k]).map((k) => <li key={k}>⚠ {watch[k].msg} <span className="text-ink-400">({t(lang, 'p_since')} {ago(watch[k].since, lang)})</span></li>)}</ul>
+        {(watch.whatsapp || watch.telegram || watch.pipeline) && (
+          <ul className="text-sm text-red-700 space-y-1">{['whatsapp', 'telegram', 'pipeline'].filter((k) => watch[k]).map((k) => <li key={k}>⚠ {watch[k].msg} <span className="text-ink-400">({t(lang, 'p_since')} {ago(watch[k].since, lang)})</span></li>)}</ul>
         )}
         {!!runs.length && (
           <div>

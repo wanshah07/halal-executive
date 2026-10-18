@@ -2,6 +2,12 @@
   "name": "he-collector-telegram",
   "private": true,
   "type": "module",
-  "scripts": { "start": "node collect.js" },
-  "dependencies": { "node-telegram-bot-api": "^0.66.0" }
+  "scripts": {
+    "start": "node collect.js",
+    "chats": "node collect.js --chats",
+    "import": "node collect.js --import"
+  },
+  "dependencies": {
+    "node-telegram-bot-api": "^0.66.0"
+  }
 }

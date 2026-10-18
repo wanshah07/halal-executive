@@ -601,11 +601,19 @@ function tickWatch() {
     if (age > WATCH_MIN) problems.whatsapp = 'No WhatsApp heartbeat for ' + age + ' minutes. The VM, pm2 or the WhatsApp link is down. Check: gcloud compute ssh he-whatsapp, then pm2 logs he-whatsapp.';
     else if (hb.state && hb.state !== 'CONNECTED') problems.whatsapp = 'WhatsApp reports state ' + hb.state + ' (not CONNECTED). The phone may have unlinked this device: Linked devices on the phone, then a new QR on the VM.';
   }
+  // Telegram is watched once it has checked in for the first time: until then
+  // there is nothing to be late, so no mail about a collector nobody set up.
+  var tg = collectorStatus().telegram;
+  if (tg) {
+    var tage = Math.round((now - Date.parse(tg.ts)) / 60000);
+    if (tage > WATCH_MIN) problems.telegram = 'No Telegram heartbeat for ' + tage + ' minutes. The collector is down. Check on the server: pm2 logs he-telegram.';
+    else if (tg.state && tg.state !== 'CONNECTED') problems.telegram = 'Telegram reports state ' + tg.state + ' (not CONNECTED). Check the bot token and that the bot is still in the group: pm2 logs he-telegram.';
+  }
   var gh = {}; try { gh = githubRuns(); } catch (e) { gh = {}; }
   var done = (gh.runs || []).filter(function (r) { return r.status === 'completed'; }).slice(0, 3);
   if (done.length === 3 && done.every(function (r) { return r.conclusion === 'failure'; })) problems.pipeline = 'The last 3 Pipeline runs failed (#' + done.map(function (r) { return r.n; }).join(', #') + '). ' + done[0].url;
   var mail = [];
-  ['whatsapp', 'pipeline'].forEach(function (k) {
+  ['whatsapp', 'telegram', 'pipeline'].forEach(function (k) {
     var was = w[k] || null;
     if (problems[k] && !was) { w[k] = { since: new Date(now).toISOString(), msg: problems[k] }; mail.push('PROBLEM: ' + problems[k]); }
     else if (problems[k]) { w[k].msg = problems[k]; }

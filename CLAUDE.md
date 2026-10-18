@@ -198,3 +198,11 @@
     certificate, which removes its file with it. On 18 Oct 2026 14 of 17
     certificates had lost their Drive file (`Drive.Files.remove` deletes for
     good, it does not trash).
+32. **Telegram is a live collector** (Wan, 18 Oct 2026): `collectors/telegram`
+    (bot, long polling), started on the WhatsApp VM by
+    `collectors/cloud/add-telegram.sh` as pm2 `he-telegram`. It needs a bot
+    token and the group id in `collectors/.env` (Wan creates the bot; never put
+    the token in the repo). It checks in every 5 minutes as source `telegram`,
+    `tickWatch` watches it once it has checked in once, and a message the Sheet
+    refuses is kept in `state.json` and sent again. Rows are source `telegram`;
+    the pipeline already reads them with WhatsApp.
