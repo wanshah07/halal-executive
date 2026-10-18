@@ -6,9 +6,9 @@ import { t } from '../lib/i18n'
 import Pager from '../components/Pager'
 import { count, daysAgo, fmtDateTime } from '../lib/util'
 import { catChip } from '../components/CategoryFilter'
-import { lazy, Suspense, useState } from 'react'
+import { lazy, Suspense, useMemo, useState } from 'react'
 import { monthlySeries } from '../lib/series'
-import { guessState, guessCountry } from '../lib/config'
+import { guessState, guessCountry, countryCoords } from '../lib/config'
 import { certStatus, filedDocs } from '../lib/certs'
 import AiTeam from '../components/AiTeam'
 import NewsCarousel from '../components/NewsCarousel'
@@ -22,6 +22,11 @@ const Slot = ({ h = 'h-72' }) => <div className={`card ${h} animate-pulse bg-pap
 
 export default function Overview({ lang, data, setTab }) {
   const faq = data.faq || [], docs = filedDocs(data.documents), events = data.events || [], news = data.news || [], gl = data.guidelines || []
+  // One dot per country that has a JAKIM-recognised foreign certification body.
+  const globeMarkers = useMemo(() => {
+    const n = {}; (data.fhcb || []).forEach((r) => { n[r.country] = (n[r.country] || 0) + 1 })
+    return Object.entries(n).map(([c, k]) => { const ll = countryCoords(c); return ll && { location: ll, size: 0.03 + Math.min(k, 6) * 0.008 } }).filter(Boolean)
+  }, [data.fhcb])
   const recent = faq.filter((f) => daysAgo(f.created_at) <= 7)
   const upcoming = events.filter((e) => Date.parse(e.date_end || e.date_start) >= Date.now())
   const byCat = count(faq, 'category')
@@ -53,7 +58,7 @@ export default function Overview({ lang, data, setTab }) {
   // events with posters → map → overview figures and charts → AI team.
   return (
     <div>
-      <Hero lang={lang} settings={data.settings || {}} />
+      <Hero lang={lang} settings={data.settings || {}} markers={globeMarkers} />
 
       <section className="card p-5 mb-4">
         <div className="flex items-center justify-between mb-3"><h3 className="font-semibold">{t(lang, 'recent_faq')}</h3><a href="#faq" onClick={() => setTab('faq')} className="text-sm text-brand-600 hover:underline">{t(lang, 'open_faq')}</a></div>

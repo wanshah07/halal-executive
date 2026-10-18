@@ -31,8 +31,8 @@ export default function AiModelAdmin({ lang }) {
   async function runTest(n, f, value) {
     const k = n + ':' + f
     setTest(k, { run: true })
-    try { const r = await adminPost('llm_test', { provider: n, model: value, fast: f === 'fast' }); setTest(k, r); return !!r.ok }
-    catch (e) { setTest(k, { ok: false, error: e.message }); return false }
+    try { const r = await adminPost('llm_test', { provider: n, model: value, fast: f === 'fast' }); setTest(k, r); return r }
+    catch (e) { const r = { works: false, code: 'NO REPLY', why: 'network', error: e.message }; setTest(k, r); return r }
   }
   async function save() {
     setBusy(true); setMsg('')
@@ -41,8 +41,10 @@ export default function AiModelAdmin({ lang }) {
       const c = draftOf(r); setCfg(c); setTests({}); setMsg(t(lang, 'ai_verify'))
       // Prove what was just saved: every AI that can now be asked, main and quick model.
       const who = c.mode === 'auto' ? ORDER.filter((n) => c.keys[n]) : [c.mode]
-      const res = await Promise.all(who.flatMap((n) => FIELDS.map(([f]) => runTest(n, f, c[f][n]))))
-      setMsg(t(lang, res.every(Boolean) ? 'ai_verified_ok' : 'ai_verified_bad'))
+      const jobs = who.flatMap((n) => FIELDS.map(([f]) => [n, f]))
+      const res = await Promise.all(jobs.map(([n, f]) => runTest(n, f, c[f][n])))
+      const bad = jobs.map(([n, f], k) => [n, f, res[k]]).filter((x) => !x[2].works).map(([n, f, r]) => `${NAMES[n]} ${t(lang, f === 'fast' ? 'ai_short_fast' : 'ai_short_main')}: ${r.code || 'ERROR'}`)
+      setMsg(bad.length ? `${t(lang, 'ai_verified_bad')} (${bad.join('; ')})` : t(lang, 'ai_verified_ok'))
     } catch (e) { setMsg(e.message) } finally { setBusy(false) }
   }
 
@@ -61,10 +63,14 @@ export default function AiModelAdmin({ lang }) {
     const r = tests[n + ':' + f]
     if (!r) return null
     if (r.run) return <span className="text-xs text-ink-400">{t(lang, 'ai_testing')}</span>
-    return r.ok
-      ? <span className="text-xs text-brand-700 inline-flex items-center gap-1"><Check {...ICON} size={13} />{fill(t(lang, 'ai_test_ok'), { m: r.model, s: (r.ms / 1000).toFixed(1) })}</span>
-      : <span className="text-xs text-red-700 break-words">{fill(t(lang, 'ai_test_fail'), { e: r.error || '?' })}</span>
+    return r.works
+      ? <div className="text-xs"><span className="chip bg-brand-100 text-brand-700"><span aria-hidden="true">●</span>&nbsp;{t(lang, 'ai_active')}</span> <span className="text-brand-700">{fill(t(lang, 'ai_test_ok'), { m: r.model, s: (r.ms / 1000).toFixed(1), c: r.code || 'HTTP 200' })}</span></div>
+      : <div className="text-xs space-y-0.5">
+          <div><span className="chip bg-red-100 text-red-700"><span aria-hidden="true">●</span>&nbsp;{t(lang, 'ai_inactive')} · {r.code || 'ERROR'}</span> <span className="text-red-700">{why(r.why)}</span></div>
+          {r.error && <div className="font-mono text-[11px] text-ink-400 break-words">{r.error}</div>}
+        </div>
   }
+  const why = (w) => { const k = 'ai_why_' + (w || 'other'); const v = t(lang, k); return v === k ? t(lang, 'ai_why_other') : v }
 
   return (
     <div className="card p-5 mb-4 space-y-4">
@@ -103,9 +109,12 @@ export default function AiModelAdmin({ lang }) {
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-bold">{NAMES[n]}</span><span className="text-xs text-ink-400">{n}</span>
                   {cfg.mode === n && <span className="chip bg-brand-100 text-brand-700">{t(lang, 'ai_chosen')}</span>}
-                  {!cfg.keys[n] && <span className="chip bg-red-100 text-red-700">{t(lang, 'ai_no_key')}</span>}
-                  {cfg.keys[n] && p && !p.reachable && <span className="chip bg-amber-100 text-amber-800">{t(lang, 'ai_unreachable')}</span>}
+                  {!cfg.keys[n] && <span className="chip bg-red-100 text-red-700">{t(lang, 'ai_inactive')} · NO KEY</span>}
+                  {cfg.keys[n] && p && (p.reachable
+                    ? <span className="chip bg-brand-100 text-brand-700"><span aria-hidden="true">●</span>&nbsp;{t(lang, 'ai_gateway')} {t(lang, 'ai_active')} · HTTP {p.code || 200}</span>
+                    : <span className="chip bg-red-100 text-red-700"><span aria-hidden="true">●</span>&nbsp;{t(lang, 'ai_gateway')} {t(lang, 'ai_inactive')} · {p.code || 'ERROR'}</span>)}
                 </div>
+                {cfg.keys[n] && p && !p.reachable && <p className="text-xs text-red-700">{why(p.why)}</p>}
                 {FIELDS.map(([f, label]) => (
                   <div key={f}>
                     <label className="label" htmlFor={`ai-${n}-${f}`}>{t(lang, label)}</label>

@@ -1,15 +1,23 @@
-import { useState } from 'react'
-import { safeUrl, imageUrl } from '../lib/safe'
+import { lazy, Suspense, useMemo } from 'react'
+import { safeUrl } from '../lib/safe'
 import { t } from '../lib/i18n'
+import { SITE_NAME } from '../lib/config'
 
-export default function Hero({ lang, settings }) {
+// The globe is its own chunk: the headline and the button paint first.
+const Globe = lazy(() => import('./ui/globe').then((m) => ({ default: m.Globe })))
+
+// Orange pins on the Earth: KL is the biggest; the others are the countries of
+// the foreign halal certification bodies JAKIM recognises (Overview passes them
+// in), so the globe shows the hub's reach.
+const KL = { location: [3.139, 101.6869], size: 0.1 }
+
+export default function Hero({ lang, settings, markers = [] }) {
   const title = settings.hero_title || t(lang, 'hero_default_title')
   const sub = (lang === 'bm' && settings.hero_subtitle_bm) || settings.hero_subtitle || t(lang, 'hero_default_sub')
-  const img = imageUrl(settings.hero_image)
-  const [bad, setBad] = useState(false)
+  const pins = useMemo(() => [KL, ...markers], [markers])
   return (
     <section className="card overflow-hidden mb-6">
-      <div className="grid md:grid-cols-[1fr_320px]">
+      <div className="grid md:grid-cols-[1fr_340px]">
         <div className="p-6 sm:p-8 bg-gradient-to-br from-brand-50 to-white">
           <div className="chip bg-brand-100 text-brand-700 mb-3">HALAL EXECUTIVE</div>
           <h1 className="text-2xl sm:text-3xl font-bold text-ink-900">{title}</h1>
@@ -18,11 +26,17 @@ export default function Hero({ lang, settings }) {
             <a href={safeUrl(settings.hero_cta_url, { allowHash: true }) || '#faq'} className="btn-brand mt-4">{settings.hero_cta}</a>
           )}
         </div>
-        {/* The picture fills the height of the text beside it (it never sets
-            the height itself), cropped to fit; on phones a 16:9 strip. */}
-        {img && !bad
-          ? <div className="relative aspect-[16/9] md:aspect-auto bg-brand-600"><img src={img} alt="" referrerPolicy="no-referrer" onError={() => setBad(true)} className="absolute inset-0 h-full w-full object-cover" /></div>
-          : <div className="hidden md:block bg-brand-600" />}
+        {/* The globe card: the name in a fading gradient above a turning Earth
+            that the card clips at the bottom. Decorative, so hidden from
+            screen readers; the name is already the page title. */}
+        <div className="relative h-[340px] md:h-auto md:min-h-[340px] overflow-hidden bg-gradient-to-b from-white to-sky-50" aria-hidden="true">
+          <span className="pointer-events-none absolute inset-x-0 top-5 z-10 whitespace-pre-wrap bg-gradient-to-b from-black to-gray-300/80 bg-clip-text px-4 text-center text-3xl font-semibold leading-none text-transparent">
+            {SITE_NAME}
+          </span>
+          <Suspense fallback={null}>
+            <Globe className="top-14 max-w-[300px]" markers={pins} />
+          </Suspense>
+        </div>
       </div>
     </section>
   )

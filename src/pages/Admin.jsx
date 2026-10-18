@@ -19,7 +19,7 @@ import { subscribe, enqueue, retry, forget, update, forgetDone } from '../lib/up
 // by email from the Sheet's Apps Script, and the session lasts 6 hours.
 // Only emails in ADMIN_EMAILS (managed below) can get a code.
 const FIELDS = [
-  ['hero_title', 'hero_title'], ['hero_subtitle', 'hero_sub'], ['hero_subtitle_bm', 'hero_sub'], ['hero_image', 'hero_image'], ['hero_cta', 'hero_cta'], ['hero_cta_url', 'hero_cta_url'],
+  ['hero_title', 'hero_title'], ['hero_subtitle', 'hero_sub'], ['hero_subtitle_bm', 'hero_sub'], ['hero_cta', 'hero_cta'], ['hero_cta_url', 'hero_cta_url'],
 ]
 
 function SignIn({ lang, onIn }) {

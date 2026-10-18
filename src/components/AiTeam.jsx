@@ -48,7 +48,7 @@ export default function AiTeam({ lang, runs, sample }) {
             <div key={c.key} className="flex items-center gap-4 rounded-xl border border-line p-4 bg-gradient-to-br from-paper to-white">
               <div className="shrink-0"><Robot tone={c.tone} state={state} size={118} /></div>
               <div className="min-w-0">
-                <div className="flex items-center gap-2 flex-wrap"><span className="text-lg font-bold">{c.name}</span><span className={`chip ${chip}`}><span aria-hidden="true">●</span>&nbsp;{t(lang, 'st_' + state)}</span>{st && st.mode === c.key && <span className="chip bg-brand-100 text-brand-700">{t(lang, 'ai_chosen')}</span>}</div>
+                <div className="flex items-center gap-2 flex-wrap"><span className="text-lg font-bold">{c.name}</span><span className={`chip ${chip}`}><span aria-hidden="true">●</span>&nbsp;{t(lang, 'st_' + state)}{state === 'offline' && p && p.code ? ` · ${/^\d+$/.test(p.code) ? 'HTTP ' + p.code : p.code}` : ''}</span>{st && st.mode === c.key && <span className="chip bg-brand-100 text-brand-700">{t(lang, 'ai_chosen')}</span>}</div>
                 <div className="text-xs text-ink-400 mb-1">{c.key}</div>
                 <dl className="text-sm grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
                   <dt className="text-ink-400">{t(lang, 'model_used')}</dt><dd className="truncate font-medium">{(p && p.model) || (run && run.model) || '—'}</dd>

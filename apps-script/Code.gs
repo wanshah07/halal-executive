@@ -1288,6 +1288,20 @@ function markProvider(name, model) {
 }
 
 // ---- Admin -> AI model ----
+// Why a call failed: a short code (HTTP status or a word) and a reason class
+// the page turns into a sentence (ai_why_* in i18n).
+function llmFail(e) {
+  var m = String((e && e.message) || e || ''), h = m.match(/HTTP (\d{3})/), c = h ? h[1] : '';
+  if (/key not set|no api key/i.test(m)) return { code: 'NO KEY', why: 'key' };
+  if (c === '401' || c === '403') return { code: 'HTTP ' + c, why: 'auth' };
+  if (c === '429') return { code: 'HTTP 429', why: 'limit' };
+  if (c === '404' || c === '400') return { code: 'HTTP ' + c, why: /model/i.test(m) ? 'model' : (c === '404' ? 'notfound' : 'other') };
+  if (c && c.charAt(0) === '5') return { code: 'HTTP ' + c, why: 'server' };
+  if (/empty completion|reply cut off/i.test(m)) return { code: 'EMPTY', why: 'empty' };
+  if (/timeout|timed out/i.test(m)) return { code: 'TIMEOUT', why: 'timeout' };
+  if (/dns|address unavailable|unable to resolve|could not resolve|connection|unreachable/i.test(m)) return { code: 'NO CONNECTION', why: 'network' };
+  return { code: c ? 'HTTP ' + c : 'ERROR', why: 'other' };
+}
 function llmConfigGet() {
   var cfg = llmCfg(), keys = {};
   Object.keys(PROVIDERS).forEach(function (n) { keys[n] = !!props().getProperty(PROVIDERS[n].keyProp); });
@@ -1299,14 +1313,14 @@ function llmConfigGet() {
 function llmModels() {
   var out = { ok: true, providers: {} };
   Object.keys(PROVIDERS).forEach(function (n) {
-    var s = { key: !!props().getProperty(PROVIDERS[n].keyProp), reachable: false, models: [], auto_main: '', auto_fast: '', error: '' };
+    var s = { key: !!props().getProperty(PROVIDERS[n].keyProp), reachable: false, code: '', why: '', models: [], auto_main: '', auto_fast: '', error: '' };
     if (s.key) {
       try {
         var ids = listIds(n); s.reachable = true;
-        s.models = ids.filter(function (i) { return !NOT_CHAT.test(i); }).sort();
+        s.code = '200'; s.models = ids.filter(function (i) { return !NOT_CHAT.test(i); }).sort();
         s.auto_main = pickMain(ids, []) || ''; s.auto_fast = pickFast(ids) || s.auto_main;
-      } catch (e) { s.error = String(e.message || e).slice(0, 160); }
-    }
+      } catch (e) { var f = llmFail(e); s.error = String(e.message || e).slice(0, 160); s.code = f.code; s.why = f.why; }
+    } else { s.code = 'NO KEY'; s.why = 'key'; }
     out.providers[n] = s;
   });
   return out;
@@ -1333,16 +1347,18 @@ function llmConfigSave(b) {
 
 // One real question to one provider and one exact model, timed. It never
 // falls back to the other provider and never touches the speed tally, so the
-// answer says whether THIS choice works.
+// answer says whether THIS choice works. A failed test is still a reply (ok:
+// true, works:false): the page must see its code and reason, and an ok:false
+// reply would reach it as a bare error.
 function llmTest(b) {
   var name = String(b.provider || ''); if (!PROVIDERS[name]) throw new Error('unknown provider');
-  if (!props().getProperty(PROVIDERS[name].keyProp)) return { ok: false, provider: name, error: 'No API key set for ' + name + '.' };
+  if (!props().getProperty(PROVIDERS[name].keyProp)) return { ok: true, works: false, provider: name, code: 'NO KEY', why: 'key', ms: 0, error: 'No API key set for ' + name + '.' };
   var model = cleanModel(b.model).split(',')[0].trim(), t0 = Date.now();
   try {
     if (!model) { var ids = listIds(name); model = (b.fast ? pickFast(ids) : null) || pickMain(ids, []); }
     var r = callProvider(name, [{ role: 'user', content: 'Balas dengan satu perkataan sahaja: sedia.' }], { model: model, max_tokens: 600, temperature: 0 });
-    return { ok: true, provider: name, model: r.model, ms: Date.now() - t0, text: String(r.text).replace(/<think>[\s\S]*?<\/think>/g, '').trim().slice(0, 120) };
-  } catch (e) { return { ok: false, provider: name, model: model, ms: Date.now() - t0, error: String(e.message || e).slice(0, 240) }; }
+    return { ok: true, works: true, provider: name, model: r.model, code: 'HTTP 200', ms: Date.now() - t0, text: String(r.text).replace(/<think>[\s\S]*?<\/think>/g, '').trim().slice(0, 120) };
+  } catch (e) { var f = llmFail(e); return { ok: true, works: false, provider: name, model: model, ms: Date.now() - t0, code: f.code, why: f.why, error: String(e.message || e).slice(0, 240) }; }
 }
 
 function llmProxy(b) { var r = complete(b.messages || [], b.opts || {}); return { ok: true, text: r.text, provider: r.provider, model: r.model, fallback_from: r.fallback_from || '' }; }
@@ -1583,13 +1599,13 @@ function aiStatus() {
   var runs = readTab('Runs');
   var out = { ok: true, checked_at: new Date().toISOString(), mode: llmCfg().mode, strict: llmCfg().strict, providers: {} };
   Object.keys(PROVIDERS).forEach(function (n) {
-    var p = PROVIDERS[n], key = props().getProperty(p.keyProp), s = { name: n === 'AFIQ' ? 'Wanshah 1' : 'Wanshah 2', provider: n, key: !!key, reachable: false, model: '', fast_model: '', ms: null, last_used: '', last_ok: '', last_model: '' };
+    var p = PROVIDERS[n], key = props().getProperty(p.keyProp), s = { name: n === 'AFIQ' ? 'Wanshah 1' : 'Wanshah 2', provider: n, key: !!key, reachable: false, code: key ? '' : 'NO KEY', model: '', fast_model: '', ms: null, last_used: '', last_ok: '', last_model: '' };
     if (key) {
       var t = Date.now();
       try {
         var r = UrlFetchApp.fetch(p.base + '/models', { headers: { Authorization: 'Bearer ' + key }, muteHttpExceptions: true });
-        s.ms = Date.now() - t; s.reachable = r.getResponseCode() < 300;
-      } catch (e) { s.ms = Date.now() - t; }
+        s.ms = Date.now() - t; s.reachable = r.getResponseCode() < 300; s.code = String(r.getResponseCode());
+      } catch (e) { s.ms = Date.now() - t; s.code = llmFail(e).code; }
       try { s.model = resolveModel(n, false, false); s.fast_model = resolveModel(n, false, true); } catch (e) { /* unreachable */ }
     }
     var last = runs.filter(function (x) { return x.provider === n; }).sort(function (a, b) { return Date.parse(b.ts) - Date.parse(a.ts); })[0];
