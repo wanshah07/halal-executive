@@ -12,7 +12,10 @@ const Globe = lazy(() => import('./ui/globe').then((m) => ({ default: m.Globe })
 const KL = { location: [3.139, 101.6869], size: 0.1 }
 
 export default function Hero({ lang, settings, markers = [] }) {
-  const title = settings.hero_title || t(lang, 'hero_default_title')
+  // The welcome line replaces the old plain "Halal Executive" title; a title Admin
+  // has typed (hero_title, or hero_title_bm for Bahasa Malaysia) still wins.
+  const typed = settings.hero_title && !/^halal executive$/i.test(settings.hero_title.trim())
+  const title = (lang === 'bm' && settings.hero_title_bm) || (typed ? settings.hero_title : t(lang, 'hero_welcome'))
   const sub = (lang === 'bm' && settings.hero_subtitle_bm) || settings.hero_subtitle || t(lang, 'hero_default_sub')
   const pins = useMemo(() => [KL, ...markers], [markers])
   return (
@@ -29,12 +32,12 @@ export default function Hero({ lang, settings, markers = [] }) {
         {/* The globe card: the name in a fading gradient above a turning Earth
             that the card clips at the bottom. Decorative, so hidden from
             screen readers; the name is already the page title. */}
-        <div className="relative h-[340px] md:h-auto md:min-h-[340px] overflow-hidden bg-gradient-to-b from-white to-sky-50" aria-hidden="true">
-          <span className="pointer-events-none absolute inset-x-0 top-5 z-10 whitespace-pre-wrap bg-gradient-to-b from-black to-gray-300/80 bg-clip-text px-4 text-center text-3xl font-semibold leading-none text-transparent">
+        <div className="relative h-[340px] md:h-auto md:min-h-[340px] overflow-hidden bg-gradient-to-b from-white to-brand-50" aria-hidden="true">
+          <span className="pointer-events-none absolute inset-x-0 top-4 z-10 whitespace-pre-wrap bg-gradient-to-b from-[#063d22] via-[#0b6b3a] to-[#1f8f55] bg-clip-text whitespace-nowrap px-2 text-center text-[28px] font-bold leading-tight text-transparent">
             {SITE_NAME}
           </span>
           <Suspense fallback={null}>
-            <Globe className="top-14 max-w-[300px]" markers={pins} />
+            <Globe className="top-16 max-w-[300px]" markers={pins} />
           </Suspense>
         </div>
       </div>

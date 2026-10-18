@@ -42,7 +42,7 @@ void main(){
     col = t * lit;
     float sea = step(t.r * 1.5, t.b) * step(t.g, t.b * 1.05);
     col += sea * pow(max(dot(reflect(-L, n), vec3(0.0, 0.0, 1.0)), 0.0), 36.0) * 0.28;
-    col += vec3(0.30, 0.58, 1.0) * pow(1.0 - n.z, 2.6) * 0.75;
+    col += vec3(0.42, 0.86, 0.58) * pow(1.0 - n.z, 2.6) * 0.7; // a thin green atmosphere: the brand colour, not blue
     for (int i = 0; i < ${MAX_MARKERS}; i++) {
       if (float(i) >= uN) break;
       vec4 m = uMarks[i];
@@ -54,8 +54,8 @@ void main(){
     alpha = 1.0 - smoothstep(0.992, 1.0, r);
   } else {
     float box = max(abs(p.x), abs(p.y));
-    float glow = exp(-(r - 1.0) * 8.0) * 0.5 * (1.0 - smoothstep(1.0, 1.0 / R, box)); // gone before the canvas edge, so no box shows
-    col = vec3(0.40, 0.68, 1.0) * glow; alpha = glow;
+    float glow = exp(-(r - 1.0) * 12.0) * 0.4 * (1.0 - smoothstep(1.0, 1.0 / R, box)); // gone before the canvas edge, so no box shows
+    col = vec3(0.16, 0.62, 0.38) * glow; alpha = glow;
   }
   gl_FragColor = vec4(col * (r < 1.0 ? alpha : 1.0), alpha);
 }`
@@ -188,7 +188,7 @@ export function Globe({
   return (
     <div className={cn("absolute inset-0 mx-auto aspect-[1/1] w-full max-w-[600px]", className)}>
       {flat ? (
-        <div className="absolute inset-[7%] overflow-hidden rounded-full shadow-[0_0_40px_6px_rgba(100,170,255,0.35)]">
+        <div className="absolute inset-[7%] overflow-hidden rounded-full shadow-[0_0_28px_4px_rgba(22,140,80,0.3)]">
           <div className="earth-flat size-full" style={{ backgroundImage: `url(${EARTH})` }} />
           <div className="absolute inset-0 rounded-full bg-[radial-gradient(circle_at_32%_28%,rgba(255,255,255,0.25),rgba(0,0,0,0)_45%,rgba(0,10,40,0.35)_100%)]" />
         </div>

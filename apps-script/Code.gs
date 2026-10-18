@@ -32,11 +32,11 @@
 
 var TABS = {
   Raw:        ['id','source','group','msg_id','sender_hash','ts','text','attachments','status','processed_at','model','notes','fp'],
-  FAQ:        ['id','category','subcategory','question_en','question_bm','answer_formal_en','answer_layman_en','answer_formal_bm','answer_layman_bm','source_refs','confidence','status','created_at','updated_at','model','verify_notes','verified_at'],
-  Guidelines: ['id','category','title','title_bm','summary_en','summary_bm','link','issuer','effective_date','updated_at','status','source'],
-  Documents:  ['id','title','kind','category','drive_file_id','drive_url','content_hash','version','supersedes_id','source_msg_id','received_at','updated_at','status','notes'],
-  Certificates: ['id','company','cert_no','scheme','category','state','valid_from','valid_to','products','drive_url','doc_id','status','updated_at','notes','issuer','legal_authority','reg_no','issue_date','office_address','factory_address','scope'],
-  Events:     ['id','title','title_bm','date_start','date_end','venue','poster_url','link','description','status','source','poster_file','kind'],
+  FAQ:        ['id','category','subcategory','question_en','question_bm','answer_formal_en','answer_layman_en','answer_formal_bm','answer_layman_bm','source_refs','confidence','status','created_at','updated_at','model','verify_notes','verified_at','published_at'],
+  Guidelines: ['id','category','title','title_bm','summary_en','summary_bm','link','issuer','effective_date','updated_at','status','source','created_at','published_at'],
+  Documents:  ['id','title','kind','category','drive_file_id','drive_url','content_hash','version','supersedes_id','source_msg_id','received_at','updated_at','status','notes','published_at'],
+  Certificates: ['id','company','cert_no','scheme','category','state','valid_from','valid_to','products','drive_url','doc_id','status','updated_at','notes','issuer','legal_authority','reg_no','issue_date','office_address','factory_address','scope','created_at','published_at'],
+  Events:     ['id','title','title_bm','date_start','date_end','venue','poster_url','link','description','status','source','poster_file','kind','created_at','published_at'],
   News:       ['id','title','url','source','published_at','fetched_at','expires_at','summary_en','summary_bm','category'],
   Settings:   ['key','value'],
   Runs:       ['ts','job','provider','model','processed','ok','error'],
@@ -44,8 +44,8 @@ var TABS = {
   RefChunks:  ['id','ref_id','page','text','terms'],
   // Foreign halal certification bodies recognised by JAKIM (Admin → FHCB) and
   // the directory of training and service providers (Admin → Directory).
-  FHCB:       ['id','no','country','name','kind','address','persons','tel','fax','email','website','logo_url','logo_file','note','source_ref','source_page','effective_date','status','updated_at'],
-  Directory:  ['id','type','subtype','name','coverage','state','country','address','pic','phone','email','website','website2','accreditation','description','trainers','logo_url','logo_file','source_ref','status','updated_at'],
+  FHCB:       ['id','no','country','name','kind','address','persons','tel','fax','email','website','logo_url','logo_file','note','source_ref','source_page','effective_date','status','updated_at','created_at','published_at'],
+  Directory:  ['id','type','subtype','name','coverage','state','country','address','pic','phone','email','website','website2','accreditation','description','trainers','logo_url','logo_file','source_ref','status','updated_at','created_at','published_at'],
 };
 
 // Tabs the pipeline may write with upsert/delete. Settings, Raw and Runs have
@@ -1065,6 +1065,19 @@ function cellSafe(x) {
   return /^[=+@]|^-(?!\d+(\.\d+)?$)|^0\d/.test(x) ? "'" + x : x;
 }
 function safeRow(r) { return r.map(cellSafe); }
+// Uploaded and published stamps (Wan, 18 Oct 2026). created_at is written once,
+// when a row first appears; published_at once, the first time its status is a
+// visible one (published, current, indexed). A whole-row upsert keeps both, and
+// a status change through updateByIds stamps published_at too.
+var LIVE_STATUS = { published: 1, current: 1, indexed: 1 };
+function keepStamp(x) { return x instanceof Date ? x.toISOString() : (x == null ? '' : String(x)); }
+function stampLine(cols, line, old) {
+  var ci = cols.indexOf('created_at'), pi = cols.indexOf('published_at'), si = cols.indexOf('status'), now = new Date().toISOString();
+  if (ci >= 0 && !line[ci]) line[ci] = (old && keepStamp(old[ci])) || now;
+  if (pi >= 0 && !line[pi]) line[pi] = (old && keepStamp(old[pi])) || (si >= 0 && LIVE_STATUS[String(line[si])] ? now : '');
+  return line;
+}
+
 function upsert(tab, rows) {
   var cols = TABS[tab]; if (!cols) throw new Error('unknown tab ' + tab);
   var sh = sheet(tab); ensureHeader(sh, cols); pubBust();
@@ -1073,6 +1086,7 @@ function upsert(tab, rows) {
   var ins = 0, upd = 0;
   rows.forEach(function (r) {
     var line = cols.map(function (c) { var x = r[c]; return x === undefined || x === null ? '' : cellSafe(typeof x === 'object' ? JSON.stringify(x) : x); });
+    stampLine(cols, line, r.id && idx[String(r.id)] ? v[idx[String(r.id)] - 1] : null);
     if (r.id && idx[String(r.id)]) { sh.getRange(idx[String(r.id)], 1, 1, cols.length).setValues([line]); upd++; }
     else { sh.appendRow(line); idx[String(r.id)] = sh.getLastRow(); ins++; }
   });
@@ -1080,12 +1094,14 @@ function upsert(tab, rows) {
 }
 
 function updateByIds(tab, ids, patch) {
-  var cols = TABS[tab], sh = sheet(tab), last = sh.getLastRow(), n = 0; pubBust();
+  var cols = TABS[tab], sh = sheet(tab), last = sh.getLastRow(), n = 0; pubBust(); ensureHeader(sh, cols);
   var v = last > 1 ? [[cols[0]]].concat(sh.getRange(2, 1, last - 1, 1).getValues()) : [[cols[0]]]; // id column only
   var want = {}; ids.forEach(function (i) { want[String(i)] = 1; });
   v.forEach(function (r, i) {
     if (!i || !want[String(r[0])]) return;
     Object.keys(patch).forEach(function (k) { var c = cols.indexOf(k); if (c >= 0) sh.getRange(i + 1, c + 1).setValue(cellSafe(patch[k])); });
+    var pc = cols.indexOf('published_at');
+    if (pc >= 0 && LIVE_STATUS[String(patch.status)]) { var pcell = sh.getRange(i + 1, pc + 1); if (!pcell.getValue()) pcell.setValue(new Date().toISOString()); }
     n++;
   });
   return { ok: true, updated: n };

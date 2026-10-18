@@ -5,6 +5,7 @@ import Segment from '../components/Segment'
 import CategoryFilter, { catChip } from '../components/CategoryFilter'
 import { t } from '../lib/i18n'
 import { fmtDate, fmtDateTime } from '../lib/util'
+import Stamps, { stampCols } from '../components/Stamps'
 import { certStatus, splitProducts } from '../lib/certs'
 import { ICON, ChevronDown, ChevronRight, ExternalLink } from '../components/Icon'
 import Lightbox from '../components/Lightbox'
@@ -101,6 +102,7 @@ export default function Certificates({ lang, data }) {
           <details open={isOpen(c.id)} onToggle={(e) => setOpen((o) => ({ ...o, [c.id]: e.currentTarget.open }))}>
             <summary className="cursor-pointer text-brand-600 text-sm">{t(lang, 'cd_show')}</summary>{products(c)}
           </details>) },
+        ...stampCols(lang),
         { key: 'updated_at', label: t(lang, 'updated'), render: (c) => fmtDate(c.updated_at, lang) },
       ]}
       renderCard={(c) => (
@@ -118,6 +120,7 @@ export default function Certificates({ lang, data }) {
             <span>{safeUrl(c.drive_url) ? <a className="hover:underline" href={safeUrl(c.drive_url)} target="_blank" rel="noreferrer">Drive <ExternalLink {...ICON} size={12} className="inline -mt-0.5" /></a> : c.doc_id || ''}</span>
             <span>{t(lang, 'updated')} {fmtDateTime(c.updated_at, lang)}</span>
           </div>
+          <Stamps r={c} lang={lang} className="mt-1 text-xs text-ink-400" />
         </article>
       )} />
   )

@@ -4,6 +4,7 @@ import { API_URL } from '../lib/config'
 import { t } from '../lib/i18n'
 import { fmtDateTime } from '../lib/util'
 import { filedDocs } from '../lib/certs'
+import Stamps from '../components/Stamps'
 import AiModelAdmin from '../components/AiModelAdmin'
 import { safeUrl, imageUrl } from '../lib/safe'
 import { RefAdmin, EventsAdmin, ContentManager, deleteForGood } from '../components/AdminExtra'
@@ -19,7 +20,7 @@ import { subscribe, enqueue, retry, forget, update, forgetDone } from '../lib/up
 // by email from the Sheet's Apps Script, and the session lasts 6 hours.
 // Only emails in ADMIN_EMAILS (managed below) can get a code.
 const FIELDS = [
-  ['hero_title', 'hero_title'], ['hero_subtitle', 'hero_sub'], ['hero_subtitle_bm', 'hero_sub'], ['hero_cta', 'hero_cta'], ['hero_cta_url', 'hero_cta_url'],
+  ['hero_title', 'hero_title'], ['hero_title_bm', 'hero_title'], ['hero_subtitle', 'hero_sub'], ['hero_subtitle_bm', 'hero_sub'], ['hero_cta', 'hero_cta'], ['hero_cta_url', 'hero_cta_url'],
 ]
 
 function SignIn({ lang, onIn }) {
@@ -336,6 +337,7 @@ function DraftItem({ lang, tab, r, onSet, onDelete, onSaved }) {
         <div className="min-w-0 flex-1">
           <div className="text-xs text-ink-400">{r.id}{r.category ? ` · ${r.category}` : ''}{r.confidence ? ` · ${r.confidence}` : ''}{String(r.notes || '').includes('from:group') ? ' · WhatsApp' : ''}</div>
           <button type="button" className="font-medium text-left hover:underline" aria-expanded={openFull} onClick={() => setOpenFull(!openFull)}>{title || '(no title)'}</button>
+          <Stamps r={r} lang={lang} className="text-xs text-ink-400" />
           {!openFull && <button type="button" className="w-full text-left text-sm text-ink-600 line-clamp-3 whitespace-pre-wrap" onClick={() => setOpenFull(true)}>{body} <span className="text-brand-700">{t(lang, 'read_full')}</span></button>}
         </div>
         <div className="flex flex-wrap gap-2 shrink-0">

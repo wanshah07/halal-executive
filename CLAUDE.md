@@ -161,7 +161,24 @@
     hidden events.
 28. **The hero globe is a real Earth** (`ui/globe.tsx`, `public/brand/earth.jpg`,
     NASA Blue Marble): one WebGL shader, no 3D library, turns by itself, pins
-    on the FHCB countries, CSS fallback without WebGL. cobe was tried first
+    on the FHCB countries, a thin green glow (brand colour, never blue) and the
+    name in dark green above it, CSS fallback without WebGL. cobe was tried first
     and dropped: it is a monochrome dot map and its shader rendered black on
     software GL. The picture is NASA imagery (generally free to use with
     credit); Wan to confirm the credit line he wants.
+29. **Every item shows when it was uploaded and when it was published**
+    (Wan, 18 Oct 2026), Malaysia time. Code.gs stamps `created_at` once, when a
+    row first appears, and `published_at` once, the first time its status is
+    published, current or indexed (`stampLine` in `upsert`, and `updateByIds`
+    for a status change); a whole-row upsert keeps both, and hiding then
+    re-publishing keeps the first moment. Columns were appended to Guidelines,
+    Certificates, Events, FHCB and Directory (created_at, published_at) and to
+    FAQ and Documents (published_at). Rows from before the stamps fall back, in
+    the page only (`uploadedAt`/`publishedAt` in util.js): the received, added
+    or fetched time, the time inside a hand-made id (EV-M261016011450), then the
+    last update. News shows Fetched and the source's own date; References show
+    added and indexed. Nothing was back-filled in the Sheet.
+30. **The hero title is "Welcome to Halal Executive Hub" / "Selamat Datang ke
+    Halal Executive Hub"** unless Admin types a title (`hero_title`, and
+    `hero_title_bm` for Bahasa Malaysia); the old plain "Halal Executive" counts
+    as not typed.

@@ -56,11 +56,11 @@ const ls = (k, d) => { try { return localStorage.getItem(k) ?? d } catch { retur
 
 // Export columns per segment: the same fields the table view shows.
 const EXPORT = (lang, data) => ({
-  faq: { title: t(lang, 'faq'), rows: data.faq || [], cols: ['id', 'category', 'subcategory', 'question_en', 'question_bm', 'answer_formal_en', 'answer_layman_en', 'answer_formal_bm', 'answer_layman_bm', 'confidence', 'status', 'updated_at'] },
-  certificates: { title: t(lang, 'certificates'), rows: (data.certificates || []).map((c) => ({ ...c, validity: certStatus(c), products: splitProducts(c.products).join('; ') })), cols: ['id', 'validity', 'company', 'cert_no', 'scheme', 'category', 'state', 'valid_from', 'valid_to', 'products', 'drive_url', 'updated_at'] },
-  guidelines: { title: t(lang, 'guidelines'), rows: data.guidelines || [], cols: ['id', 'category', 'title', 'title_bm', 'issuer', 'summary_en', 'summary_bm', 'link', 'effective_date', 'updated_at'] },
-  documents: { title: t(lang, 'documents'), rows: filedDocs(data.documents), cols: ['id', 'status', 'title', 'kind', 'category', 'version', 'supersedes_id', 'received_at', 'updated_at', 'drive_url'] },
-  events: { title: t(lang, 'events'), rows: data.events || [], cols: ['id', 'kind', 'title', 'title_bm', 'date_start', 'date_end', 'venue', 'link', 'description'] },
+  faq: { title: t(lang, 'faq'), rows: data.faq || [], cols: ['id', 'category', 'subcategory', 'question_en', 'question_bm', 'answer_formal_en', 'answer_layman_en', 'answer_formal_bm', 'answer_layman_bm', 'confidence', 'status', 'updated_at', 'created_at', 'published_at'] },
+  certificates: { title: t(lang, 'certificates'), rows: (data.certificates || []).map((c) => ({ ...c, validity: certStatus(c), products: splitProducts(c.products).join('; ') })), cols: ['id', 'validity', 'company', 'cert_no', 'scheme', 'category', 'state', 'valid_from', 'valid_to', 'products', 'drive_url', 'updated_at', 'created_at', 'published_at'] },
+  guidelines: { title: t(lang, 'guidelines'), rows: data.guidelines || [], cols: ['id', 'category', 'title', 'title_bm', 'issuer', 'summary_en', 'summary_bm', 'link', 'effective_date', 'updated_at', 'created_at', 'published_at'] },
+  documents: { title: t(lang, 'documents'), rows: filedDocs(data.documents), cols: ['id', 'status', 'title', 'kind', 'category', 'version', 'supersedes_id', 'received_at', 'updated_at', 'drive_url', 'published_at'] },
+  events: { title: t(lang, 'events'), rows: data.events || [], cols: ['id', 'kind', 'title', 'title_bm', 'date_start', 'date_end', 'venue', 'link', 'description', 'created_at', 'published_at'] },
   fhcb: { title: t(lang, 'fhcb'), rows: data.fhcb || [], cols: ['id', 'no', 'country', 'name', 'kind', 'address', 'persons', 'tel', 'fax', 'email', 'website', 'source_ref', 'effective_date', 'updated_at'] },
   directory: { title: t(lang, 'directory'), rows: data.directory || [], cols: ['id', 'type', 'subtype', 'name', 'state', 'country', 'coverage', 'address', 'pic', 'phone', 'email', 'website', 'website2', 'accreditation', 'description', 'source_ref', 'updated_at'] },
   news: { title: t(lang, 'news'), rows: data.news || [], cols: ['id', 'category', 'title', 'source', 'url', 'published_at', 'expires_at', 'summary_en', 'summary_bm'] },

@@ -32,3 +32,13 @@ export const download = (name, text, type = 'text/csv') => {
   a.download = name
   a.click()
 }
+
+// When a row was uploaded and when it was published (Wan, 18 Oct 2026). The
+// Sheet now stamps both (created_at, published_at); rows from before that fall
+// back to the best moment they carry: the file's received/added/fetched time,
+// the time inside a hand-made id (EV-M261016011450 is 16 Oct 2026 01:14:50 MYT),
+// then the last update.
+const LIVE = ['published', 'current', 'indexed']
+const idStamp = (r) => { const m = /-M?(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})$/.exec(String((r && r.id) || '')); return m ? `20${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}+08:00` : '' }
+export const uploadedAt = (r) => (r && (r.created_at || r.received_at || r.added_at || r.fetched_at || idStamp(r) || r.updated_at)) || ''
+export const publishedAt = (r) => (r && (r.published_at || r.indexed_at || (LIVE.includes(r.status) ? r.updated_at || uploadedAt(r) : ''))) || ''

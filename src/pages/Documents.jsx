@@ -3,7 +3,8 @@ import { useState } from 'react'
 import Segment from '../components/Segment'
 import CategoryFilter, { catChip } from '../components/CategoryFilter'
 import { t } from '../lib/i18n'
-import { fmtDateTime } from '../lib/util'
+import { fmtDateTime, publishedAt } from '../lib/util'
+import Stamps from '../components/Stamps'
 import { filedDocs } from '../lib/certs'
 
 // Certificates and attachments picked out of the groups, filed in Drive by
@@ -33,7 +34,8 @@ export default function Documents({ lang, data }) {
         { key: 'kind', label: t(lang, 'kind'), render: (d) => kindName(d.kind, lang) },
         { key: 'category', label: t(lang, 'category'), render: (d) => catChip(d.category, lang) },
         { key: 'version', label: t(lang, 'version'), render: (d) => `v${d.version || 1}` },
-        { key: 'received_at', label: t(lang, 'received'), render: (d) => fmtDateTime(d.received_at, lang) },
+        { key: 'received_at', label: t(lang, 'uploaded_on'), render: (d) => fmtDateTime(d.received_at, lang) },
+        { key: 'published', label: t(lang, 'published_on'), render: (d) => fmtDateTime(publishedAt(d), lang) },
         { key: 'updated_at', label: t(lang, 'updated'), render: (d) => fmtDateTime(d.updated_at, lang) },
         { key: 'supersedes_id', label: t(lang, 'supersedes') },
       ]}
@@ -42,7 +44,8 @@ export default function Documents({ lang, data }) {
           <div className="flex items-center justify-between mb-2">{status(d)}<span className="text-xs text-ink-400">v{d.version || 1} · {kindName(d.kind, lang)}</span></div>
           {safeUrl(d.drive_url) ? <a href={safeUrl(d.drive_url)} target="_blank" rel="noreferrer" className="font-semibold hover:underline">{d.title}</a> : <div className="font-semibold">{d.title}</div>}
           <div className="mt-2 flex items-center gap-2">{catChip(d.category, lang)}{d.supersedes_id && <span className="text-xs text-ink-400">{t(lang, 'supersedes')} {d.supersedes_id}</span>}</div>
-          <div className="mt-3 text-xs text-ink-400">{t(lang, 'received')} {fmtDateTime(d.received_at, lang)}<br />{t(lang, 'updated')} {fmtDateTime(d.updated_at, lang)}</div>
+          <Stamps r={d} lang={lang} />
+          <div className="mt-1 text-xs text-ink-400">{t(lang, 'updated')} {fmtDateTime(d.updated_at, lang)}</div>
         </article>
       )} />
   )

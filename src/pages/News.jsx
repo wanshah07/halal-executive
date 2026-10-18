@@ -4,6 +4,7 @@ import { catChip } from '../components/CategoryFilter'
 import { t } from '../lib/i18n'
 import { NEWS_TTL_HOURS } from '../lib/config'
 import { fmtDateTime, hoursLeft } from '../lib/util'
+import Stamps, { stampCols } from '../components/Stamps'
 
 // News rows carry expires_at = fetched_at + 72 h. The sweep deletes expired
 // rows from the Sheet; the page also hides anything past expiry so a stale
@@ -18,6 +19,7 @@ export default function News({ lang, data }) {
         { key: 'title', label: t(lang, 'title'), render: (n) => <a className="font-medium hover:underline" href={safeUrl(n.url) || undefined} target="_blank" rel="noreferrer">{n.title}</a> },
         { key: 'source', label: t(lang, 'source') },
         { key: 'published_at', label: t(lang, 'published'), render: (n) => fmtDateTime(n.published_at, lang) },
+        { key: 'fetched_at', label: t(lang, 'fetched_on'), render: (n) => fmtDateTime(n.fetched_at, lang) },
         { key: 'expires_at', label: t(lang, 'expires'), render: (n) => `${hoursLeft(n.expires_at)} h` },
       ]}
       renderCard={(n) => (
@@ -25,7 +27,8 @@ export default function News({ lang, data }) {
           <div className="flex items-center justify-between mb-2">{catChip(n.category, lang)}<span className="text-xs text-ink-400">{t(lang, 'expires')} {hoursLeft(n.expires_at)} h</span></div>
           <a href={safeUrl(n.url) || undefined} target="_blank" rel="noreferrer" className="font-semibold hover:underline">{n.title}</a>
           <p className="text-sm text-ink-600 mt-2">{sum(n)}</p>
-          <div className="mt-3 text-xs text-ink-400">{n.source} · {fmtDateTime(n.published_at, lang)}</div>
+          <div className="mt-3 text-xs text-ink-400">{n.source} · {t(lang, 'published_on')} {fmtDateTime(n.published_at, lang)}</div>
+          <Stamps up={n.fetched_at} pub={''} upLabel="fetched_on" lang={lang} className="text-xs text-ink-400" />
         </article>
       )} />
   )

@@ -3,6 +3,7 @@ import Segment from '../components/Segment'
 import CategoryFilter, { catChip } from '../components/CategoryFilter'
 import { t } from '../lib/i18n'
 import { fmtDate } from '../lib/util'
+import Stamps, { stampCols } from '../components/Stamps'
 
 export default function FAQ({ lang, data, focusId, focusKey }) {
   const [cat, setCat] = useState('all')
@@ -43,6 +44,7 @@ export default function FAQ({ lang, data, focusId, focusKey }) {
         { key: 'subcategory', label: 'Topic' },
         { key: 'q', label: t(lang, 'question'), render: q },
         { key: 'a', label: t(lang, 'answer'), render: (f) => <span className="whitespace-pre-wrap">{a(f)}</span> },
+        ...stampCols(lang),
         { key: 'updated_at', label: t(lang, 'updated'), render: (f) => fmtDate(f.updated_at, lang) },
       ]}
       renderCard={(f) => (
@@ -51,7 +53,8 @@ export default function FAQ({ lang, data, focusId, focusKey }) {
           <button className="text-left font-semibold leading-snug" onClick={() => setOpen(open === f.id ? null : f.id)}>{q(f)}</button>
           {(open === f.id) && <p className="mt-2 text-sm whitespace-pre-wrap text-ink-900">{a(f)}</p>}
           {open !== f.id && <p className="mt-2 text-sm text-ink-600 line-clamp-3">{a(f)}</p>}
-          <div className="mt-3 text-xs text-ink-400 text-right">{fmtDate(f.updated_at, lang)}</div>
+          <Stamps r={f} lang={lang} />
+          <div className="mt-1 text-xs text-ink-400 text-right">{t(lang, 'updated')} {fmtDate(f.updated_at, lang)}</div>
         </article>
       )} />
     </div>

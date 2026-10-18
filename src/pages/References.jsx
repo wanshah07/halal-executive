@@ -3,6 +3,7 @@ import { askRefs } from '../lib/api'
 import { API_URL } from '../lib/config'
 import { t } from '../lib/i18n'
 import { fmtDate } from '../lib/util'
+import Stamps, { stampCols } from '../components/Stamps'
 import { catChip } from '../components/CategoryFilter'
 import { ICON, ChevronDown, ChevronRight } from '../components/Icon'
 
@@ -78,7 +79,8 @@ export default function References({ lang, data }) {
             <li key={r.id} className="card p-4">
               <div className="flex items-center justify-between gap-2 mb-1">{catChip(r.category, lang)}<span className="text-xs text-ink-400">{r.pages ? `${r.pages} ${t(lang, 'pages')}` : ''}</span></div>
               <div className="font-semibold leading-snug">{r.title}</div>
-              <div className="text-xs text-ink-400">{[r.issuer, r.edition].filter(Boolean).join(' · ')}{r.indexed_at ? ` · ${fmtDate(r.indexed_at, lang)}` : ''}</div>
+              <div className="text-xs text-ink-400">{[r.issuer, r.edition].filter(Boolean).join(' · ')}</div>
+              <Stamps up={r.added_at} pub={r.indexed_at} lang={lang} className="mt-1 text-xs text-ink-400" />
               {(lang === 'bm' ? r.summary_bm || r.summary_en : r.summary_en) && <p className="text-sm text-ink-600 mt-2 line-clamp-4">{lang === 'bm' ? r.summary_bm || r.summary_en : r.summary_en}</p>}
               {!!kp.length && <details className="mt-2 text-sm"><summary className="cursor-pointer text-brand-600">{t(lang, 'key_points')}</summary><ul className="list-disc pl-5 mt-1 space-y-0.5">{kp.map((p, k) => <li key={k}>{p}</li>)}</ul></details>}
             </li>

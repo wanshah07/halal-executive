@@ -7,6 +7,7 @@ import { t } from '../lib/i18n'
 import { fmtDateTime } from '../lib/util'
 import { filedDocs } from '../lib/certs'
 import { qrLinks } from '../lib/qr'
+import Stamps from './Stamps'
 import { POSTER_ACCEPT, POSTER_MAX } from './Poster'
 
 // Delete for good: the row, and its Drive file where it owns one (Code.gs
@@ -212,7 +213,7 @@ export function ContentManager({ lang, data, onChanged }) {
         {rows.map((r) => (
           <li key={r.id} className="py-2 text-sm">
             <div className="flex items-start gap-3">
-              <div className="min-w-0 flex-1"><span className="text-ink-400 text-xs mr-2">{r.id}</span>{label(r, lang)}</div>
+              <div className="min-w-0 flex-1"><span className="text-ink-400 text-xs mr-2">{r.id}</span>{label(r, lang)}<Stamps r={r} lang={lang} className="text-xs text-ink-400" /></div>
               {tab === 'FAQ' && <button className="btn px-2.5 shrink-0" onClick={() => startEdit(r)}>{t(lang, 'edit')}</button>}
               {tab === 'FAQ' && <button className="btn px-2.5 shrink-0" disabled={busy} onClick={() => rephrase(r)}><Sparkles {...ICON} size={15} />{t(lang, 'rephrase')}</button>}
               <button className="btn text-red-700 shrink-0" onClick={() => del(r)}>{t(lang, 'delete')}</button>

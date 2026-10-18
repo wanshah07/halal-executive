@@ -4,6 +4,7 @@ import DocEmbed from '../components/DocEmbed'
 import { t } from '../lib/i18n'
 import { safeUrl } from '../lib/safe'
 import { fmtDate } from '../lib/util'
+import Stamps from '../components/Stamps'
 import { countryCoords } from '../lib/config'
 import seed from '../data/fhcb.json'
 import { ICON, Mail, Phone, MapPin, ExternalLink } from '../components/Icon'
@@ -114,6 +115,7 @@ export default function Fhcb({ lang, data, focusId, focusKey }) {
             </div>
             {contacts(r)}
             <div className="mt-3 pt-2 border-t border-line text-xs text-ink-400">{r.source_ref}{r.updated_at ? ` · ${t(lang, 'updated')} ${fmtDate(r.updated_at, lang)}` : ''}</div>
+            <Stamps r={r} lang={lang} className="mt-1 text-xs text-ink-400" />
           </article>
         )} />
       <Lightbox src={zoom && zoom.src} alt={zoom && zoom.alt} onClose={() => setZoom(null)} />
