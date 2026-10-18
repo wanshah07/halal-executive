@@ -3,6 +3,8 @@ import { adminPost, post, getSession, setSession, dropLocal, refreshAll } from '
 import { API_URL } from '../lib/config'
 import { t } from '../lib/i18n'
 import { fmtDateTime } from '../lib/util'
+import { filedDocs } from '../lib/certs'
+import AiModelAdmin from '../components/AiModelAdmin'
 import { safeUrl, imageUrl } from '../lib/safe'
 import { RefAdmin, EventsAdmin, ContentManager, deleteForGood } from '../components/AdminExtra'
 import { RowManager } from '../components/AdminRows'
@@ -413,9 +415,10 @@ function ReviewBox({ lang, onChanged }) {
     without(tab, id); if (status === 'hidden') dropLocal(tab, id)
     try { await adminPost('review_set', { tab, id, status }); onChanged && onChanged() } catch (e) { setMsg(e.message); load(); refreshAll() }
   }
-  const count = (k) => ((drafts && drafts[k]) || []).length
+  const listFor = (k) => { const r = (drafts && drafts[k]) || []; return k === 'Documents' ? filedDocs(r) : r }
+  const count = (k) => listFor(k).length
   const total = REVIEW_KINDS.reduce((n, k) => n + count(k), 0)
-  const rows = (drafts && drafts[kind]) || []
+  const rows = listFor(kind)
   return (
     <div className="card p-5 mb-4 space-y-3">
       <div className="flex items-center justify-between"><h3 className="font-semibold">{t(lang, 'review_title')} {drafts && <span className="text-ink-400 font-normal">({total})</span>}</h3><button className="btn" onClick={load} aria-label="refresh"><RefreshCw {...ICON} size={16} /></button></div>
@@ -576,6 +579,7 @@ export default function Admin({ lang, data, onSaved, onSession }) {
 
       <RunNow lang={lang} runs={data && data.runs} stats={data && data.raw_stats} />
       <ProgressBox lang={lang} />
+      <AiModelAdmin lang={lang} />
       <ReviewBox lang={lang} onChanged={onSaved} />
       <ContentManager lang={lang} data={data} onChanged={onSaved} />
       <UploadBox lang={lang} />

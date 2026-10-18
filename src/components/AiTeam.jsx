@@ -48,11 +48,12 @@ export default function AiTeam({ lang, runs, sample }) {
             <div key={c.key} className="flex items-center gap-4 rounded-xl border border-line p-4 bg-gradient-to-br from-paper to-white">
               <div className="shrink-0"><Robot tone={c.tone} state={state} size={118} /></div>
               <div className="min-w-0">
-                <div className="flex items-center gap-2 flex-wrap"><span className="text-lg font-bold">{c.name}</span><span className={`chip ${chip}`}><span aria-hidden="true">●</span>&nbsp;{t(lang, 'st_' + state)}</span></div>
+                <div className="flex items-center gap-2 flex-wrap"><span className="text-lg font-bold">{c.name}</span><span className={`chip ${chip}`}><span aria-hidden="true">●</span>&nbsp;{t(lang, 'st_' + state)}</span>{st && st.mode === c.key && <span className="chip bg-brand-100 text-brand-700">{t(lang, 'ai_chosen')}</span>}</div>
                 <div className="text-xs text-ink-400 mb-1">{c.key}</div>
                 <dl className="text-sm grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
                   <dt className="text-ink-400">{t(lang, 'model_used')}</dt><dd className="truncate font-medium">{(p && p.model) || (run && run.model) || '—'}</dd>
                   <dt className="text-ink-400">{t(lang, 'fast_model')}</dt><dd className="truncate">{(p && p.fast_model) || '—'}</dd>
+                  {p && p.last_model && p.last_model !== p.model && <><dt className="text-ink-400">{t(lang, 'ai_pinned_last')}</dt><dd className="truncate">{p.last_model}</dd></>}
                   <dt className="text-ink-400">{t(lang, 'last_work')}</dt><dd className="truncate">{p && (p.last_ok || p.last_used) ? fmtDateTime(p.last_ok || p.last_used, lang) : run ? fmtDateTime(run.ts, lang) : '—'}</dd>
                   {p && p.ms != null && <><dt className="text-ink-400">{t(lang, 'response')}</dt><dd>{p.ms} ms</dd></>}
                 </dl>

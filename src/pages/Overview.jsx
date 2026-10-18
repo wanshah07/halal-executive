@@ -9,7 +9,7 @@ import { catChip } from '../components/CategoryFilter'
 import { lazy, Suspense, useState } from 'react'
 import { monthlySeries } from '../lib/series'
 import { guessState, guessCountry } from '../lib/config'
-import { certStatus } from '../lib/certs'
+import { certStatus, filedDocs } from '../lib/certs'
 import AiTeam from '../components/AiTeam'
 import NewsCarousel from '../components/NewsCarousel'
 import UpcomingEvents from '../components/UpcomingEvents'
@@ -21,7 +21,7 @@ const MapPanel = lazy(() => import('../components/MapPanel'))
 const Slot = ({ h = 'h-72' }) => <div className={`card ${h} animate-pulse bg-paper`} />
 
 export default function Overview({ lang, data, setTab }) {
-  const faq = data.faq || [], docs = data.documents || [], events = data.events || [], news = data.news || [], gl = data.guidelines || []
+  const faq = data.faq || [], docs = filedDocs(data.documents), events = data.events || [], news = data.news || [], gl = data.guidelines || []
   const recent = faq.filter((f) => daysAgo(f.created_at) <= 7)
   const upcoming = events.filter((e) => Date.parse(e.date_end || e.date_start) >= Date.now())
   const byCat = count(faq, 'category')

@@ -7,6 +7,13 @@ Both are OpenAI-compatible chat gateways:
 The model variables are optional: empty or "auto" picks from the gateway's
 /models list, and a model the gateway withdraws is re-picked on the spot.
 
+Admin -> AI model (Wan, 18 Oct 2026) can pin one provider, pick the model for
+each, and switch the handover to the other provider off. The choice lives in
+the Sheet's Settings and is read once per process through the Apps Script web
+app (action llm_config); when it cannot be read, or says "auto", everything
+below applies unchanged. The Admin model beats the MIRELD_MODEL / AFIQ_MODEL
+variables, which stay as the fallback.
+
 Selection is automatic. The turn counter persists in pipeline/.state/turn
 (or STATE_DIR) so consecutive runs alternate; inside one run every call
 also alternates. Any failure on the chosen provider (timeout, HTTP error,
@@ -39,6 +46,24 @@ STATE = pathlib.Path(os.environ.get("STATE_DIR", pathlib.Path(__file__).parent /
 
 class LLMError(RuntimeError):
     pass
+
+
+_cfg = None
+
+
+def admin_cfg():
+    """The choice made in Admin, read once per run: {mode, strict, model:{NAME:id}}.
+    {} (automatic) whenever it cannot be read, e.g. an older Code.gs."""
+    global _cfg
+    if _cfg is None:
+        try:
+            import he_api
+            r = he_api.post("llm_config")
+            _cfg = {"mode": r.get("mode") or "auto", "strict": bool(r.get("strict")), "model": r.get("model") or {}}
+        except Exception as e:  # noqa: BLE001
+            print(f"[router] Admin choice not read ({str(e)[:120]}); automatic")
+            _cfg = {}
+    return _cfg
 
 
 def _turn():
@@ -80,6 +105,9 @@ def record_speed(name, secs, ok):
 
 
 def pick_first(avail):
+    mode = admin_cfg().get("mode")
+    if mode in avail:  # pinned in Admin
+        return mode
     sp = _speed()
     timed = [p for p in avail if (sp.get(p) or {}).get("n", 0) >= 3]
     if len(avail) > 1 and len(timed) == len(avail):
@@ -104,7 +132,7 @@ def resolve_model(name, fresh=False):
     if name in _picked and not fresh:
         return _picked[name]
     p = PROVIDERS[name]
-    want = (os.environ.get(p["model"]) or "auto").strip()
+    want = ((admin_cfg().get("model") or {}).get(name) or os.environ.get(p["model"]) or "auto").strip()
     wants = [] if want.lower() == "auto" else [w.strip() for w in want.split(",") if w.strip()]
     if len(wants) == 1 and not fresh:
         _picked[name] = wants[0]
@@ -177,7 +205,9 @@ def complete(messages, json_mode=False, **kw):
     if not avail:
         raise LLMError("no provider keys set (MIRELD_API_KEY / AFIQ_API_KEY)")
     first = pick_first(avail)
-    order = [first] + [p for p in avail if p != first]
+    cfg = admin_cfg()
+    pinned_only = bool(cfg.get("strict")) and cfg.get("mode") == first  # Admin: no handover
+    order = [first] + ([] if pinned_only else [p for p in avail if p != first])
     errors = []
     for name in order:
         t0 = time.time()

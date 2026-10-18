@@ -39,7 +39,7 @@ web app is the only door to the Sheet and Drive.
 ## 3. Pipeline
 9. Repository secrets: `HE_API_URL`, `HE_INGEST_TOKEN`, `MIRELD_API_KEY`,
    `AFIQ_API_KEY`. Variables `MIRELD_MODEL` and `AFIQ_MODEL` are optional
-   (empty = auto). The crons in
+   (empty = auto); Admin → AI model overrides them. The crons in
    `pipeline.yml` start on their own; run "Pipeline" by hand first with job
    `news` to see a green run and a row in the Runs tab.
 

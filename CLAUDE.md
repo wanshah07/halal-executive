@@ -7,8 +7,17 @@
    other on any failure (`pipeline/llm_router.py`, `complete()` in Code.gs).
    Each call's time is recorded per provider; once both have 3 timed calls
    the faster one leads 4 calls in 5 and the other keeps 1 in 5 so the lead
-   can change by itself (Wan, 14 Oct 2026). Never hard-code one, never add a
-   third without Wan, never mark a Raw row processed when both failed.
+   can change by itself (Wan, 14 Oct 2026). Automatic stays the default and
+   nothing in code hard-codes one. **Admin → AI model** (Wan, 18 Oct 2026) may
+   pin one provider, set the main and the quick model for each, and switch the
+   handover to the other off ("use only this one"). The choice is Settings keys
+   `llm_mode`, `llm_strict`, `llm_model_<NAME>`, `llm_fast_<NAME>`, written only
+   by `llmConfigSave` (the generic `settings` route and every public output
+   strip `llm_*`), read by `complete()` in Code.gs and by `llm_router.py`
+   through the `llm_config` action. It beats the `*_MODEL` variables, which
+   stay as the fallback; a withdrawn model falls back to auto rather than
+   breaking the site. Never add a third provider without Wan, never mark a Raw
+   row processed when every allowed provider failed.
 3. **Nothing private is published.** `Raw` never reaches the page. Names,
    phone numbers, member company names and case details stay out of FAQ,
    Documents titles, Events and News. A fact the messages left unstated is
@@ -131,3 +140,10 @@
 24. **Popup posters** slide every 3 s and each adds 3 s to the 7 s the popup
     stays open. Admin → Event posters is a different thing: posters for the
     Events page and the Overview's upcoming-events row.
+26. **A halal certificate is never listed as a document** (Wan, 18 Oct 2026).
+    Each certificate keeps a Documents row (`kind: certificate`) only to hold
+    its Drive file. Readers meet it on Halal Certificates. Every document
+    list leaves it out through `filedDocs()` (src/lib/certs.js): the Documents
+    page, the counts, Overview, search, export, Admin → Drafts and Manage;
+    `reviewList` skips it server-side. Document kinds are shown by name
+    (`dk_*` in i18n), never as the raw kind.

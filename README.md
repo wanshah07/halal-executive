@@ -35,9 +35,11 @@ Sheet ──(GET ?action=data)──► this page (Vite + React + Tailwind) ─�
 * **Models.** MIRELD (`api.mireld.my/v1`) and AFIQ (`rootsys.cloud/v1`) alternate
   on every call; if the chosen one fails for any reason the other answers the
   same request. Both failing leaves the batch untouched for the next run.
-  Selection is automatic (`pipeline/llm_router.py`, and `complete()` in
-  `apps-script/Code.gs` for the chatbot). The Runs tab and the Overview show
-  which provider answered.
+  Selection is automatic by default (`pipeline/llm_router.py`, and `complete()` in
+  `apps-script/Code.gs` for the chatbot). Admin → AI model can pin one provider,
+  choose the main and the quick model for each (checked against the gateway's own
+  model list) and turn the handover off; Test sends one real question to exactly
+  that model. The Runs tab and the Overview show which provider and model answered.
 * **Cadence.** WhatsApp + Telegram + Admin uploads + new references every 30 minutes for now (2 hours once stable), each run continuing until
   the queue is empty; Facebook once a day, up to 5 hours; news every 6 hours;
   Drive organiser after every pass and once a day. See

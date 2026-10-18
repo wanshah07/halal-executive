@@ -18,6 +18,7 @@
  *   INGEST_TOKEN       random; GitHub secret HE_INGEST_TOKEN + collectors
  *   DRIVE_ROOT_ID      id of the "Halal Executive" Drive folder it creates
  * Optional:
+ *   (Admin -> AI model now sets the provider and the model; these are the fallback.)
  *   MIRELD_MODEL / AFIQ_MODEL   leave empty or "auto" and the model is picked
  *                      from the gateway's own /models list and re-picked by
  *                      itself if that model is withdrawn; or set an exact id
@@ -171,7 +172,7 @@ function doGet(e) {
   if (a === 'ping') return json({ ok: true, ts: new Date().toISOString() });
   // Settings only (a few KB): the popup notice reads this first, so a colour
   // or poster changed in Admin shows without waiting for the full feed.
-  if (a === 'settings') { var st = readSettings(); delete st.llm_turn; delete st.seed_deleted; return json({ ok: true, settings: st }); }
+  if (a === 'settings') { var st = stripLlm(readSettings()); delete st.seed_deleted; return json({ ok: true, settings: st }); }
   if (a === 'thumb') return json(certThumb(String(e.parameter.id || '')));
   if (a === 'status') return json(aiStatus());
   return json({ ok: false, error: 'unknown action' });
@@ -240,7 +241,7 @@ function rawStats() {
 }
 
 function publicData() {
-  var settings = readSettings(); delete settings.llm_turn;
+  var settings = stripLlm(readSettings());
   var now = Date.now();
   var stats = rawStats();
   var runs = readTab('Runs').sort(function (a, b) { return Date.parse(b.ts) - Date.parse(a.ts); }).slice(0, 20);
@@ -297,6 +298,10 @@ function doPost(e) {
     if (a === 'read')         { if (WRITABLE.indexOf(body.tab) < 0 && body.tab !== 'Raw') throw new Error('tab not readable'); return json({ ok: true, rows: readTab(body.tab) }); }
     if (a === 'drive_get')    return json(driveGet(body));
     if (a === 'llm_next')     return json({ ok: true, provider: nextProvider() });
+    if (a === 'llm_config')   return json(llmConfigGet());                         // the pipeline reads the same choice
+    if (a === 'llm_models')   { needAdmin(); return json(llmModels()); }
+    if (a === 'llm_test')     { needAdmin(); return json(llmTest(body)); }          // one real call, no Sheet write
+    if (a === 'llm_config_save') { needAdmin(); return json(llmConfigSave(body)); } // validates first, locks only for the write
     if (a === 'llm')          return json(llmProxy(body));
     if (a === 'heartbeat')    return json(heartbeat(body));
     if (a === 'progress')     return json(saveProgress(body));
@@ -321,7 +326,7 @@ function doPost(e) {
       if (a === 'manual_upload') { needAdmin(); var mu = manualUpload(body, sessEmail || 'token'); mu.run = autoRun(mu.chat ? 'process_whatsapp' : 'uploads'); return json(mu); }
       if (a === 'review_set')    { needAdmin(); return json(reviewSet(body.tab, body.id, body.status)); }
       if (a === 'review_save')   { needAdmin(); return json(reviewSave(String(body.tab || ''), String(body.id || ''), body.fields || {})); }
-      if (a === 'settings')      { needAdmin(); return json(writeSettings(body.settings || {})); }
+      if (a === 'settings')      { needAdmin(); return json(writeSettings(stripLlm(body.settings || {}))); }
       if (a === 'ref_upload')    { needAdmin(); var ru = refUpload(body, sessEmail || 'token'); ru.run = autoRun('references'); return json(ru); }
       if (a === 'ref_set')       { needAdmin(); var rs = refSet(body.id, body.status); if (body.status === 'pending') rs.run = autoRun('references'); return json(rs); }
       if (a === 'event_save')    { needAdmin(); return json(eventSave(body)); }
@@ -709,7 +714,7 @@ function reviewList() {
   var unconfirmed = readTab('FAQ').filter(function (r) { return r.status === 'published' && String(r.verify_notes || '').length > 2 && String(r.verify_notes) !== '[]'; }).map(function (r) { return r.id; });
   if (unconfirmed.length) updateByIds('FAQ', unconfirmed, { status: 'draft', updated_at: new Date().toISOString() });
   var now = Date.now();
-  REVIEW_TABS.forEach(function (t) { out[t] = readTab(t).filter(function (r) { return r.status === 'draft' && !(t === 'Events' && eventOver(r, now)) && !(t === 'Certificates' && r.valid_to && eventOver({ date_start: r.valid_to }, now)); }); });
+  REVIEW_TABS.forEach(function (t) { out[t] = readTab(t).filter(function (r) { return r.status === 'draft' && !(t === 'Documents' && String(r.kind).toLowerCase() === 'certificate') && !(t === 'Events' && eventOver(r, now)) && !(t === 'Certificates' && r.valid_to && eventOver({ date_start: r.valid_to }, now)); }); });
   // Points the pipeline could not confirm from the references library: they
   // were left out of the published answer and wait here until a reference
   // that states them is uploaded.
@@ -1110,7 +1115,34 @@ function recordSpeed(name, ms, ok) {
     all[name] = s; props().setProperty('llm_speed', JSON.stringify(all));
   } catch (e) { /* timing is a nicety */ }
 }
+// ---------- Which AI answers: chosen in Admin -> AI model (Wan, 18 Oct 2026) ----------
+// Settings keys, written only by llmConfigSave and never in the public feed:
+//   llm_mode          auto (speed-led, the default) | AFIQ | MIRELD
+//   llm_strict        'true' = no handover to the other provider if the chosen one fails
+//   llm_model_<NAME>  main model: an exact id, a comma list, or empty / auto
+//   llm_fast_<NAME>   quick model for live questions: same
+// The Script Properties <NAME>_MODEL and <NAME>_FAST_MODEL still work when the
+// Admin choice is empty. Read from the Sheet at most once in 10 minutes
+// (cache), and the cache is dropped the moment a choice is saved.
+function cleanModel(v) { v = String(v || '').trim(); return v.toLowerCase() === 'auto' ? '' : v.slice(0, 200); }
+function llmCfg() {
+  var cache = CacheService.getScriptCache(), hit = cache.get('llm_cfg');
+  if (hit) { try { return JSON.parse(hit); } catch (e) { /* read again */ } }
+  var st = {}; try { st = readSettings(); } catch (e) { /* Sheet busy: automatic */ }
+  var cfg = { mode: 'auto', strict: false, model: {}, fast: {} };
+  var m = String(st.llm_mode || 'auto').trim().toUpperCase();
+  if (PROVIDERS[m]) cfg.mode = m;
+  cfg.strict = cfg.mode !== 'auto' && String(st.llm_strict) === 'true';
+  Object.keys(PROVIDERS).forEach(function (n) { cfg.model[n] = cleanModel(st['llm_model_' + n]); cfg.fast[n] = cleanModel(st['llm_fast_' + n]); });
+  try { cache.put('llm_cfg', JSON.stringify(cfg), 600); } catch (e) { /* cache full */ }
+  return cfg;
+}
+function llmBust() { try { CacheService.getScriptCache().removeAll(['llm_cfg', 'ai_status']); } catch (e) { /* nothing cached */ } }
+function stripLlm(st) { Object.keys(st).forEach(function (k) { if (k.indexOf('llm_') === 0) delete st[k]; }); return st; }
+
 function nextProvider() {
+  var cfg = llmCfg();
+  if (cfg.mode !== 'auto' && props().getProperty(PROVIDERS[cfg.mode].keyProp)) return cfg.mode; // chosen in Admin
   var P = props(), sp = llmSpeed(), a = sp.MIRELD, b = sp.AFIQ;
   if (a && b && a.n >= 3 && b.n >= 3) {
     var fast = a.ms <= b.ms ? 'MIRELD' : 'AFIQ';
@@ -1137,34 +1169,52 @@ function listIds(name) {
 
 // Model for one provider: an exact id, a comma list, or auto. The answer is
 // cached for 6 h and dropped the moment the gateway says the model is gone.
+// What the model should be, before any checking: Admin's choice, else the
+// Script Property, else empty (= pick automatically).
+function wantedModel(name, fast) {
+  var cfg = llmCfg();
+  return String((fast ? cfg.fast[name] || props().getProperty(name + '_FAST_MODEL') : cfg.model[name] || props().getProperty(PROVIDERS[name].modelProp)) || '').trim();
+}
+// The automatic picks, from a list of ids.
+function pickMain(ids, wants) {
+  var chat = ids.filter(function (i) { return !NOT_CHAT.test(i); }), pick = null;
+  (wants || []).some(function (w) { if (ids.indexOf(w) >= 0) { pick = w; return true; } });
+  if (!pick) PREFER.some(function (pre) { pick = chat.filter(function (i) { return i.toLowerCase().indexOf(pre) === 0; })[0] || null; return !!pick; });
+  return pick || chat[0] || ids[0] || null;
+}
+function pickFast(ids) {
+  var pick = null;
+  FAST.some(function (f) { pick = ids.filter(function (i) { return i.toLowerCase().indexOf(f) === 0; })[0] || null; return !!pick; });
+  return pick || ids.filter(function (i) { return /(flash|mini|lite|haiku|turbo)/i.test(i) && !NOT_CHAT.test(i); })[0] || null;
+}
+
+// Model for one provider: an exact id, a comma list, or auto. The answer is
+// cached for 6 h under a key that includes the wanted value, so a changed
+// choice is never served from an old pick; it is dropped the moment the
+// gateway says the model is gone, and a withdrawn choice falls back to auto.
 function resolveModel(name, fresh, fast) {
   if (fast) return resolveFast(name, fresh);
-  var p = PROVIDERS[name], want = (props().getProperty(p.modelProp) || 'auto').trim(), cache = CacheService.getScriptCache(), ck = 'model_' + name;
+  var want = wantedModel(name, false) || 'auto', cache = CacheService.getScriptCache(), ck = 'model_' + name + '|' + want.slice(0, 120);
   if (!fresh) { var hit = cache.get(ck); if (hit) return hit; }
   var wants = want.toLowerCase() === 'auto' ? [] : want.split(',').map(function (x) { return x.trim(); }).filter(String);
   if (wants.length === 1 && !fresh) { cache.put(ck, wants[0], 21600); return wants[0]; }
-  var ids = listIds(name), chat = ids.filter(function (i) { return !NOT_CHAT.test(i); }), pick = null;
-  wants.some(function (w) { if (ids.indexOf(w) >= 0) { pick = w; return true; } });
-  if (!pick) PREFER.some(function (pre) { pick = chat.filter(function (i) { return i.toLowerCase().indexOf(pre) === 0; })[0] || null; return !!pick; });
-  if (!pick) pick = chat[0] || ids[0];
+  var pick = pickMain(listIds(name), wants);
   if (!pick) throw new Error(name + ': no models listed');
   cache.put(ck, pick, 21600);
   return pick;
 }
 
-// Fast model: FAST_<NAME>_MODEL property if set, else the first quick model
-// the gateway lists, else the normal pick.
+// Fast model: Admin's choice or the <NAME>_FAST_MODEL property if set, else the
+// first quick model the gateway lists, else the normal pick.
 function resolveFast(name, fresh) {
-  var forced = props().getProperty(name + '_FAST_MODEL');
-  if (forced) return forced;
+  var forced = wantedModel(name, true).split(',')[0].trim();
+  if (forced && !fresh) return forced;
+  var ids = [];
+  try { ids = listIds(name); } catch (e) { return forced || resolveModel(name, fresh, false); }
+  if (forced && ids.indexOf(forced) >= 0) return forced; // still offered; otherwise fall back to the automatic quick pick
   var cache = CacheService.getScriptCache(), ck = 'fast_' + name;
   if (!fresh) { var hit = cache.get(ck); if (hit) return hit; }
-  var ids = [];
-  try { ids = listIds(name); } catch (e) { return resolveModel(name, fresh, false); }
-  var pick = null;
-  FAST.some(function (f) { pick = ids.filter(function (i) { return i.toLowerCase().indexOf(f) === 0; })[0] || null; return !!pick; });
-  if (!pick) pick = ids.filter(function (i) { return /(flash|mini|lite|haiku|turbo)/i.test(i) && !NOT_CHAT.test(i); })[0] || null;
-  if (!pick) pick = resolveModel(name, fresh, false);
+  var pick = pickFast(ids) || resolveModel(name, fresh, false);
   cache.put(ck, pick, 21600);
   return pick;
 }
@@ -1194,10 +1244,12 @@ function callProvider(name, messages, opts) {
   return { text: text, provider: name, model: model, finish: (j.choices[0].finish_reason || '') };
 }
 
-// Alternate on every call; if the chosen provider fails for any reason the
-// other one answers the same request, and the Runs tab records which did.
+// Automatic: the faster provider leads; Admin can pin one. If the provider that
+// leads fails for any reason the other one answers the same request (unless
+// Admin turned that off), and the Runs tab records which did.
 function complete(messages, opts) {
-  var first = nextProvider(), order = [first, first === 'MIRELD' ? 'AFIQ' : 'MIRELD'], errs = [];
+  var first = nextProvider(), cfg = llmCfg(), order = [first, first === 'MIRELD' ? 'AFIQ' : 'MIRELD'], errs = [];
+  if (cfg.strict && cfg.mode === first) order = [first]; // Admin: no handover to the other provider
   for (var i = 0; i < order.length; i++) {
     var t0 = Date.now();
     try {
@@ -1233,6 +1285,64 @@ function parseJson(text) {
 // Last good call per provider, for the robot status cards.
 function markProvider(name, model) {
   try { CacheService.getScriptCache().put('ok_' + name, JSON.stringify({ ts: new Date().toISOString(), model: model }), 21600); } catch (e) { /* cache full */ }
+}
+
+// ---- Admin -> AI model ----
+function llmConfigGet() {
+  var cfg = llmCfg(), keys = {};
+  Object.keys(PROVIDERS).forEach(function (n) { keys[n] = !!props().getProperty(PROVIDERS[n].keyProp); });
+  return { ok: true, mode: cfg.mode, strict: cfg.strict, model: cfg.model, fast: cfg.fast, keys: keys };
+}
+
+// What each gateway offers right now, for the pickers, and what automatic
+// would choose (so "Auto" can say which model it means today).
+function llmModels() {
+  var out = { ok: true, providers: {} };
+  Object.keys(PROVIDERS).forEach(function (n) {
+    var s = { key: !!props().getProperty(PROVIDERS[n].keyProp), reachable: false, models: [], auto_main: '', auto_fast: '', error: '' };
+    if (s.key) {
+      try {
+        var ids = listIds(n); s.reachable = true;
+        s.models = ids.filter(function (i) { return !NOT_CHAT.test(i); }).sort();
+        s.auto_main = pickMain(ids, []) || ''; s.auto_fast = pickFast(ids) || s.auto_main;
+      } catch (e) { s.error = String(e.message || e).slice(0, 160); }
+    }
+    out.providers[n] = s;
+  });
+  return out;
+}
+
+function llmConfigSave(b) {
+  var mode = String(b.mode || 'auto').trim(); if (mode.toLowerCase() === 'auto') mode = 'auto';
+  if (mode !== 'auto' && !PROVIDERS[mode]) throw new Error('Choose Automatic, Wanshah 1 or Wanshah 2.');
+  if (mode !== 'auto' && !props().getProperty(PROVIDERS[mode].keyProp)) throw new Error(mode + ' has no API key in Script Properties, so it cannot be chosen yet.');
+  var vals = { llm_mode: mode, llm_strict: mode !== 'auto' && b.strict ? 'true' : 'false' };
+  Object.keys(PROVIDERS).forEach(function (n) {
+    var m = cleanModel(b.model && b.model[n]), f = cleanModel(b.fast && b.fast[n]), ids = null;
+    if (m || f) { try { ids = listIds(n); } catch (e) { ids = null; } } // gateway unreachable: save as typed
+    [['model', m], ['fast', f]].forEach(function (x) {
+      if (x[1] && ids && x[1].split(',').some(function (w) { return ids.indexOf(w.trim()) < 0; })) throw new Error(x[1] + ' is not offered by ' + n + ' right now.');
+    });
+    vals['llm_model_' + n] = m; vals['llm_fast_' + n] = f;
+  });
+  var lock = LockService.getScriptLock(); lock.waitLock(30000);
+  try { writeSettings(vals); } finally { lock.releaseLock(); }
+  llmBust();
+  return llmConfigGet();
+}
+
+// One real question to one provider and one exact model, timed. It never
+// falls back to the other provider and never touches the speed tally, so the
+// answer says whether THIS choice works.
+function llmTest(b) {
+  var name = String(b.provider || ''); if (!PROVIDERS[name]) throw new Error('unknown provider');
+  if (!props().getProperty(PROVIDERS[name].keyProp)) return { ok: false, provider: name, error: 'No API key set for ' + name + '.' };
+  var model = cleanModel(b.model).split(',')[0].trim(), t0 = Date.now();
+  try {
+    if (!model) { var ids = listIds(name); model = (b.fast ? pickFast(ids) : null) || pickMain(ids, []); }
+    var r = callProvider(name, [{ role: 'user', content: 'Balas dengan satu perkataan sahaja: sedia.' }], { model: model, max_tokens: 600, temperature: 0 });
+    return { ok: true, provider: name, model: r.model, ms: Date.now() - t0, text: String(r.text).replace(/<think>[\s\S]*?<\/think>/g, '').trim().slice(0, 120) };
+  } catch (e) { return { ok: false, provider: name, model: model, ms: Date.now() - t0, error: String(e.message || e).slice(0, 240) }; }
 }
 
 function llmProxy(b) { var r = complete(b.messages || [], b.opts || {}); return { ok: true, text: r.text, provider: r.provider, model: r.model, fallback_from: r.fallback_from || '' }; }
@@ -1471,9 +1581,9 @@ function aiStatus() {
   var cache = CacheService.getScriptCache(), hit = cache.get('ai_status');
   if (hit) return JSON.parse(hit);
   var runs = readTab('Runs');
-  var out = { ok: true, checked_at: new Date().toISOString(), providers: {} };
+  var out = { ok: true, checked_at: new Date().toISOString(), mode: llmCfg().mode, strict: llmCfg().strict, providers: {} };
   Object.keys(PROVIDERS).forEach(function (n) {
-    var p = PROVIDERS[n], key = props().getProperty(p.keyProp), s = { name: n === 'AFIQ' ? 'Wanshah 1' : 'Wanshah 2', provider: n, key: !!key, reachable: false, model: '', fast_model: '', ms: null, last_used: '', last_ok: '' };
+    var p = PROVIDERS[n], key = props().getProperty(p.keyProp), s = { name: n === 'AFIQ' ? 'Wanshah 1' : 'Wanshah 2', provider: n, key: !!key, reachable: false, model: '', fast_model: '', ms: null, last_used: '', last_ok: '', last_model: '' };
     if (key) {
       var t = Date.now();
       try {
@@ -1484,7 +1594,7 @@ function aiStatus() {
     }
     var last = runs.filter(function (x) { return x.provider === n; }).sort(function (a, b) { return Date.parse(b.ts) - Date.parse(a.ts); })[0];
     if (last) s.last_used = last.ts;
-    var ok = cache.get('ok_' + n); if (ok) { try { s.last_ok = JSON.parse(ok).ts; } catch (e) { /* ignore */ } }
+    var ok = cache.get('ok_' + n); if (ok) { try { var okj = JSON.parse(ok); s.last_ok = okj.ts; s.last_model = okj.model || ''; } catch (e) { /* ignore */ } }
     out.providers[n] = s;
   });
   cache.put('ai_status', JSON.stringify(out), 300);

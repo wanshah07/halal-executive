@@ -5,7 +5,7 @@ import Notice from './components/Notice'
 import SearchBar from './components/SearchBar'
 import Chatbot from './components/Chatbot'
 import Overview from './pages/Overview'
-import { certStatus, splitProducts } from './lib/certs'
+import { certStatus, splitProducts, filedDocs } from './lib/certs'
 import { loadData, savedData, snapshotData, loadSettings } from './lib/api'
 // Admin upload queue: loaded with the app so it keeps sending on every page.
 import './lib/uploadQueue'
@@ -59,7 +59,7 @@ const EXPORT = (lang, data) => ({
   faq: { title: t(lang, 'faq'), rows: data.faq || [], cols: ['id', 'category', 'subcategory', 'question_en', 'question_bm', 'answer_formal_en', 'answer_layman_en', 'answer_formal_bm', 'answer_layman_bm', 'confidence', 'status', 'updated_at'] },
   certificates: { title: t(lang, 'certificates'), rows: (data.certificates || []).map((c) => ({ ...c, validity: certStatus(c), products: splitProducts(c.products).join('; ') })), cols: ['id', 'validity', 'company', 'cert_no', 'scheme', 'category', 'state', 'valid_from', 'valid_to', 'products', 'drive_url', 'updated_at'] },
   guidelines: { title: t(lang, 'guidelines'), rows: data.guidelines || [], cols: ['id', 'category', 'title', 'title_bm', 'issuer', 'summary_en', 'summary_bm', 'link', 'effective_date', 'updated_at'] },
-  documents: { title: t(lang, 'documents'), rows: data.documents || [], cols: ['id', 'status', 'title', 'kind', 'category', 'version', 'supersedes_id', 'received_at', 'updated_at', 'drive_url'] },
+  documents: { title: t(lang, 'documents'), rows: filedDocs(data.documents), cols: ['id', 'status', 'title', 'kind', 'category', 'version', 'supersedes_id', 'received_at', 'updated_at', 'drive_url'] },
   events: { title: t(lang, 'events'), rows: data.events || [], cols: ['id', 'kind', 'title', 'title_bm', 'date_start', 'date_end', 'venue', 'link', 'description'] },
   fhcb: { title: t(lang, 'fhcb'), rows: data.fhcb || [], cols: ['id', 'no', 'country', 'name', 'kind', 'address', 'persons', 'tel', 'fax', 'email', 'website', 'source_ref', 'effective_date', 'updated_at'] },
   directory: { title: t(lang, 'directory'), rows: data.directory || [], cols: ['id', 'type', 'subtype', 'name', 'state', 'country', 'coverage', 'address', 'pic', 'phone', 'email', 'website', 'website2', 'accreditation', 'description', 'source_ref', 'updated_at'] },
@@ -129,7 +129,7 @@ export default function App() {
 
   if (!data) return <div className="p-8 text-ink-600">{err || t(lang, 'loading')}</div>
   const live = (n) => !n.expires_at || Date.parse(n.expires_at) > Date.now()
-  const counts = { references: (data.references || []).length, faq: (data.faq || []).length, certificates: (data.certificates || []).length, guidelines: (data.guidelines || []).length, documents: (data.documents || []).filter((d) => d.status === 'current').length, events: (data.events || []).length, fhcb: (data.fhcb || []).length || undefined, directory: (data.directory || []).length || undefined, news: (data.news || []).filter(live).length }
+  const counts = { references: (data.references || []).length, faq: (data.faq || []).length, certificates: (data.certificates || []).length, guidelines: (data.guidelines || []).length, documents: filedDocs(data.documents).filter((d) => d.status === 'current').length, events: (data.events || []).length, fhcb: (data.fhcb || []).length || undefined, directory: (data.directory || []).length || undefined, news: (data.news || []).filter(live).length }
 
   return (
     <div className="min-h-screen">

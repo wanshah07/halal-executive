@@ -5,6 +5,7 @@ import { CATEGORIES, EVENT_KINDS } from '../lib/config'
 import { ICON, Sparkles } from './Icon'
 import { t } from '../lib/i18n'
 import { fmtDateTime } from '../lib/util'
+import { filedDocs } from '../lib/certs'
 import { POSTER_ACCEPT, POSTER_MAX } from './Poster'
 
 // Delete for good: the row, and its Drive file where it owns one (Code.gs
@@ -156,6 +157,8 @@ const MANAGED = [['FAQ', 'faq', (r, lang) => (lang === 'bm' ? r.question_bm || r
   ['Certificates', 'certificates', (r) => `${r.company || ''} · ${r.cert_no || ''}`],
   ['Documents', 'documents', (r) => r.title],
   ['News', 'news', (r) => r.title]]
+// A halal certificate's own Documents row is managed under Halal Certificates.
+const listOf = (data, key) => (key === 'documents' ? filedDocs(data && data.documents) : (data && data[key]) || [])
 const FAQ_EDIT = [['category', 'Category'], ['subcategory', 'Subcategory'], ['question_en', 'Question (EN)'], ['question_bm', 'Soalan (BM)'], ['answer_formal_en', 'Answer, formal (EN)', 1], ['answer_layman_en', 'Answer, simple (EN)', 1], ['answer_formal_bm', 'Jawapan, rasmi (BM)', 1], ['answer_layman_bm', 'Jawapan, mudah (BM)', 1]]
 export function ContentManager({ lang, data, onChanged }) {
   const [tab, setTab] = useState('FAQ')
@@ -178,7 +181,7 @@ export function ContentManager({ lang, data, onChanged }) {
     catch (e) { setMsg(e.message) } finally { setBusy(false) }
   }
   const [, key, label] = MANAGED.find((m) => m[0] === tab)
-  const rows = ((data && data[key]) || []).map((r) => patched[r.id] ? { ...r, ...patched[r.id] } : r).filter((r) => !gone[tab + r.id] && (!q || JSON.stringify(r).toLowerCase().includes(q.toLowerCase())))
+  const rows = listOf(data, key).map((r) => patched[r.id] ? { ...r, ...patched[r.id] } : r).filter((r) => !gone[tab + r.id] && (!q || JSON.stringify(r).toLowerCase().includes(q.toLowerCase())))
   async function del(r) {
     try { if (await deleteForGood(lang, tab, r.id, label(r, lang), () => setGone((g) => ({ ...g, [tab + r.id]: 1 })))) { setMsg(t(lang, 'deleted')) } } catch (e) { setGone((g) => { const n = { ...g }; delete n[tab + r.id]; return n }); setMsg(e.message) }
   }
@@ -188,7 +191,7 @@ export function ContentManager({ lang, data, onChanged }) {
       <p className="text-sm text-ink-600">{t(lang, 'manage_sub')}</p>
       <div className="flex flex-wrap gap-2">
         <select className="input w-auto" value={tab} onChange={(e) => setTab(e.target.value)} aria-label={t(lang, 'manage_title')}>
-          {MANAGED.map(([k, d]) => <option key={k} value={k}>{t(lang, d)} ({((data && data[d]) || []).length})</option>)}
+          {MANAGED.map(([k, d]) => <option key={k} value={k}>{t(lang, d)} ({listOf(data, d).length})</option>)}
         </select>
         <input className="input flex-1 min-w-40" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t(lang, 'search_ph')} />
       </div>
