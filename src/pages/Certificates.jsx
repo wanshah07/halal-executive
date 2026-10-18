@@ -1,6 +1,5 @@
 import { safeUrl } from '../lib/safe'
 import { useEffect, useMemo, useState } from 'react'
-import { certThumb } from '../lib/api'
 import Segment from '../components/Segment'
 import CategoryFilter, { catChip } from '../components/CategoryFilter'
 import { t } from '../lib/i18n'
@@ -8,39 +7,18 @@ import { fmtDate, fmtDateTime } from '../lib/util'
 import Stamps, { stampCols } from '../components/Stamps'
 import { certStatus, splitProducts } from '../lib/certs'
 import { ICON, ChevronDown, ChevronRight, ExternalLink } from '../components/Icon'
-import Lightbox from '../components/Lightbox'
+import FileThumb from '../components/FileThumb'
 
 // Halal certificates picked out of the groups: holder, certificate number,
 // scheme, validity and the product list. Each entry folds; the product list
 // unfolds on demand. Status is computed from valid_to on the day of viewing:
 // valid / expiring (≤ 90 days) / expired.
 export { certStatus, splitProducts }
-// Thumbnail of the certificate itself. Drive renders the preview, Apps Script
-// reads it with the owner's rights, so the file never has to be made public.
-// A sample row or a file Drive has not previewed yet shows a labelled tile.
+// Thumbnail of the certificate itself (FileThumb: the Drive preview, or a
+// labelled tile when the file has none).
 export function CertThumb({ c, lang, size = 'card' }) {
-  const [src, setSrc] = useState(c.thumb || null)
-  useEffect(() => { let live = true; if (!c.thumb) certThumb(c.id).then((d) => live && d && setSrc(d)); return () => { live = false } }, [c.id, c.thumb])
-  const [zoom, setZoom] = useState(false)
-  // Table: a fixed 96 x 128 tile that the column can never squeeze
-  // (max-w-none, shrink-0). Card: the full card width, tall enough to read.
-  const box = size === 'card' ? 'w-full aspect-[3/4]' : 'w-24 h-32 min-w-24 max-w-none shrink-0'
   const name = c.company || c.cert_no || t(lang, 'untitled_cert')
-  if (src) return (
-    <>
-      <button type="button" title={t(lang, 'view_larger')} onClick={() => setZoom(true)} className={`${box} block rounded-lg border border-line bg-white p-1 cursor-zoom-in hover:ring-2 hover:ring-brand-300`}>
-        <img src={src} alt={`${t(lang, 'certificates')} ${name}`} loading="lazy" className="w-full h-full object-contain" />
-      </button>
-      <Lightbox src={zoom ? src : null} alt={name} href={safeUrl(c.drive_url)} onClose={() => setZoom(false)} />
-    </>
-  )
-  const inner = src
-    ? null
-    : <div className={`${box} rounded-lg border border-line bg-paper flex flex-col items-center justify-center gap-1 text-ink-400`}>
-        <img src="./brand/jakim-halal-logo.png" alt="" className={size === 'card' ? 'h-12 w-12 opacity-30' : 'h-6 w-6 opacity-30'} />
-        {size === 'card' && <span className="text-xs">{t(lang, 'no_preview')}</span>}
-      </div>
-  return safeUrl(c.drive_url) ? <a href={safeUrl(c.drive_url)} target="_blank" rel="noreferrer" className="block" title="Drive ↗">{inner}</a> : inner
+  return <FileThumb id={c.id} thumb={c.thumb} href={c.drive_url} name={name} sub={[c.scheme, c.cert_no].filter(Boolean).join(' · ')} altPrefix={t(lang, 'certificates')} logo size={size} lang={lang} />
 }
 
 const tone = { valid: 'bg-brand-100 text-brand-700', expiring: 'bg-amber-100 text-amber-800', expired: 'bg-red-100 text-red-700' }

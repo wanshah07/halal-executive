@@ -116,11 +116,13 @@ export async function certThumb(id) {
   if (thumbs.has(id)) return thumbs.get(id)
   // A file filed minutes ago may have no Drive preview yet: ask again after
   // 20 s and 60 s instead of remembering "no preview" for the whole visit.
+  // A file Drive says does not exist (missing) is not asked for again: waiting
+  // does not bring it back.
   const once = () => fetch(`${API_URL}?action=thumb&id=${encodeURIComponent(id)}`, { redirect: 'follow' })
-    .then((r) => r.json()).then((j) => (j.ok ? j.data : null)).catch(() => null)
+    .then((r) => r.json()).then((j) => (j.ok ? { data: j.data } : { gone: !!j.missing })).catch(() => ({}))
   const wait = (ms) => new Promise((r) => setTimeout(r, ms))
-  const p = once().then((d) => d || wait(20000).then(once)).then((d) => d || wait(40000).then(once))
-    .then((d) => { if (!d) thumbs.delete(id); return d })
+  const p = once().then((r) => (r.data || r.gone ? r : wait(20000).then(once))).then((r) => (r.data || r.gone ? r : wait(40000).then(once)))
+    .then((r) => { if (!r.data && !r.gone) thumbs.delete(id); return r.data || null })
   thumbs.set(id, p)
   return p
 }

@@ -173,7 +173,7 @@ function doGet(e) {
   // Settings only (a few KB): the popup notice reads this first, so a colour
   // or poster changed in Admin shows without waiting for the full feed.
   if (a === 'settings') { var st = stripLlm(readSettings()); delete st.seed_deleted; return json({ ok: true, settings: st }); }
-  if (a === 'thumb') return json(certThumb(String(e.parameter.id || '')));
+  if (a === 'thumb') return json(thumbFor(String(e.parameter.id || '')));
   if (a === 'status') return json(aiStatus());
   return json({ ok: false, error: 'unknown action' });
 }
@@ -312,6 +312,7 @@ function doPost(e) {
     if (a === 'event_from_poster') { needAdmin(); return json(eventFromPoster(body)); } // stores the poster and reads it; no Sheet write
     if (a === 'faq_rephrase')  { needAdmin(); return json(faqRephrase(body)); } // model call, no Sheet write
     if (a === 'logo_upload')   { needAdmin(); return json(logoUpload(body)); } // Drive only
+    if (a === 'cert_files')    { needAdmin(); return json(certFilesCheck()); }  // reads Drive, writes nothing
     // Admin lists of FHCB and Directory, hidden rows included (the public feed drops them).
     if (a === 'rows_list')     { needAdmin(); if (!ROW_FIELDS[body.tab]) throw new Error('unknown tab'); return json({ ok: true, rows: readTab(body.tab) }); }
 
@@ -524,6 +525,8 @@ function adminDelete(tab, id) {
     var gl = readTab('Guidelines').filter(function (g) { return String(g.source) === id && String(g.id) === 'GL-' + id; });
     if (gl.length) deleteByIds('Guidelines', gl.map(function (g) { return g.id; }));
   } else if (tab === 'Documents') {
+    var owner = readTab('Certificates').filter(function (c) { return String(c.doc_id) === String(row.id); })[0];
+    if (owner) throw new Error('This file belongs to the halal certificate ' + (owner.company || owner.id) + '. Delete the certificate instead: that removes its file too.');
     file = row.drive_file_id;
   } else if (tab === 'Events') {
     var m = String(row.poster_file || row.poster_url || '').match(/(?:\/d\/|[?&]id=)([\w-]{20,})/);
@@ -670,17 +673,38 @@ function installTriggers() {
 // ---------- Certificate thumbnails ----------
 // Drive's own preview of the certificate, read with the owner's rights and
 // handed back as a data URI, so the file itself never has to be shared.
+// Preview of a certificate or of a document (Drive id of a Documents row).
+// Both are read with the owner's Drive rights, so no file is ever public.
+function thumbFor(id) { return /^DOC-/.test(id) ? docThumb(id) : certThumb(id); }
+function docThumb(id) {
+  var d = readTab('Documents').filter(function (r) { return String(r.id) === id && ['hidden', 'duplicate', 'draft', 'expired', 'inbox'].indexOf(String(r.status)) < 0; })[0];
+  if (!d || !d.drive_file_id) return { ok: false, error: 'not found', missing: true };
+  return fileThumb(String(d.drive_file_id));
+}
+// The certificate's own file first, then the file of the document row it points
+// to: the two can differ after the organiser re-files a certificate.
+function certFileIds(cert) {
+  var ids = [], m = String(cert.drive_url || '').match(/\/d\/([\w-]{10,})/);
+  if (m) ids.push(m[1]);
+  if (cert.doc_id) {
+    var doc = readTab('Documents').filter(function (d) { return String(d.id) === String(cert.doc_id); })[0];
+    if (doc && doc.drive_file_id && ids.indexOf(String(doc.drive_file_id)) < 0) ids.push(String(doc.drive_file_id));
+  }
+  return ids;
+}
 function certThumb(id) {
   var cert = readTab('Certificates').filter(function (r) { return String(r.id) === id && r.status !== 'hidden'; })[0];
-  if (!cert) return { ok: false, error: 'not found' };
-  var m = String(cert.drive_url || '').match(/\/d\/([\w-]{10,})/), fileId = m && m[1];
-  if (!fileId && cert.doc_id) {
-    var doc = readTab('Documents').filter(function (d) { return String(d.id) === String(cert.doc_id); })[0];
-    fileId = doc && doc.drive_file_id;
-  }
-  if (!fileId) return { ok: false, error: 'no file' };
+  if (!cert) return { ok: false, error: 'not found', missing: true };
+  var ids = certFileIds(cert), last = { ok: false, error: 'no file', missing: true };
+  for (var i = 0; i < ids.length; i++) { last = fileThumb(ids[i]); if (last.ok) return last; }
+  return last;
+}
+function fileThumb(fileId) {
   var cache = CacheService.getScriptCache(), hit = cache.get('thumb_' + fileId);
   if (hit) return { ok: true, data: hit };
+  // A file Drive says does not exist is remembered for 10 minutes, so a page of
+  // certificates does not ask Drive again for each visitor.
+  if (cache.get('thumb_miss_' + fileId)) return { ok: false, error: 'file not found in Drive', missing: true };
   // A large preview is cached in 90 KB pieces (one cache value holds 100 KB).
   var np = Number(cache.get('thumb_' + fileId + '_n') || 0);
   if (np) {
@@ -699,10 +723,31 @@ function certThumb(id) {
       var b = DriveApp.getFileById(fileId).getBlob();
       if (b.getBytes().length < 70000) data = 'data:' + b.getContentType() + ';base64,' + Utilities.base64Encode(b.getBytes());
     }
-  } catch (e) { return { ok: false, error: String(e.message || e) }; }
+  } catch (e) {
+    var why = String(e.message || e), gone = /not found|404/i.test(why);
+    if (gone) { try { cache.put('thumb_miss_' + fileId, '1', 600); } catch (x) { /* cache full */ } }
+    return { ok: false, error: why, missing: gone };
+  }
   if (!data) return { ok: false, error: 'no preview yet' };
   try { if (data.length < 100000) cache.put('thumb_' + fileId, data, 21600); else { var parts = Math.ceil(data.length / 90000), kv = { }; for (var i = 0; i < parts; i++) kv['thumb_' + fileId + '_' + i] = data.slice(i * 90000, (i + 1) * 90000); kv['thumb_' + fileId + '_n'] = String(parts); cache.putAll(kv, 21600); } } catch (e) { /* cache full */ }
   return { ok: true, data: data };
+}
+
+// Certificates whose file is gone from Drive, for Admin: the card has no
+// preview and the link opens nothing. A file in Drive's trash can still be
+// restored; one that is not found has to be uploaded again.
+function certFilesCheck() {
+  var out = [], docs = {}; readTab('Documents').forEach(function (d) { docs[String(d.id)] = d; });
+  var certs = readTab('Certificates').filter(function (c) { return c.status !== 'hidden'; });
+  certs.forEach(function (c) {
+    var ids = certFileIds(c), state = ids.length ? 'missing' : 'nofile', seen = '';
+    for (var i = 0; i < ids.length && state === 'missing'; i++) {
+      try { var m = Drive.Files.get(ids[i], { fields: 'id,trashed' }); if (m && m.trashed) { seen = 'trash'; } else { state = 'ok'; } }
+      catch (e) { /* not found */ }
+    }
+    if (state !== 'ok') out.push({ id: c.id, company: c.company, cert_no: c.cert_no, doc_id: c.doc_id || '', state: seen === 'trash' ? 'trash' : state });
+  });
+  return { ok: true, total: certs.length, missing: out };
 }
 
 // Drafts written by the pipeline wait here for an admin to publish or hide.

@@ -5,6 +5,7 @@ import CategoryFilter, { catChip } from '../components/CategoryFilter'
 import { t } from '../lib/i18n'
 import { fmtDateTime, publishedAt } from '../lib/util'
 import Stamps from '../components/Stamps'
+import FileThumb from '../components/FileThumb'
 import { filedDocs } from '../lib/certs'
 
 // Certificates and attachments picked out of the groups, filed in Drive by
@@ -29,6 +30,7 @@ export default function Documents({ lang, data }) {
   return (
     <Segment id="documents" lang={lang} title={t(lang, 'documents')} rows={rows} defaultView="table" filters={filters}
       columns={[
+        { key: '_thumb', label: '', render: (d) => <FileThumb id={d.id} href={d.drive_url} name={d.title} altPrefix={t(lang, 'documents')} size="row" lang={lang} /> },
         { key: 'status', label: 'Status', render: status },
         { key: 'title', label: t(lang, 'title'), render: (d) => safeUrl(d.drive_url) ? <a className="font-medium hover:underline" href={safeUrl(d.drive_url)} target="_blank" rel="noreferrer">{d.title}</a> : d.title },
         { key: 'kind', label: t(lang, 'kind'), render: (d) => kindName(d.kind, lang) },
@@ -41,6 +43,7 @@ export default function Documents({ lang, data }) {
       ]}
       renderCard={(d) => (
         <article key={d.id} className="card p-4">
+          <div className="mb-3"><FileThumb id={d.id} href={d.drive_url} name={d.title} sub={kindName(d.kind, lang)} altPrefix={t(lang, 'documents')} lang={lang} /></div>
           <div className="flex items-center justify-between mb-2">{status(d)}<span className="text-xs text-ink-400">v{d.version || 1} · {kindName(d.kind, lang)}</span></div>
           {safeUrl(d.drive_url) ? <a href={safeUrl(d.drive_url)} target="_blank" rel="noreferrer" className="font-semibold hover:underline">{d.title}</a> : <div className="font-semibold">{d.title}</div>}
           <div className="mt-2 flex items-center gap-2">{catChip(d.category, lang)}{d.supersedes_id && <span className="text-xs text-ink-400">{t(lang, 'supersedes')} {d.supersedes_id}</span>}</div>

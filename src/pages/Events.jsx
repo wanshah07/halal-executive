@@ -41,7 +41,7 @@ export default function Events({ lang, data }) {
         ]}
         renderCard={(e) => (
           <article key={e.id} className="card overflow-hidden">
-            {safeUrl(e.poster_url) && <Poster url={e.poster_url} file={e.poster_file} title={title(e)} />}
+            <Poster url={e.poster_url} file={e.poster_file} title={title(e)} />
             <div className="p-4">
               <div className="flex items-center justify-between gap-2 text-xs text-ink-400">{kindChip(e.kind, lang)}<span>{fmtDateTime(e.date_start, lang)}</span></div>
               {e.venue && <div className="text-xs text-ink-400 mt-1">{e.venue}</div>}

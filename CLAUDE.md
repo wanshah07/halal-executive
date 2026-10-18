@@ -184,3 +184,17 @@
     Halal Executive Hub"** unless Admin types a title (`hero_title`, and
     `hero_title_bm` for Bahasa Malaysia); the old plain "Halal Executive" counts
     as not typed.
+31. **Every card has a thumbnail** (Wan, 18 Oct 2026). `FileThumb` shows the Drive
+    preview of a certificate (id CERT-) or a document (id DOC-) through the
+    `thumb` route (`thumbFor` in Code.gs, read with the owner's Drive rights,
+    no file made public) and, with no preview, a designed tile with the name
+    and what it is, never a blank. A certificate tries its own file, then the
+    file of its document row. A file Drive reports as not found comes back
+    `missing` and is not asked for again for 10 minutes. Events always show a
+    poster tile (the title on the brand gradient when there is no poster).
+    Admin → Certificate files (`certFilesCheck`) lists certificates whose file
+    is gone (in Drive trash: restore it; not found: upload it again). A file
+    that belongs to a certificate cannot be deleted from Documents: delete the
+    certificate, which removes its file with it. On 18 Oct 2026 14 of 17
+    certificates had lost their Drive file (`Drive.Files.remove` deletes for
+    good, it does not trash).

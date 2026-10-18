@@ -240,3 +240,36 @@ export function ContentManager({ lang, data, onChanged }) {
     </div>
   )
 }
+
+// Certificates whose file has gone from Drive: their card has no preview and the
+// link opens nothing. A file in Drive's trash can be restored; one that is not
+// found has to be uploaded again (Code.gs certFilesCheck).
+export function CertFilesCheck({ lang }) {
+  const [r, setR] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const run = () => { setBusy(true); setErr(''); adminPost('cert_files').then(setR).catch((e) => setErr(e.message)).finally(() => setBusy(false)) }
+  useEffect(() => { run() }, [])
+  const bad = (r && r.missing) || []
+  return (
+    <div className="card p-5 mb-4 space-y-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="font-semibold">{t(lang, 'cf_title')}</h3>
+        <button type="button" className="btn" disabled={busy} onClick={run}>{busy ? t(lang, 'cf_checking') : t(lang, 'cf_check')}</button>
+      </div>
+      {err && <p className="text-sm text-red-700">{err}</p>}
+      {r && !bad.length && <p className="text-sm text-brand-700">{t(lang, 'cf_ok').replace('{n}', r.total)}</p>}
+      {r && !!bad.length && (<>
+        <p className="text-sm text-red-700">{t(lang, 'cf_bad').replace('{m}', bad.length).replace('{n}', r.total)}</p>
+        <p className="text-xs text-ink-600">{t(lang, 'cf_help')}</p>
+        <ul className="text-sm divide-y divide-line max-h-64 overflow-auto">
+          {bad.map((c) => (
+            <li key={c.id} className="py-1.5 flex flex-wrap items-center gap-2">
+              <span className="text-xs text-ink-400">{c.id}</span><span className="min-w-0 flex-1 truncate">{c.company || c.cert_no || '—'}</span>
+              <span className={`chip ${c.state === 'trash' ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-700'}`}>{t(lang, 'cf_state_' + c.state)}</span>
+            </li>))}
+        </ul>
+      </>)}
+    </div>
+  )
+}
