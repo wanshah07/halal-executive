@@ -161,8 +161,8 @@
     hidden events.
 28. **The hero globe is a real Earth** (`ui/globe.tsx`, `public/brand/earth.jpg`,
     NASA Blue Marble): one WebGL shader, no 3D library, turns by itself, pins
-    on the FHCB countries, a thin green glow (brand colour, never blue) and the
-    name in dark green above it, CSS fallback without WebGL. cobe was tried first
+    on the FHCB countries, no glow, no shadow and no text on the card (Wan,
+    18 Oct 2026), CSS fallback without WebGL. cobe was tried first
     and dropped: it is a monochrome dot map and its shader rendered black on
     software GL. The picture is NASA imagery (generally free to use with
     credit); Wan to confirm the credit line he wants.
@@ -178,7 +178,9 @@
     or fetched time, the time inside a hand-made id (EV-M261016011450), then the
     last update. News shows Fetched and the source's own date; References show
     added and indexed. Nothing was back-filled in the Sheet.
-30. **The hero title is "Welcome to Halal Executive Hub" / "Selamat Datang ke
+30. **The hero title stays on one line at every width** (checked 360 to 1536 px,
+    English and Malay; the Malay line is longer, so it is set smaller on phones).
+    It is "Welcome to Halal Executive Hub" / "Selamat Datang ke
     Halal Executive Hub"** unless Admin types a title (`hero_title`, and
     `hero_title_bm` for Bahasa Malaysia); the old plain "Halal Executive" counts
     as not typed.
