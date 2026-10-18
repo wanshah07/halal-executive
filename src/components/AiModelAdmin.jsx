@@ -134,7 +134,7 @@ export default function AiModelAdmin({ lang }) {
           {msg && <span className="text-sm text-ink-600">{msg}</span>}
         </div>
       </>)}
-      {!cfg && msg && <div className="text-sm text-red-700">{msg}</div>}
+      {!cfg && !old && msg && <div className="text-sm text-red-700 flex flex-wrap items-center gap-3">{msg}<button type="button" className="btn" onClick={() => { setMsg(''); load() }}>{t(lang, 'cf_check')}</button></div>}
     </div>
   )
 }

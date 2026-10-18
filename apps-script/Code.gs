@@ -201,16 +201,27 @@ function noMarks(rows) {
 // show within 5 minutes.
 var PUB_TTL = 300, PUB_PIECE = 90000;
 function pubBust() { props().setProperty('pub_v', String(Date.now())); }
+function pubFromCache(cache, base) {
+  var head = cache.get(base + 'n');
+  if (!head) return null;
+  var keys = []; for (var i = 0; i < Number(head); i++) keys.push(base + i);
+  var got = cache.getAll(keys), parts = [];
+  for (var j = 0; j < keys.length; j++) { if (got[keys[j]] == null) return null; parts.push(got[keys[j]]); }
+  try { return JSON.parse(parts.join('')); } catch (e) { return null; }
+}
+// The feed takes 4-12 s to build. After every write the cache is stale, and each
+// visitor who arrived meanwhile used to build it again at the same moment: a
+// dozen at once ran Apps Script out of simultaneous runs and the rest got
+// Google's HTML 404 ("Sheet feed 404", 18 Oct 2026). Now one builds it and the
+// others wait up to 15 s for that copy.
 function cachedPublicData() {
   var cache = CacheService.getScriptCache(), v = props().getProperty('pub_v') || '0', base = 'pub_' + v + '_';
-  var head = cache.get(base + 'n'), body = null;
-  if (head) {
-    var keys = []; for (var i = 0; i < Number(head); i++) keys.push(base + i);
-    var got = cache.getAll(keys), parts = [];
-    for (var j = 0; j < keys.length; j++) { if (got[keys[j]] == null) { parts = null; break; } parts.push(got[keys[j]]); }
-    if (parts) { try { body = JSON.parse(parts.join('')); } catch (e) { body = null; } }
+  var body = pubFromCache(cache, base);
+  if (!body && cache.get(base + 'building')) {
+    for (var w = 0; w < 15 && !body; w++) { Utilities.sleep(1000); body = pubFromCache(cache, base); }
   }
   if (!body) {
+    try { cache.put(base + 'building', '1', 40); } catch (e) { /* cache full */ }
     body = publicData();
     try {
       var str = JSON.stringify(body), put = {}, n = Math.ceil(str.length / PUB_PIECE);
@@ -218,6 +229,7 @@ function cachedPublicData() {
       put[base + 'n'] = String(n);
       cache.putAll(put, PUB_TTL);
     } catch (e) { /* too large to cache: serve uncached */ }
+    try { cache.remove(base + 'building'); } catch (e) { /* expires by itself */ }
   }
   body.collectors = collectorStatus();
   var now = Date.now();
@@ -299,7 +311,7 @@ function doPost(e) {
     if (a === 'drive_get')    return json(driveGet(body));
     if (a === 'llm_next')     return json({ ok: true, provider: nextProvider() });
     if (a === 'llm_config')   return json(llmConfigGet());                         // the pipeline reads the same choice
-    if (a === 'llm_models')   { needAdmin(); return json(llmModels()); }
+    if (a === 'llm_models')   { needAdmin(); return json(llmModels(!!body.fresh)); }
     if (a === 'llm_test')     { needAdmin(); return json(llmTest(body)); }          // one real call, no Sheet write
     if (a === 'llm_config_save') { needAdmin(); return json(llmConfigSave(body)); } // validates first, locks only for the write
     if (a === 'llm')          return json(llmProxy(body));
@@ -312,7 +324,7 @@ function doPost(e) {
     if (a === 'event_from_poster') { needAdmin(); return json(eventFromPoster(body)); } // stores the poster and reads it; no Sheet write
     if (a === 'faq_rephrase')  { needAdmin(); return json(faqRephrase(body)); } // model call, no Sheet write
     if (a === 'logo_upload')   { needAdmin(); return json(logoUpload(body)); } // Drive only
-    if (a === 'cert_files')    { needAdmin(); return json(certFilesCheck()); }  // reads Drive, writes nothing
+    if (a === 'cert_files')    { needAdmin(); return json(certFilesCheck(!!body.fresh)); }  // reads Drive, writes nothing
     // Admin lists of FHCB and Directory, hidden rows included (the public feed drops them).
     if (a === 'rows_list')     { needAdmin(); if (!ROW_FIELDS[body.tab]) throw new Error('unknown tab'); return json({ ok: true, rows: readTab(body.tab) }); }
 
@@ -744,7 +756,9 @@ function fileThumb(fileId) {
 // Every certificate for Admin, with whether its file is still in Drive. A file
 // in Drive's trash can still be restored; one that is not found has to be
 // uploaded again. `missing` is the visible certificates that lost their file.
-function certFilesCheck() {
+function certFilesCheck(fresh) {
+  var cache = CacheService.getScriptCache(), ck = 'certfiles_' + (props().getProperty('pub_v') || '0');
+  if (!fresh) { var hit = cache.get(ck); if (hit) { try { return JSON.parse(hit); } catch (e) { /* build again */ } } }
   var rows = [];
   readTab('Certificates').forEach(function (c) {
     var ids = certFileIds(c), state = ids.length ? 'missing' : 'nofile', seen = '';
@@ -756,7 +770,9 @@ function certFilesCheck() {
     rows.push({ id: c.id, company: c.company, cert_no: c.cert_no, scheme: c.scheme, status: c.status, valid_to: c.valid_to, drive_url: c.drive_url, doc_id: c.doc_id || '',
       created_at: c.created_at || '', published_at: c.published_at || '', updated_at: c.updated_at || '', state: state });
   });
-  return { ok: true, total: rows.length, rows: rows, missing: rows.filter(function (r) { return r.state !== 'ok' && r.status !== 'hidden'; }) };
+  var out = { ok: true, total: rows.length, rows: rows, missing: rows.filter(function (r) { return r.state !== 'ok' && r.status !== 'hidden'; }) };
+  try { cache.put(ck, JSON.stringify(out), 300); } catch (e) { /* too large */ }
+  return out;
 }
 
 // Drafts written by the pipeline wait here for an admin to publish or hide.
@@ -1207,7 +1223,7 @@ function llmCfg() {
   try { cache.put('llm_cfg', JSON.stringify(cfg), 600); } catch (e) { /* cache full */ }
   return cfg;
 }
-function llmBust() { try { CacheService.getScriptCache().removeAll(['llm_cfg', 'ai_status']); } catch (e) { /* nothing cached */ } }
+function llmBust() { try { CacheService.getScriptCache().removeAll(['llm_cfg', 'ai_status', 'llm_models']); } catch (e) { /* nothing cached */ } }
 function stripLlm(st) { Object.keys(st).forEach(function (k) { if (k.indexOf('llm_') === 0) delete st[k]; }); return st; }
 
 function nextProvider() {
@@ -1380,7 +1396,9 @@ function llmConfigGet() {
 
 // What each gateway offers right now, for the pickers, and what automatic
 // would choose (so "Auto" can say which model it means today).
-function llmModels() {
+function llmModels(fresh) {
+  var cache = CacheService.getScriptCache();
+  if (!fresh) { var hit = cache.get('llm_models'); if (hit) { try { return JSON.parse(hit); } catch (e) { /* ask again */ } } }
   var out = { ok: true, providers: {} };
   Object.keys(PROVIDERS).forEach(function (n) {
     var s = { key: !!props().getProperty(PROVIDERS[n].keyProp), reachable: false, code: '', why: '', models: [], auto_main: '', auto_fast: '', error: '' };
@@ -1393,6 +1411,7 @@ function llmModels() {
     } else { s.code = 'NO KEY'; s.why = 'key'; }
     out.providers[n] = s;
   });
+  try { cache.put('llm_models', JSON.stringify(out), 300); } catch (e) { /* too large */ }
   return out;
 }
 

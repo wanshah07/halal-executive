@@ -253,23 +253,23 @@ export function CertAdmin({ lang, data, onChanged }) {
   const [err, setErr] = useState('')
   const [q, setQ] = useState('')
   const [only, setOnly] = useState('all')
-  const run = () => {
-    setBusy(true); setErr(''); setOld(false)
-    adminPost('cert_files').then((r) => setRows(r.rows)).catch((e) => {
+  const run = (fresh, keepErr) => {
+    setBusy(true); if (!keepErr) setErr(''); setOld(false)
+    adminPost('cert_files', fresh ? { fresh: true } : {}).then((r) => setRows(r.rows)).catch((e) => {
       if (/unknown action/i.test(e.message)) { setOld(true); setRows(((data && data.certificates) || []).map((c) => ({ ...c, state: '?' }))) } else setErr(e.message)
     }).finally(() => setBusy(false))
   }
-  useEffect(() => { run() }, [])
+  useEffect(() => { run(false) }, [])
   const all = rows || []
   const bad = all.filter((r) => r.state !== 'ok' && r.state !== '?' && r.status !== 'hidden')
   const list = all.filter((r) => (only === 'all' || (only === 'missing' ? r.state !== 'ok' && r.state !== '?' : r.status === 'hidden')) && (!q || JSON.stringify([r.company, r.cert_no, r.scheme, r.id]).toLowerCase().includes(q.toLowerCase())))
   async function toggleHide(r) {
     const hide = r.status !== 'hidden'
     setRows((rs) => rs.map((x) => (x.id === r.id ? { ...x, status: hide ? 'hidden' : 'current' } : x)))
-    try { await adminPost('review_set', { tab: 'Certificates', id: r.id, status: hide ? 'hidden' : 'current' }); if (hide) dropLocal('Certificates', r.id); else refreshAll(); onChanged && onChanged() } catch (e) { setErr(e.message); run() }
+    try { await adminPost('review_set', { tab: 'Certificates', id: r.id, status: hide ? 'hidden' : 'current' }); if (hide) dropLocal('Certificates', r.id); else refreshAll(); onChanged && onChanged() } catch (e) { setErr(e.message); run(true, true) }
   }
   async function remove(r) {
-    try { if (await deleteForGood(lang, 'Certificates', r.id, r.company || r.cert_no, () => setRows((rs) => rs.filter((x) => x.id !== r.id)))) onChanged && onChanged() } catch (e) { setErr(e.message); run() }
+    try { if (await deleteForGood(lang, 'Certificates', r.id, r.company || r.cert_no, () => setRows((rs) => rs.filter((x) => x.id !== r.id)))) onChanged && onChanged() } catch (e) { setErr(e.message); run(true, true) }
   }
   const stateChip = (r) => r.state === 'ok' ? <span className="chip bg-brand-100 text-brand-700">{t(lang, 'ca_file_ok')}</span>
     : r.state === '?' ? null : <span className={`chip ${r.state === 'trash' ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-700'}`}>{t(lang, 'cf_state_' + r.state)}</span>
@@ -277,7 +277,7 @@ export function CertAdmin({ lang, data, onChanged }) {
     <div className="card p-5 mb-4 space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div><h3 className="font-semibold">{t(lang, 'ca_title')} {rows && <span className="text-ink-400 font-normal">({all.length})</span>}</h3><p className="text-xs text-ink-600">{t(lang, 'ca_sub')}</p></div>
-        <button type="button" className="btn" disabled={busy} onClick={run}>{busy ? t(lang, 'cf_checking') : t(lang, 'cf_check')}</button>
+        <button type="button" className="btn" disabled={busy} onClick={() => run(true)}>{busy ? t(lang, 'cf_checking') : t(lang, 'cf_check')}</button>
       </div>
       {old && <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3">{t(lang, 'ca_old')}</p>}
       {err && <p className="text-sm text-red-700">{err}</p>}

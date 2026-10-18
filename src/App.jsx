@@ -1,4 +1,4 @@
-import { Component, Suspense, lazy, useCallback, useEffect, useState } from 'react'
+import { Component, Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react'
 import Header from './components/Header'
 import Sidebar, { NAV } from './components/Sidebar'
 import Notice from './components/Notice'
@@ -99,9 +99,14 @@ export default function App() {
     return () => removeEventListener('he:drop', drop)
   }, [])
 
+  const retries = useRef(0)
   const refresh = useCallback(async (force) => {
     setLoading(true); setErr('')
-    try { setData(await loadData({ force })) } catch (e) { setErr(String(e.message || e)) } finally { setLoading(false) }
+    try {
+      const d = await loadData({ force }); setData(d)
+      // Google was busy and the saved copy is on screen: ask again in 30 s, up to 6 times.
+      if (d._error && retries.current++ < 6) setTimeout(() => refresh(true), 30000); else if (!d._error) retries.current = 0
+    } catch (e) { setErr(String(e.message || e)); if (retries.current++ < 6) setTimeout(() => refresh(true), 30000) } finally { setLoading(false) }
   }, [])
   useEffect(() => {
     // First visit on this browser: show the deploy's snapshot while the live

@@ -209,3 +209,17 @@
     `tickWatch` watches it once it has checked in once, and a message the Sheet
     refuses is kept in `state.json` and sent again. Rows are source `telegram`;
     the pipeline already reads them with WhatsApp.
+33. **Google being busy must never reach the reader as an error** (Wan, 18 Oct
+    2026: "Sheet feed 404", AI model "HTTP 404", Progress and Drafts stuck on
+    Loading). Apps Script answers with Google's HTML "Page Not Found" (HTTP 404,
+    or a 5xx page) when too many runs overlap, and the Admin page opens a dozen
+    boxes at once. Page (`api.js`): at most 3 calls in flight (`gate`); a reply
+    that is not JSON, or is 404/429/5xx, is asked again after 1.5 s and 4 s, for
+    reads only (`READ_ACTIONS`, `GET` feed/status/settings/thumb): an action that
+    writes is sent once and says "Google is busy (HTTP 404)". When the feed
+    stays down the saved copy is shown with no banner and the page asks again
+    every 30 s, 6 times. Code.gs: the public feed is built by one run at a time
+    (`building` flag in the cache; the others wait up to 15 s for that copy);
+    `cert_files` and `llm_models` are cached 5 minutes (`fresh` bypasses it;
+    saving the AI choice or any Sheet write drops them). Do not add a box to
+    Admin that loads something heavy without going through `post()`.

@@ -3,6 +3,38 @@ import sample from '../data/sample.json'
 
 const CACHE_KEY = 'he:data:v1'
 
+// Apps Script answers with Google's HTML "Page Not Found" (HTTP 404) or a 5xx
+// page when it is busy or when many calls arrive at once, and the Admin page
+// opens a dozen boxes together (18 Oct 2026: Sheet feed 404, AI model HTTP 404,
+// Progress and Drafts never loading). So the page keeps at most 3 calls in
+// flight, and a reply that is not JSON, or is 404/429/5xx, is asked again
+// after a pause (reads only: an action that writes is never repeated).
+const MAX_INFLIGHT = 3
+let inflight = 0
+const waiting = []
+const enter = () => new Promise((res) => { if (inflight < MAX_INFLIGHT) { inflight++; res() } else waiting.push(res) })
+const leave = () => { const next = waiting.shift(); if (next) next(); else inflight-- }
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+const busy = (status) => new Error(`Google is busy (HTTP ${status}). Wait a moment and try again.`)
+const TRANSIENT = (status) => status === 404 || status === 429 || status >= 500
+async function gate(fn) { await enter(); try { return await fn() } finally { leave() } }
+// One request, returning the parsed JSON. `delays` are the pauses before each retry.
+async function fetchJson(url, init, delays) {
+  let last
+  for (let i = 0; i <= delays.length; i++) {
+    try {
+      const r = await gate(() => fetch(url, { redirect: 'follow', ...init }))
+      const j = await r.json().catch(() => null)
+      if (j && typeof j === 'object') return j
+      last = busy(r.status)
+      if (!TRANSIENT(r.status) && r.status !== 200) break
+    } catch (e) { last = e }
+    if (i < delays.length) await sleep(delays[i])
+  }
+  throw last || busy(0)
+}
+const READ_ACTIONS = new Set(['pipeline_status', 'llm_config', 'llm_models', 'review_list', 'ref_list', 'event_list', 'rows_list', 'cert_files', 'admins_get', 'whoami', 'raw_stats'])
+
 // Public read. GET <API_URL>?action=data returns every published tab in one
 // JSON body (see apps-script/Code.gs). With no API_URL the page runs on the
 // bundled sample so the layout can be reviewed before the Sheet exists.
@@ -14,9 +46,16 @@ export async function loadData({ force = false } = {}) {
       if (c && Date.now() - Date.parse(c._fetched) < 5 * 60 * 1000) return c
     } catch { /* ignore */ }
   }
-  const r = await fetch(`${API_URL}?action=data&t=${Date.now()}`, { redirect: 'follow' })
-  if (!r.ok) throw new Error(`Sheet feed ${r.status}`)
-  const data = stripMarks(await r.json())
+  let raw
+  try { raw = await fetchJson(`${API_URL}?action=data&t=${Date.now()}`, {}, [2000, 5000]) } catch (e) {
+    // Google stayed busy: show the copy this browser saved, quietly, and let the
+    // page ask again in 30 seconds. Only a first visit with nothing saved sees an error.
+    const saved = savedData()
+    if (saved) return { ...saved, _error: String(e.message || e) }
+    throw e
+  }
+  if (raw.ok === false) throw new Error(raw.error || 'Sheet feed error')
+  const data = stripMarks(raw)
   data._source = 'sheet'
   data._fetched = new Date().toISOString()
   try { localStorage.setItem(CACHE_KEY, JSON.stringify(data)) } catch { /* ignore */ }
@@ -83,12 +122,11 @@ export function stripMarks(data) {
 // preflight, so the JSON goes as text and the session travels in the body.
 export async function post(action, payload = {}) {
   if (!API_URL) throw new Error('The site is not connected to the Sheet yet (VITE_API_URL is empty).')
-  const r = await fetch(API_URL, {
-    method: 'POST', redirect: 'follow',
+  const j = await fetchJson(API_URL, {
+    method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
     body: JSON.stringify({ action, ...payload }),
-  })
-  const j = await r.json().catch(() => ({ ok: false, error: `HTTP ${r.status}` }))
+  }, READ_ACTIONS.has(action) ? [1500, 4000] : [])
   if (!j.ok) { const e = new Error(j.error || 'Request failed'); e.code = j.error; throw e }
   return j
 }
@@ -118,8 +156,8 @@ export async function certThumb(id) {
   // 20 s and 60 s instead of remembering "no preview" for the whole visit.
   // A file Drive says does not exist (missing) is not asked for again: waiting
   // does not bring it back.
-  const once = () => fetch(`${API_URL}?action=thumb&id=${encodeURIComponent(id)}`, { redirect: 'follow' })
-    .then((r) => r.json()).then((j) => (j.ok ? { data: j.data } : { gone: !!j.missing })).catch(() => ({}))
+  const once = () => fetchJson(`${API_URL}?action=thumb&id=${encodeURIComponent(id)}`, {}, [])
+    .then((j) => (j.ok ? { data: j.data } : { gone: !!j.missing })).catch(() => ({}))
   const wait = (ms) => new Promise((r) => setTimeout(r, ms))
   const p = once().then((r) => (r.data || r.gone ? r : wait(20000).then(once))).then((r) => (r.data || r.gone ? r : wait(40000).then(once)))
     .then((r) => { if (!r.data && !r.gone) thumbs.delete(id); return r.data || null })
@@ -155,8 +193,7 @@ export async function askRefs(question, lang) {
 export async function loadSettings() {
   if (!API_URL) return null
   try {
-    const r = await fetch(`${API_URL}?action=settings&t=${Date.now()}`, { redirect: 'follow' })
-    const j = await r.json()
+    const j = await fetchJson(`${API_URL}?action=settings&t=${Date.now()}`, {}, [1500])
     return j && j.ok ? j.settings : null
   } catch { return null }
 }
@@ -164,6 +201,5 @@ export async function loadSettings() {
 // AI team status (cached 5 minutes on the server).
 export async function aiStatus() {
   if (!API_URL) return null
-  const r = await fetch(`${API_URL}?action=status`, { redirect: 'follow' })
-  return r.json()
+  return fetchJson(`${API_URL}?action=status`, {}, [2000, 5000])
 }
