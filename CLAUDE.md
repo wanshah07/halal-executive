@@ -192,8 +192,11 @@
     file of its document row. A file Drive reports as not found comes back
     `missing` and is not asked for again for 10 minutes. Events always show a
     poster tile (the title on the brand gradient when there is no poster).
-    Admin → Certificate files (`certFilesCheck`) lists certificates whose file
-    is gone (in Drive trash: restore it; not found: upload it again). A file
+    Admin → Halal certificates (`CertAdmin`, `certFilesCheck`) lists every
+    certificate, hidden ones too, with its file state (in Drive; in Drive trash:
+    restore it; not found or not linked: upload it again), and can Hide, show or
+    Delete one. An older Code.gs answers `unknown action cert_files`: the box then
+    lists the public certificates and says to deploy the newest Code.gs. A file
     that belongs to a certificate cannot be deleted from Documents: delete the
     certificate, which removes its file with it. On 18 Oct 2026 14 of 17
     certificates had lost their Drive file (`Drive.Files.remove` deletes for

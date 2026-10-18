@@ -741,21 +741,22 @@ function fileThumb(fileId) {
   return { ok: true, data: data };
 }
 
-// Certificates whose file is gone from Drive, for Admin: the card has no
-// preview and the link opens nothing. A file in Drive's trash can still be
-// restored; one that is not found has to be uploaded again.
+// Every certificate for Admin, with whether its file is still in Drive. A file
+// in Drive's trash can still be restored; one that is not found has to be
+// uploaded again. `missing` is the visible certificates that lost their file.
 function certFilesCheck() {
-  var out = [], docs = {}; readTab('Documents').forEach(function (d) { docs[String(d.id)] = d; });
-  var certs = readTab('Certificates').filter(function (c) { return c.status !== 'hidden'; });
-  certs.forEach(function (c) {
+  var rows = [];
+  readTab('Certificates').forEach(function (c) {
     var ids = certFileIds(c), state = ids.length ? 'missing' : 'nofile', seen = '';
     for (var i = 0; i < ids.length && state === 'missing'; i++) {
       try { var m = Drive.Files.get(ids[i], { fields: 'id,trashed' }); if (m && m.trashed) { seen = 'trash'; } else { state = 'ok'; } }
       catch (e) { /* not found */ }
     }
-    if (state !== 'ok') out.push({ id: c.id, company: c.company, cert_no: c.cert_no, doc_id: c.doc_id || '', state: seen === 'trash' ? 'trash' : state });
+    if (state !== 'ok' && seen === 'trash') state = 'trash';
+    rows.push({ id: c.id, company: c.company, cert_no: c.cert_no, scheme: c.scheme, status: c.status, valid_to: c.valid_to, drive_url: c.drive_url, doc_id: c.doc_id || '',
+      created_at: c.created_at || '', published_at: c.published_at || '', updated_at: c.updated_at || '', state: state });
   });
-  return { ok: true, total: certs.length, missing: out };
+  return { ok: true, total: rows.length, rows: rows, missing: rows.filter(function (r) { return r.state !== 'ok' && r.status !== 'hidden'; }) };
 }
 
 // Drafts written by the pipeline wait here for an admin to publish or hide.

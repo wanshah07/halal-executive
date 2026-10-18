@@ -7,7 +7,7 @@ import { filedDocs } from '../lib/certs'
 import Stamps from '../components/Stamps'
 import AiModelAdmin from '../components/AiModelAdmin'
 import { safeUrl, imageUrl } from '../lib/safe'
-import { RefAdmin, EventsAdmin, ContentManager, deleteForGood, CertFilesCheck } from '../components/AdminExtra'
+import { RefAdmin, EventsAdmin, ContentManager, deleteForGood, CertAdmin } from '../components/AdminExtra'
 import { RowManager } from '../components/AdminRows'
 import Pager from '../components/Pager'
 import Notice, { NOTICE_COLORS, textOn, parsePosters, noticeDay } from '../components/Notice'
@@ -584,7 +584,7 @@ export default function Admin({ lang, data, onSaved, onSession }) {
       <AiModelAdmin lang={lang} />
       <ReviewBox lang={lang} onChanged={onSaved} />
       <ContentManager lang={lang} data={data} onChanged={onSaved} />
-      <CertFilesCheck lang={lang} />
+      <CertAdmin lang={lang} data={data} onChanged={onSaved} />
       <UploadBox lang={lang} />
       <RefAdmin lang={lang} />
       <EventsAdmin lang={lang} onChanged={onSaved} />

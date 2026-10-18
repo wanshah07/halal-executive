@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
 import { adminPost, dropLocal, refreshAll } from '../lib/api'
-import { imageUrl } from '../lib/safe'
+import { imageUrl, safeUrl } from '../lib/safe'
 import { CATEGORIES, EVENT_KINDS } from '../lib/config'
 import { ICON, Sparkles } from './Icon'
 import { t } from '../lib/i18n'
-import { fmtDateTime } from '../lib/util'
-import { filedDocs } from '../lib/certs'
+import { fmtDateTime, fmtDate } from '../lib/util'
+import { filedDocs, certStatus } from '../lib/certs'
 import { qrLinks } from '../lib/qr'
 import Stamps from './Stamps'
 import { POSTER_ACCEPT, POSTER_MAX } from './Poster'
@@ -241,35 +241,75 @@ export function ContentManager({ lang, data, onChanged }) {
   )
 }
 
-// Certificates whose file has gone from Drive: their card has no preview and the
-// link opens nothing. A file in Drive's trash can be restored; one that is not
-// found has to be uploaded again (Code.gs certFilesCheck).
-export function CertFilesCheck({ lang }) {
-  const [r, setR] = useState(null)
+// Every halal certificate, for Admin: its status, dates, and whether its file is
+// still in Drive (Code.gs certFilesCheck). A file in Drive's trash can be
+// restored; one that is not found has to be uploaded again. Hide takes a
+// certificate off the site without deleting it; Delete removes it and its file.
+const CERT_TONE = { valid: 'bg-brand-100 text-brand-700', expiring: 'bg-amber-100 text-amber-800', expired: 'bg-red-100 text-red-700' }
+export function CertAdmin({ lang, data, onChanged }) {
+  const [rows, setRows] = useState(null)
+  const [old, setOld] = useState(false)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
-  const run = () => { setBusy(true); setErr(''); adminPost('cert_files').then(setR).catch((e) => setErr(e.message)).finally(() => setBusy(false)) }
+  const [q, setQ] = useState('')
+  const [only, setOnly] = useState('all')
+  const run = () => {
+    setBusy(true); setErr(''); setOld(false)
+    adminPost('cert_files').then((r) => setRows(r.rows)).catch((e) => {
+      if (/unknown action/i.test(e.message)) { setOld(true); setRows(((data && data.certificates) || []).map((c) => ({ ...c, state: '?' }))) } else setErr(e.message)
+    }).finally(() => setBusy(false))
+  }
   useEffect(() => { run() }, [])
-  const bad = (r && r.missing) || []
+  const all = rows || []
+  const bad = all.filter((r) => r.state !== 'ok' && r.state !== '?' && r.status !== 'hidden')
+  const list = all.filter((r) => (only === 'all' || (only === 'missing' ? r.state !== 'ok' && r.state !== '?' : r.status === 'hidden')) && (!q || JSON.stringify([r.company, r.cert_no, r.scheme, r.id]).toLowerCase().includes(q.toLowerCase())))
+  async function toggleHide(r) {
+    const hide = r.status !== 'hidden'
+    setRows((rs) => rs.map((x) => (x.id === r.id ? { ...x, status: hide ? 'hidden' : 'current' } : x)))
+    try { await adminPost('review_set', { tab: 'Certificates', id: r.id, status: hide ? 'hidden' : 'current' }); if (hide) dropLocal('Certificates', r.id); else refreshAll(); onChanged && onChanged() } catch (e) { setErr(e.message); run() }
+  }
+  async function remove(r) {
+    try { if (await deleteForGood(lang, 'Certificates', r.id, r.company || r.cert_no, () => setRows((rs) => rs.filter((x) => x.id !== r.id)))) onChanged && onChanged() } catch (e) { setErr(e.message); run() }
+  }
+  const stateChip = (r) => r.state === 'ok' ? <span className="chip bg-brand-100 text-brand-700">{t(lang, 'ca_file_ok')}</span>
+    : r.state === '?' ? null : <span className={`chip ${r.state === 'trash' ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-700'}`}>{t(lang, 'cf_state_' + r.state)}</span>
   return (
-    <div className="card p-5 mb-4 space-y-2">
+    <div className="card p-5 mb-4 space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="font-semibold">{t(lang, 'cf_title')}</h3>
+        <div><h3 className="font-semibold">{t(lang, 'ca_title')} {rows && <span className="text-ink-400 font-normal">({all.length})</span>}</h3><p className="text-xs text-ink-600">{t(lang, 'ca_sub')}</p></div>
         <button type="button" className="btn" disabled={busy} onClick={run}>{busy ? t(lang, 'cf_checking') : t(lang, 'cf_check')}</button>
       </div>
+      {old && <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3">{t(lang, 'ca_old')}</p>}
       {err && <p className="text-sm text-red-700">{err}</p>}
-      {r && !bad.length && <p className="text-sm text-brand-700">{t(lang, 'cf_ok').replace('{n}', r.total)}</p>}
-      {r && !!bad.length && (<>
-        <p className="text-sm text-red-700">{t(lang, 'cf_bad').replace('{m}', bad.length).replace('{n}', r.total)}</p>
-        <p className="text-xs text-ink-600">{t(lang, 'cf_help')}</p>
-        <ul className="text-sm divide-y divide-line max-h-64 overflow-auto">
-          {bad.map((c) => (
-            <li key={c.id} className="py-1.5 flex flex-wrap items-center gap-2">
-              <span className="text-xs text-ink-400">{c.id}</span><span className="min-w-0 flex-1 truncate">{c.company || c.cert_no || '—'}</span>
-              <span className={`chip ${c.state === 'trash' ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-700'}`}>{t(lang, 'cf_state_' + c.state)}</span>
-            </li>))}
-        </ul>
-      </>)}
+      {rows && !old && (bad.length
+        ? <p className="text-sm text-red-700">{t(lang, 'cf_bad').replace('{m}', bad.length).replace('{n}', all.length)} <span className="text-ink-600">{t(lang, 'cf_help')}</span></p>
+        : <p className="text-sm text-brand-700">{t(lang, 'cf_ok').replace('{n}', all.length)}</p>)}
+      <div className="flex flex-wrap items-center gap-2">
+        <input className="input w-auto min-w-48" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t(lang, 'search_ph_short')} aria-label={t(lang, 'search_ph_short')} />
+        {[['all', 'ca_f_all'], ['missing', 'ca_f_missing'], ['hidden', 'ca_f_hidden']].map(([k, l]) => <button key={k} type="button" className={`chip border ${only === k ? 'bg-brand-600 text-white border-brand-600' : 'bg-paper border-line'}`} onClick={() => setOnly(k)}>{t(lang, l)}</button>)}
+      </div>
+      <ul className="divide-y divide-line max-h-[34rem] overflow-auto">
+        {list.map((r) => {
+          const st = certStatus(r)
+          return (
+            <li key={r.id} className="py-2 text-sm">
+              <div className="flex flex-wrap items-start gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2"><span className="text-xs text-ink-400">{r.id}</span><span className="font-medium">{r.company || <i className="text-ink-400 font-normal">{t(lang, 'untitled_cert')}</i>}</span>
+                    <span className={`chip ${CERT_TONE[st] || 'bg-paper border border-line'}`}>{t(lang, st)}</span>{r.status === 'hidden' && <span className="chip bg-paper border border-line text-ink-600">{t(lang, 'ca_f_hidden')}</span>}{stateChip(r)}</div>
+                  <div className="text-xs text-ink-600">{[r.scheme, r.cert_no].filter(Boolean).join(' · ')}{r.valid_to ? ` · ${t(lang, 'valid_to')} ${fmtDate(r.valid_to, lang)}` : ''}</div>
+                  <Stamps r={r} lang={lang} className="text-xs text-ink-400" />
+                </div>
+                <div className="flex flex-wrap gap-2 shrink-0">
+                  {safeUrl(r.drive_url) && <a className="btn px-2.5" href={safeUrl(r.drive_url)} target="_blank" rel="noreferrer">{t(lang, 'ca_open')}</a>}
+                  <button type="button" className="btn px-2.5" onClick={() => toggleHide(r)}>{r.status === 'hidden' ? t(lang, 'publish') : t(lang, 'hide')}</button>
+                  <button type="button" className="btn px-2.5 text-red-700" onClick={() => remove(r)}>{t(lang, 'delete')}</button>
+                </div>
+              </div>
+            </li>)
+        })}
+        {rows && !list.length && <li className="py-3 text-sm text-ink-400">{t(lang, 'no_data')}</li>}
+      </ul>
     </div>
   )
 }
