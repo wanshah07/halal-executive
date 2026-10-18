@@ -10,7 +10,9 @@
 #   2. Still in BotFather: /setprivacy -> choose your bot -> Disable. Without
 #      this the bot only sees commands, not the group's messages.
 #   3. Add the bot to the "Halal Executive" group (Group info -> Add members).
-#   4. Send any message in the group, so the bot has something to list.
+#      Not allowed to add members (not an admin)? Skip this: you can send or
+#      forward messages and files to the bot in a private chat instead.
+#   4. Send any message to the bot (or in the group), so the bot has something to list.
 #
 # It asks for the token, shows the groups the bot can see, asks which one, and
 # leaves the collector running under pm2 as he-telegram (restarts on a crash
@@ -47,8 +49,12 @@ if ! have TELEGRAM_BOT_TOKEN; then read -rsp "Telegram bot token from BotFather 
 echo "== 4/5 Which group? =="
 node collect.js --chats
 if ! have TELEGRAM_CHAT_ID; then
-  read -rp "Group id to read (the number on the line marked '<- this is the group', Enter to read the group named in HE_GROUP_NAME): " CID <"$IN"
+  read -rp "Group id to read (the number on the line marked '<- this is the group'; Enter if the bot is not in a group): " CID <"$IN"
   [ -n "$CID" ] && setv TELEGRAM_CHAT_ID "$CID"
+fi
+if ! have TELEGRAM_ALLOWED_USERS; then
+  read -rp "Your Telegram id for private messages to the bot (the number on the line marked '<- a person'; Enter to skip): " UID_ <"$IN"
+  [ -n "$UID_" ] && setv TELEGRAM_ALLOWED_USERS "$UID_"
 fi
 
 echo "== 5/5 Run for good under pm2 =="
@@ -61,5 +67,6 @@ pm2 logs he-telegram --lines 12 --nostream || true
 echo
 echo "Done. Check with:  pm2 logs he-telegram --lines 20"
 echo "Telegram shows as Live on the site (Overview -> Collectors) within 5 minutes."
-echo "Messages sent in the group from now on reach the Sheet; older ones come from an export:"
-echo "  node ~/halal-executive/collectors/telegram/collect.js --import result.json"
+echo "Messages in the group from now on, and anything you send or forward to the bot, reach the Sheet."
+echo "Older group messages come from an export (Telegram Desktop -> Export chat history, with photos and files):"
+echo "  node ~/halal-executive/collectors/telegram/collect.js --import <export folder>"

@@ -209,6 +209,16 @@
     `tickWatch` watches it once it has checked in once, and a message the Sheet
     refuses is kept in `state.json` and sent again. Rows are source `telegram`;
     the pipeline already reads them with WhatsApp.
+    **No group admin needed** (Wan, 18 Oct 2026): the bot also takes private
+    messages and forwards from the ids in `TELEGRAM_ALLOWED_USERS` (Wan's own
+    Telegram id; `npm run chats` prints it). A forward keeps its original group
+    name and time; any other sender is told their id once and nothing is
+    ingested. The third route is Telegram Desktop's export:
+    `node collect.js --import <export folder>` sends the text and the photos and
+    files (10 MB cap, batches under ~8 MB). Asking an admin to add the bot is
+    still the only way to read the group live. Reading the group from a user
+    account (MTProto) is not built: members would not see a bot, which is a
+    consent question for Wan first.
 33. **Google being busy must never reach the reader as an error** (Wan, 18 Oct
     2026: "Sheet feed 404", AI model "HTTP 404", Progress and Drafts stuck on
     Loading). Apps Script answers with Google's HTML "Page Not Found" (HTTP 404,

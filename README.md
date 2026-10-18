@@ -49,6 +49,14 @@ Sheet ──(GET ?action=data)──► this page (Vite + React + Tailwind) ─�
   `.github/workflows/pipeline.yml` (primary) and `routines/` (Claude Routine
   alternative).
 * **Order of work.** WhatsApp first; Facebook and Telegram after it is stable.
+* **Telegram without being a group admin.** Three routes, all into the same Raw tab:
+  (1) ask an admin to add the bot (the only live read of the group);
+  (2) put your own Telegram id in `TELEGRAM_ALLOWED_USERS` in `collectors/.env`
+  (message `@wanshah2_bot` once, then `npm run chats` in `collectors/telegram`
+  prints the id) and send or forward posters and files to the bot in a private
+  chat, where a forward keeps its original group and time; (3) Telegram Desktop
+  → group → Export chat history (tick photos and files, JSON), then
+  `node collect.js --import <export folder>`.
 * **Charts.** Category colours (`src/lib/config.js` CHART) were validated with the dataviz palette validator on the light and dark surfaces; one hue per category, fixed order.
 
 ## Repository map
