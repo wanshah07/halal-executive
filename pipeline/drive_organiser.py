@@ -66,10 +66,12 @@ def read_cert(text):
 
 
 def read_cert_image(file_id):
-    """Wanshah 3 (KIOS) reads the picture of a certificate that OCR could not
-    (Wan, 19 Oct 2026). The key lives only in Apps Script (vision_read); without
-    one, or when the picture cannot be read, this is just (None, "", "") and the
-    caller carries on as before. Returns (certificate | None, provider, model)."""
+    """A picture-reading AI reads the certificate that OCR could not
+    (Wan, 19 Oct 2026). Apps Script (vision_read) picks the reader: Wanshah 3 when
+    its gateway lists a model that reads pictures, otherwise Wanshah 1 or 2 (they
+    do). With no reader, or when the picture cannot be read, this is just
+    (None, "", "") and the caller carries on as before. Returns
+    (certificate | None, provider, model)."""
     if not vision_ready():
         return None, "", "NO KEY"
     try:
@@ -81,7 +83,7 @@ def read_cert_image(file_id):
         return None, "", ("NO KEY" if r.get("code") == "NO KEY" else "")
     j = r.get("json") if isinstance(r.get("json"), dict) else {}
     c = j.get("certificate") if isinstance(j.get("certificate"), dict) else (j if j.get("company") else None)
-    return (c if c and c.get("company") else None), "KIOS", r.get("model", "")
+    return (c if c and c.get("company") else None), r.get("provider", ""), r.get("model", "")
 
 
 _VISION = {}

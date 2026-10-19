@@ -295,6 +295,18 @@
     that reads pictures exists on some gateway. A reference picture (png, jpg, webp,
     up to 4 MB) goes to `/images/edits` as multipart: "change this picture as I
     describe". Do not assume a gateway has chat models: read `/models` first.
+    **Wanshah 1 and 2 read pictures** (tested 19 Oct 2026 through the rootsys.cloud
+    connection: all 22 Wanshah 1 models read a fresh picture's words, number and
+    shape back correctly; a control without a picture made `glm-5.3` say no image
+    was attached, but `deepseek-v4-pro` invented a sign, so prefer `glm-5.3`, never
+    trust a reading that was asked of a text model with no picture; the gateway
+    limits to 30 requests a minute). `visionRead` therefore picks the reader:
+    Wanshah 3 if its gateway lists a model that reads, else Wanshah 1 or 2 (the
+    pinned or faster first, the other as handover; `visionOrder`, `textVision`).
+    Each AI card in Admin has "Test picture reading": a small picture with
+    "SIJIL 7391" in it, and the answer must contain 7391 (`llmTest` `vision`;
+    an AI that answers without seeing it fails with `CANNOT READ`). Wanshah 2
+    (api.mireld.my) could not be reached from a session: press its test in Admin.
     The generate path follows the OpenAI image shape (retries without
     `response_format`, follows a returned link); the vision and text paths were
     only run against a fake gateway.
