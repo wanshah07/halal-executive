@@ -1,16 +1,15 @@
 import { useEffect, useState } from 'react'
 import { adminPost } from '../lib/api'
 import { t } from '../lib/i18n'
-import { ICON, Sparkles, ExternalLink } from './Icon'
+import { ICON, Sparkles } from './Icon'
 
 // Admin -> Wanshah 3 (Wan, 19 Oct 2026): the image expert, https://kiosapi.com/v1.
 // It reads pictures (a certificate OCR could not read) and makes pictures. It is
 // not in the text rotation of Wanshah 1 and 2. The key is the Script Property
 // KIOS_API_KEY; this card shows whether it works, lets Wan pick the two models
 // (the one that reads, the one that draws), tests each with one real call, and
-// holds a small Image studio.
+// (the Image studio was removed on 19 Oct 2026, Wan).
 const fill = (s, o) => Object.keys(o).reduce((a, k) => a.replace('{' + k + '}', o[k]), s)
-const SIZES = ['auto', '1024x1024', '1024x1536', '1536x1024', '512x512']
 
 export default function ImageAiAdmin({ lang }) {
   const [cfg, setCfg] = useState(null)
@@ -19,12 +18,6 @@ export default function ImageAiAdmin({ lang }) {
   const [msg, setMsg] = useState('')
   const [busy, setBusy] = useState(false)
   const [tests, setTests] = useState({})
-  const [prompt, setPrompt] = useState('')
-  const [size, setSize] = useState('auto')
-  const [keep, setKeep] = useState(true)
-  const [pic, setPic] = useState(null)
-  const [making, setMaking] = useState(false)
-  const [ref, setRef] = useState(null) // { b64, mime, name, url }: a reference picture to change
 
   const load = (fresh) => adminPost('img_config', { fresh: !!fresh }).then((r) => { setCfg(r); setPick({ vision: r.vision || '', image: r.image || '' }) })
     .catch((e) => { if (/unknown action/i.test(e.message)) setOld(true); else setMsg(e.message) })
@@ -46,21 +39,6 @@ export default function ImageAiAdmin({ lang }) {
     setBusy(true); setMsg('')
     try { const r = await adminPost('img_config_save', pick); setCfg(r); setTests({}); setMsg(t(lang, 'img_saved')); runTest('vision') }
     catch (e) { setMsg(e.message) } finally { setBusy(false) }
-  }
-  async function make() {
-    setMaking(true); setPic(null)
-    try { setPic(await adminPost('image_generate', { prompt, size, keep, model: pick.image, ...(ref ? { ref_b64: ref.b64, ref_mime: ref.mime } : {}) })) }
-    catch (e) { setPic({ made: false, code: 'NO REPLY', why: 'network', error: e.message }) } finally { setMaking(false) }
-  }
-
-  function chooseRef(e) {
-    const f = e.target.files && e.target.files[0]; e.target.value = ''
-    if (!f) return
-    if (!/^image\/(png|jpeg|webp)$/.test(f.type)) { setPic({ made: false, code: 'FILE', why: 'other', error: t(lang, 'img_ref_type') }); return }
-    if (f.size > 4 * 1024 * 1024) { setPic({ made: false, code: 'FILE', why: 'other', error: t(lang, 'img_ref_big') }); return }
-    const r = new FileReader()
-    r.onload = () => { const url = String(r.result); setRef({ b64: url.split(',')[1], mime: f.type, name: f.name, url }); setPic(null) }
-    r.readAsDataURL(f)
   }
   const why = (w) => { const k = 'ai_why_' + (w || 'other'); const v = t(lang, k); return v === k ? t(lang, 'ai_why_other') : v }
   const options = (kind) => {
@@ -135,33 +113,6 @@ export default function ImageAiAdmin({ lang }) {
         <div className="flex flex-wrap items-center gap-3">
           <button type="button" className="btn-brand" disabled={busy || !cfg.key} onClick={save}>{busy ? '…' : t(lang, 'ai_save')}</button>
           {msg && <span className="text-sm text-ink-600">{msg}</span>}
-        </div>
-
-        <div className="rounded-xl border border-line p-4 space-y-3">
-          <div><h4 className="font-semibold">{t(lang, 'img_studio')}</h4><p className="text-xs text-ink-400">{t(lang, 'img_studio_sub')}</p></div>
-          <textarea className="input min-h-20" value={prompt} maxLength={1500} onChange={(e) => setPrompt(e.target.value)} placeholder={t(lang, 'img_prompt_ph')} aria-label={t(lang, 'img_prompt')} />
-          <div className="flex flex-wrap items-center gap-3">
-            <label className="btn cursor-pointer">{ref ? t(lang, 'img_ref_change') : t(lang, 'img_ref_add')}<input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" onChange={chooseRef} /></label>
-            {ref && <><img src={ref.url} alt={ref.name} className="h-12 w-12 rounded-lg border border-line object-cover bg-white" /><span className="text-xs text-ink-600 max-w-48 truncate">{ref.name}</span><button type="button" className="btn px-2.5 py-1 text-xs" onClick={() => setRef(null)}>{t(lang, 'img_ref_remove')}</button></>}
-          </div>
-          <p className="text-xs text-ink-400">{t(lang, 'img_ref_hint')}</p>
-          <div className="flex flex-wrap items-center gap-3">
-            <select className="input w-auto" value={size} onChange={(e) => setSize(e.target.value)} aria-label={t(lang, 'img_size')}>{SIZES.map((s) => <option key={s} value={s}>{s === 'auto' ? t(lang, 'img_size_auto') : s}</option>)}</select>
-            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={keep} onChange={(e) => setKeep(e.target.checked)} />{t(lang, 'img_keep')}</label>
-            <button type="button" className="btn-brand" disabled={!cfg.key || making || prompt.trim().length < 3} onClick={make}>{making ? t(lang, 'img_making') : t(lang, 'img_make')}</button>
-          </div>
-          {pic && pic.made === false && <div className="text-xs space-y-0.5"><span className="chip bg-red-100 text-red-700"><span aria-hidden="true">●</span>&nbsp;{t(lang, 'ai_inactive')} · {pic.code || 'ERROR'}</span> <span className="text-red-700">{why(pic.why)}</span>{pic.error && <div className="font-mono text-[11px] text-ink-400 break-words">{pic.error}</div>}</div>}
-          {pic && pic.made !== false && (
-            <div className="space-y-2">
-              {pic.data ? <img src={pic.data} alt={prompt.slice(0, 80)} className="max-h-96 rounded-lg border border-line bg-white" /> : <p className="text-sm text-ink-600">{t(lang, 'img_too_big')}</p>}
-              <div className="flex flex-wrap items-center gap-3 text-sm">
-                <span className="text-ink-400">{pic.model} · {(pic.ms / 1000).toFixed(1)} s{pic.edited ? ` · ${t(lang, 'img_edited')}` : ''}</span>
-                {pic.data && <a className="btn px-2.5 py-1" href={pic.data} download={`halal-executive-${Date.now()}.${pic.mime === 'image/jpeg' ? 'jpg' : 'png'}`}>{t(lang, 'img_download')}</a>}
-                {pic.drive_url && <a className="btn px-2.5 py-1" href={pic.drive_url} target="_blank" rel="noreferrer">{t(lang, 'img_in_drive')} <ExternalLink {...ICON} size={14} /></a>}
-              </div>
-              {pic.revised && <p className="text-xs text-ink-400">{pic.revised}</p>}
-            </div>
-          )}
         </div>
       </>)}
       {!cfg && !old && msg && <div className="text-sm text-red-700 flex flex-wrap items-center gap-3">{msg}<button type="button" className="btn" onClick={() => { setMsg(''); load() }}>{t(lang, 'cf_check')}</button></div>}

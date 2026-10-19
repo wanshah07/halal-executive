@@ -269,12 +269,18 @@
     unusable, a scanned PDF through its 1600 px preview; `read_cert_image`; one
     `ping` per run, so nothing else is asked while there is no key; a title-only
     row is tried once more and marked `vision-tried` when it still fails) and
-    makes pictures (Admin -> Wanshah 3 -> Image studio, `image_generate`, saved
-    to Drive `60 Generated` only when "Keep in Drive" is ticked). Models come from
+    makes a test picture (Admin -> Wanshah 3 -> Test; the studio is gone, see below). Models come from
     its `/models` (image ids vs the rest); Admin's choice is Settings
     `llm_vision_KIOS` / `llm_image_KIOS`. Admin actions: `img_config`,
-    `img_config_save`, `img_test`, `image_generate`. Its robot card (W3, purple)
+    `img_config_save`, `img_test`. Its robot card (W3, purple)
     shows Reads / Makes and is hidden when Code.gs is too old to report it.
+    **Image studio removed** (Wan, 19 Oct 2026): no prompt box, no reference picture, no
+    `image_generate` route, nothing saved to Drive `60 Generated`. What stays is the
+    Admin card (models, tests) and `kiosGenerate`, used only by the image test.
+    **The AI team card is split** (Wan, 19 Oct 2026): the public Overview shows each
+    robot with its name and status only (`AiTeam compact`); Admin shows the full card
+    (models, last work, response, average, answer rate, base URL) above the AI model
+    pickers.
     **Wanshah 3 is a CSS 3D robot** (`Robot3D.jsx`, `.r3-*` in index.css: boxes in
     `preserve-3d`, no library; the others stay shaded 2D SVG). **Response rate
     on every AI's base URL** (Wan, 19 Oct 2026): each status check pings the AI's

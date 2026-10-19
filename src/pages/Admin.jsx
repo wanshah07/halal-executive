@@ -7,6 +7,7 @@ import { filedDocs } from '../lib/certs'
 import Stamps from '../components/Stamps'
 import AiModelAdmin from '../components/AiModelAdmin'
 import ImageAiAdmin from '../components/ImageAiAdmin'
+import AiTeam from '../components/AiTeam'
 import { safeUrl, imageUrl } from '../lib/safe'
 import { RefAdmin, EventsAdmin, ContentManager, deleteForGood, CertAdmin } from '../components/AdminExtra'
 import { RowManager } from '../components/AdminRows'
@@ -582,6 +583,7 @@ export default function Admin({ lang, data, onSaved, onSession }) {
 
       <RunNow lang={lang} runs={data && data.runs} stats={data && data.raw_stats} />
       <ProgressBox lang={lang} />
+      <AiTeam lang={lang} runs={data && data.runs} sample={data && data.ai_status} />
       <AiModelAdmin lang={lang} />
       <ImageAiAdmin lang={lang} />
       <ReviewBox lang={lang} onChanged={onSaved} />
