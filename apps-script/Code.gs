@@ -343,6 +343,8 @@ function doPost(e) {
     if (a === 'img_config_save') { needAdmin(); return json(kiosConfigSave(body)); }
     if (a === 'img_test')     { needAdmin(); return json(kiosTest(body)); }
     if (a === 'image_generate') { needAdmin(); return json(imageGenerate(body)); } // makes a picture; the file goes to Drive only when asked
+    if (a === 'video_generate') { needAdmin(); return json(videoGenerate(body)); }    // starts a video job; it is too slow to finish inside one call
+    if (a === 'video_status')   { needAdmin(); return json(videoStatus(body)); }      // asks after that job and parks the clip in Drive when it is ready
     if (a === 'heartbeat')    return json(heartbeat(body));
     if (a === 'progress')     return json(saveProgress(body));
     if (a === 'poster_from_drive') return json(posterFromDrive(body.id));
@@ -1907,6 +1909,138 @@ function imageGenerate(b) {
   var t0 = Date.now();
   try { var g = kiosGenerate({ prompt: b.prompt, size: b.size, model: cleanModel(b.model) || undefined, keep: !!b.keep }); g.ok = true; g.ms = Date.now() - t0; return g; }
   catch (e) { var f = llmFail(e); return { ok: true, made: false, code: f.code, why: f.why, error: String(e.message || e).slice(0, 240), ms: Date.now() - t0 }; }
+}
+
+// =====================================================================
+// Wanshah 3 makes VIDEO too (Wan, 19 Oct 2026: "image and video generation").
+//
+// Two things make this unlike the picture route, and both are structural.
+//
+// 1. A VIDEO CANNOT BE MADE INSIDE ONE CALL. Apps Script stops a run at six
+//    minutes and a gateway takes longer than that to render even a short clip,
+//    so a blocking call would time out every time and leave the credits spent
+//    with nothing to show. The job is therefore STARTED by one action and
+//    COLLECTED by another: videoGenerate returns a job id straight away and
+//    videoStatus is asked again until the file is there. Admin polls; nothing
+//    waits.
+// 2. THE GATEWAY'S EXACT SHAPE IS UNKNOWN UNTIL THE KEY IS IN. Probing
+//    kiosapi.com on 19 Oct 2026 from the Claude session showed BOTH routes
+//    exist (POST /v1/videos and POST /v1/video/generations each answered 401
+//    "Invalid token", while an invented path answered 404, so 401 really does
+//    mean the route is there). Which one this account speaks, and whether it
+//    answers with a job or with a finished link, could not be seen without a
+//    key. So the code tries the newer /videos first, falls back to the older
+//    /video/generations on 404/405, and accepts EITHER a job id or a finished
+//    url in the first reply. That is the same tolerance kiosGenerate already
+//    has for response_format: assume nothing the probe did not prove.
+// =====================================================================
+var VID_ID = /(sora|veo|kling|runway|luma|pika|hailuo|minimax|seedance|wan-?2|cogvideo|ltx|mochi|video)/i;
+var VID_ROUTES = ['/videos', '/video/generations'];
+var VID_JOB = 'kiosvid_';          // Script Property prefix, one per job
+var VID_MAX_BYTES = 45 * 1024 * 1024;  // UrlFetchApp gives up above ~50 MB
+
+// Video models the gateway lists. Kept separate from kiosSplit's image list so
+// a video id never gets offered as the thing that draws a still.
+function kiosVideoModels(ids) { return ids.filter(function (i) { return VID_ID.test(i); }); }
+var VID_PREFER = ['sora', 'veo', 'kling', 'seedance', 'hailuo', 'runway', 'wan2'];
+
+function kiosVideoModel(fresh) {
+  var want = cleanModel((function () { var st = {}; try { st = readSettings(); } catch (e) { /* Sheet busy */ } return st.llm_video_KIOS; })())
+    || String(props().getProperty('KIOS_VIDEO_MODEL') || '').trim();
+  var cache = CacheService.getScriptCache(), ck = 'kios_video|' + want;
+  if (!fresh) { var hit = cache.get(ck); if (hit) return hit; }
+  var ids = kiosIds(), list = kiosVideoModels(ids);
+  var pick = want && ids.indexOf(want) >= 0 ? want : pickBy(list, VID_PREFER);
+  if (!pick) throw new Error('Wanshah 3 lists no video model on this gateway.');
+  cache.put(ck, pick, 21600);
+  return pick;
+}
+
+// Start a job. Returns { job, model, route } and, when the gateway answered
+// with a finished clip in one go, the url as well.
+function kiosVideoStart(b) {
+  var prompt = String(b.prompt || '').trim().slice(0, 1500);
+  if (prompt.length < 3) throw new Error('Describe the video first.');
+  var model = cleanModel(b.model) || kiosVideoModel(false);
+  var payload = { model: model, prompt: prompt };
+  if (b.seconds) payload.seconds = String(b.seconds);
+  if (b.size && b.size !== 'auto') payload.size = b.size;
+  var r = null, used = '';
+  for (var i = 0; i < VID_ROUTES.length; i++) {
+    r = kiosFetch(VID_ROUTES[i], { method: 'post', contentType: 'application/json', payload: JSON.stringify(payload) });
+    used = VID_ROUTES[i];
+    // 404/405 means this account speaks the other dialect; anything else is a
+    // real answer and must not be retried on a second route.
+    if (r.getResponseCode() !== 404 && r.getResponseCode() !== 405) break;
+  }
+  if (r.getResponseCode() >= 300) throw new Error('KIOS video HTTP ' + r.getResponseCode() + ': ' + r.getContentText().slice(0, 200));
+  var j = {}; try { j = JSON.parse(r.getContentText()); } catch (e) { throw new Error('Wanshah 3 sent a reply that is not JSON.'); }
+  var first = (j.data || [])[0] || {};
+  var done = j.url || first.url || (j.output && j.output.url) || '';
+  var id = j.id || j.task_id || j.request_id || first.id || '';
+  if (!id && !done) throw new Error('Wanshah 3 started no job and sent no video.');
+  markProvider('KIOS', model);
+  var job = { id: id, model: model, route: used, started: new Date().toISOString(), prompt: prompt.slice(0, 200) };
+  // Finished inside the first call (a short clip on a fast gateway): park it
+  // NOW. The gateway's own link expires, so returning it unsaved would hand
+  // back something that stops working, which is worse than a slow answer.
+  if (done) { var o = kiosVideoSave(id || '', done, job, b.keep); o.model = model; o.route = used; o.job = id; return o; }
+  if (id) props().setProperty(VID_JOB + id, JSON.stringify(job));
+  return { job: id, model: model, route: used, url: '', status: j.status || 'queued' };
+}
+
+// Ask after a job. While it is still rendering this returns status only; once
+// it is done the clip is pulled once and parked in Drive, because a video is
+// far too big to hand back through the page the way a picture is.
+function kiosVideoPoll(id, keep) {
+  var saved = {}; try { saved = JSON.parse(props().getProperty(VID_JOB + id) || '{}'); } catch (e) { /* unknown job */ }
+  var r = kiosFetch('/videos/' + encodeURIComponent(id), {});
+  if (r.getResponseCode() === 404) r = kiosFetch('/video/generations/' + encodeURIComponent(id), {});
+  if (r.getResponseCode() >= 300) throw new Error('KIOS video HTTP ' + r.getResponseCode() + ': ' + r.getContentText().slice(0, 200));
+  var j = {}; try { j = JSON.parse(r.getContentText()); } catch (e) { throw new Error('Wanshah 3 sent a reply that is not JSON.'); }
+  var status = String(j.status || j.state || '').toLowerCase();
+  var first = (j.data || [])[0] || {};
+  var url = j.url || first.url || (j.output && j.output.url) || (j.result && j.result.url) || '';
+  if (/fail|error|cancel/.test(status)) throw new Error('Wanshah 3 could not make it: ' + String(j.error && j.error.message || j.failure_reason || status).slice(0, 200));
+  if (!url && !/complete|succe|done|finish/.test(status)) return { ok: true, done: false, status: status || 'queued', model: saved.model || '' };
+  return kiosVideoSave(id, url, saved, keep);
+}
+
+// Fetch the finished clip and keep it. Content comes either from a url the job
+// handed back or, in the Sora shape, from the job's own /content route.
+function kiosVideoSave(id, url, saved, keep) {
+  var g = url ? UrlFetchApp.fetch(url, { muteHttpExceptions: true, followRedirects: true })
+               : kiosFetch('/videos/' + encodeURIComponent(id) + '/content', {});
+  if (g.getResponseCode() >= 300) throw new Error('Could not download the video: HTTP ' + g.getResponseCode());
+  var blob = g.getBlob();
+  var bytes = blob.getBytes().length;
+  if (!bytes) throw new Error('The video came back empty.');
+  if (bytes > VID_MAX_BYTES) throw new Error('The video is ' + Math.round(bytes / 1048576) + ' MB, too big for Apps Script to carry. Ask for a shorter clip.');
+  var mime = blob.getContentType() || 'video/mp4';
+  var ext = mime.indexOf('webm') >= 0 ? '.webm' : '.mp4';
+  blob.setName('video-' + Utilities.formatDate(new Date(), 'Asia/Kuala_Lumpur', 'yyyyMMdd-HHmmss') + ext);
+  var out = { ok: true, done: true, status: 'completed', model: saved.model || '', mime: mime, bytes: bytes, source_url: url || '' };
+  // Unlike a picture, a video is ALWAYS parked in Drive even when "keep" is
+  // off: the gateway's own link expires and the page cannot hold the bytes.
+  var f = folder('60 Generated').createFile(blob);
+  out.drive_url = f.getUrl(); out.id = f.getId(); out.kept = !!keep;
+  try { props().deleteProperty(VID_JOB + id); } catch (e) { /* already gone */ }
+  return out;
+}
+
+function videoGenerate(b) {
+  var t0 = Date.now();
+  if (!kiosKey()) return { ok: true, made: false, code: 'NO KEY', why: 'key', error: 'No KIOS_API_KEY in Script Properties.', ms: 0 };
+  try { var v = kiosVideoStart(b); v.ok = true; v.made = true; v.ms = Date.now() - t0; return v; }
+  catch (e) { var f = llmFail(e); return { ok: true, made: false, code: f.code, why: f.why, error: String(e.message || e).slice(0, 240), ms: Date.now() - t0 }; }
+}
+function videoStatus(b) {
+  var t0 = Date.now();
+  if (!kiosKey()) return { ok: true, done: false, code: 'NO KEY', why: 'key', error: 'No KIOS_API_KEY in Script Properties.', ms: 0 };
+  var id = String(b.job || '').trim();
+  if (!id) return { ok: true, done: false, code: 'NO JOB', why: 'other', error: 'No job id.', ms: 0 };
+  try { var v = kiosVideoPoll(id, !!b.keep); v.ms = Date.now() - t0; return v; }
+  catch (e) { var f = llmFail(e); return { ok: true, done: false, failed: true, code: f.code, why: f.why, error: String(e.message || e).slice(0, 240), ms: Date.now() - t0 }; }
 }
 
 // =====================================================================

@@ -93,7 +93,10 @@ body { @apply bg-paper text-ink-900 antialiased; font-family: ui-sans-serif, sys
   .toolbar > select, .toolbar > input, .toolbar > .btn, .toolbar > .seg { width: auto; }
 }
 
-/* Wanshah 3: the CSS 3D robot (Robot3D.jsx) */
+/* The CSS 3D robots (Robot3D.jsx) — all three Wanshah from 19 Oct 2026.
+   The visor and badge gradients below are Wanshah 3's purple and are only a
+   default: the component sets the tone's own glass inline, so these show
+   through only if that style is ever dropped. */
 .r3-scene { position: relative; perspective: 620px; }
 .r3-stage { position: absolute; left: 0; top: 0; width: 160px; height: 180px; transform-origin: 0 0; }
 .r3-rig { position: absolute; left: 80px; top: 100px; width: 0; height: 0; transform-style: preserve-3d; }

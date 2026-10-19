@@ -1,11 +1,11 @@
-// Wanshah 1 (AFIQ) and Wanshah 2 (MIRELD): shaded SVG robots. Gradients and
-// highlights give them depth; they float, blink and the antenna glows while
-// the provider is active. Motion stops for people who ask for reduced motion.
-const THEMES = {
-  afiq:   { shell: ['#2bd18a', '#0b6b3a', '#063d22'], visor: ['#0c2b1d', '#04140c'], eye: '#7dffc4', glow: '#29f0a0', accent: '#c9a227', label: 'W1' },
-  kios:   { shell: ['#c58bff', '#7a3fd1', '#3d1a7a'], visor: ['#25103f', '#10061f'], eye: '#f1d4ff', glow: '#d08cff', accent: '#f0b429', label: 'W3' },
-  mireld: { shell: ['#7fb2ff', '#2a5fc4', '#15306b'], visor: ['#0f1d3a', '#060c1c'], eye: '#9fe0ff', glow: '#5cc8ff', accent: '#f0b429', label: 'W2' },
-}
+// The shaded SVG robots. Gradients and highlights give them depth; they float,
+// blink and the antenna glows while the provider is active. Motion stops for
+// people who ask for reduced motion.
+//
+// The AI team cards use the 3D boxes (Robot3D.jsx) for all three from 19 Oct
+// 2026; this flat version is kept as the one that needs no 3D transforms. Both
+// read the same palette, so a tone cannot mean two different colours.
+import { THEMES } from '../lib/robots'
 
 export default function Robot({ tone = 'afiq', state = 'standby', size = 140 }) {
   const t = THEMES[tone] || THEMES.afiq

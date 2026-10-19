@@ -290,6 +290,52 @@
     Untested against the real gateway until the key is in: the code follows the
     OpenAI image and vision shapes and was run against a fake one (retries
     without `response_format`, follows a returned link).
+    **Wanshah 3 makes VIDEO as well, and the gateway's routes were measured before
+    a line was written** (Wan, 19 Oct 2026: "add this baseline url for image and
+    video generation"). From the Claude session, `POST /v1/videos` and
+    `POST /v1/video/generations` both answered **401 Invalid token** while an
+    invented path answered **404** — so on this gateway a 401 really does mean the
+    route exists, and video is there. What could NOT be seen without the key is
+    which of the two dialects this account speaks and whether the first reply is a
+    job or a finished link, so `kiosVideoStart` tries `/videos` first, falls back
+    to `/video/generations` on 404/405 only, and accepts either answer.
+    **A video cannot be made inside one call and nothing may pretend otherwise:**
+    Apps Script stops a run at six minutes and a render takes longer, so
+    `video_generate` returns a job id at once and `video_status` is asked again
+    until the clip is there (Admin polls every 6 s for 10 minutes, then offers a
+    manual Check rather than polling for ever). **A finished clip is ALWAYS parked
+    in Drive `60 Generated`, even when "Keep in Drive" is off** — unlike a picture,
+    the gateway's own link expires, so handing it back unsaved would return
+    something that stops working. A clip that finishes inside the first call is
+    saved on the spot for the same reason. Over 45 MB it is refused with a message
+    rather than killing the run. Model: Settings `llm_video_KIOS`, else Script
+    Property `KIOS_VIDEO_MODEL`, else the automatic pick from `VID_ID` ids.
+    **The image expert is wired into the three places that actually use pictures**
+    (Wan, 19 Oct 2026, "connect it to all relevant segments"): the Events edit
+    form, the popup `notice_posters` (square) and Admin's Event posters, all
+    through `PosterGen.jsx`. **It adds no server action, and that is the design:**
+    `image_generate` already returns a data URI and `poster_upload` already takes
+    base64, so a generated poster reaches Drive by exactly the route an uploaded
+    one does and is the same kind of thing afterwards — same folder, url,
+    `poster_file`, thumbnail and purge rules. A second upload path would have been
+    a second set of rules to keep in step. Over ~3 MB Code.gs omits the data URI,
+    so the button says to use the Image studio instead of failing blank.
+    **Canva is NOT connected and cannot be with a key alone.** Pushing to Canva
+    needs a registered Canva developer app and an OAuth round trip (Connect API
+    `/v1/asset-uploads`), not a bearer token, so it is Wan's setup before it is
+    anyone's code. The working path today needs no code at all: generated posters
+    and clips land in Drive `60 Generated`, and Canva imports from Google Drive.
+    **All three Wanshah are 3D robots now** (Wan, 19 Oct 2026, "I want add all 3D
+    robot as wanshah"). `Robot3D.jsx` took a hard-coded purple, so Wanshah 3 was
+    the only one that could be a box; it takes a `tone` now and the palette moved
+    to `src/lib/robots.js`, where `shadeFor` derives the six box faces from the
+    SAME three shell stops the SVG gradient already used. A tone is therefore
+    defined once and the two renderers cannot disagree about what colour an AI is.
+    The fractions in `shadeFor` were fitted to the shipped purple, which comes back
+    within 1-4 points per channel, so Wanshah 3 did not change. `.r3-visor` and
+    `.r3-badge` still carry purple in index.css: that is a default only, the
+    component sets the tone's own glass inline. `Robot.jsx` (the flat SVG) is kept
+    and still reads the same palette, but `AiTeam` no longer uses it.
 33. **Google being busy must never reach the reader as an error** (Wan, 18 Oct
     2026: "Sheet feed 404", AI model "HTTP 404", Progress and Drafts stuck on
     Loading). Apps Script answers with Google's HTML "Page Not Found" (HTTP 404,
