@@ -277,12 +277,17 @@
     **Image studio removed** (Wan, 19 Oct 2026): no prompt box, no reference picture, no
     `image_generate` route, nothing saved to Drive `60 Generated`. What stays is the
     Admin card (models, tests) and `kiosGenerate`, used only by the image test.
+    The **Video studio** is therefore the only generator left in Admin, and it
+    survives the removal because it shares nothing with the image path: its own
+    routes (`video_generate` / `video_status`), its own model setting, and a clip
+    parked in Drive whatever the (now deleted) "Keep in Drive" box used to say.
     **The AI team card is split** (Wan, 19 Oct 2026): the public Overview shows each
     robot with its name and status only (`AiTeam compact`); Admin shows the full card
     (models, last work, response, average, answer rate, base URL) above the AI model
     pickers.
-    **Wanshah 3 is a CSS 3D robot** (`Robot3D.jsx`, `.r3-*` in index.css: boxes in
-    `preserve-3d`, no library; the others stay shaded 2D SVG). **Response rate
+    **Every Wanshah is a CSS 3D robot** (`Robot3D.jsx`, `.r3-*` in index.css: boxes
+    in `preserve-3d`, no library; see "All three Wanshah are 3D robots" below —
+    Wanshah 3 was the only box until 19 Oct 2026). **Response rate
     on every AI's base URL** (Wan, 19 Oct 2026): each status check pings the AI's
     own `/models`, `pingNote` keeps the last 48 results per AI in Script
     Properties (`ping_<NAME>`), the status carries `host`, `ms`, `avg_ms`,
@@ -328,6 +333,79 @@
     The generate path follows the OpenAI image shape (retries without
     `response_format`, follows a returned link); the vision and text paths were
     only run against a fake gateway.
+    Untested against the real gateway until the key is in: the code follows the
+    OpenAI image and vision shapes and was run against a fake one (retries
+    without `response_format`, follows a returned link).
+    **Wanshah 3 makes VIDEO as well, and the gateway's routes were measured before
+    a line was written** (Wan, 19 Oct 2026: "add this baseline url for image and
+    video generation"). From the Claude session, `POST /v1/videos` and
+    `POST /v1/video/generations` both answered **401 Invalid token** while an
+    invented path answered **404** — so on this gateway a 401 really does mean the
+    route exists, and video is there. What could NOT be seen without the key is
+    which of the two dialects this account speaks and whether the first reply is a
+    job or a finished link, so `kiosVideoStart` tries `/videos` first, falls back
+    to `/video/generations` on 404/405 only, and accepts either answer.
+    **A video cannot be made inside one call and nothing may pretend otherwise:**
+    Apps Script stops a run at six minutes and a render takes longer, so
+    `video_generate` returns a job id at once and `video_status` is asked again
+    until the clip is there (Admin polls every 6 s for 10 minutes, then offers a
+    manual Check rather than polling for ever). **A finished clip is ALWAYS parked
+    in Drive `60 Generated`, even when "Keep in Drive" is off** — unlike a picture,
+    the gateway's own link expires, so handing it back unsaved would return
+    something that stops working. A clip that finishes inside the first call is
+    saved on the spot for the same reason. Over 45 MB it is refused with a message
+    rather than killing the run. Model: Settings `llm_video_KIOS`, else Script
+    Property `KIOS_VIDEO_MODEL`, else the automatic pick from `VID_ID` ids.
+    **Poster generation was built and is HELD, because two sessions were given
+    opposite instructions inside ten minutes** (19 Oct 2026). Wan asked this
+    session to "connect it to all relevant segments such as kanvas", and named
+    three: the Image studio, Canva, and the event/notice posters. `PosterGen.jsx`
+    did the third — **Make one with Wanshah 3** beside all three poster uploads
+    (Events edit form, popup `notice_posters` square, Admin's Event posters) —
+    and **added no server action, which was its whole design**: `image_generate`
+    already returned a data URI and `poster_upload` already took base64, so a
+    generated poster reached Drive by exactly the route an uploaded one does and
+    was the same kind of thing afterwards (same folder, url, `poster_file`,
+    thumbnail, purge rules). That design is also what killed it: **another session
+    removed the `image_generate` route seven minutes later**, on Wan's own
+    instruction (the "Image studio removed" note above, `9cd4c40`, Sonnet 5.5
+    `session_01NqPM77UEMoDz4gSMZcN2VK`), so all three buttons would have called a
+    route that no longer exists.
+    It was removed from the merge rather than re-added, and the rule is the one
+    worth keeping: **a session does not resurrect what another session deleted on
+    Wan's say-so, and does not ship a control wired to nothing either.** Those are
+    the only two options once the route is gone, and both are wrong, so the work
+    is parked in commit `e79ad1e` and comes back as a cherry-pick plus a
+    three-line route the day Wan wants it. Picture-making itself still works on
+    the gateway (`gpt-image-2`, 27 s, 1 MB png), so what is missing is the route
+    and the buttons, not the capability. The failure this avoids is the one this
+    file already catalogues four times over — a tickbox, a config field, a
+    Background select and an `attach to LinkedIn` box, each wired to nothing.
+    **Canva is NOT connected and cannot be with a key alone.** Pushing to Canva
+    needs a registered Canva developer app and an OAuth round trip (Connect API
+    `/v1/asset-uploads`), not a bearer token, so it is Wan's setup before it is
+    anyone's code. The working path today needs no code at all: generated posters
+    and clips land in Drive `60 Generated`, and Canva imports from Google Drive.
+    **All three Wanshah are 3D robots now** (Wan, 19 Oct 2026, "I want add all 3D
+    robot as wanshah"). `Robot3D.jsx` took a hard-coded purple, so Wanshah 3 was
+    the only one that could be a box; it takes a `tone` now and the palette moved
+    to `src/lib/robots.js`, where `shadeFor` derives the six box faces from the
+    SAME three shell stops the SVG gradient already used. A tone is therefore
+    defined once and the two renderers cannot disagree about what colour an AI is.
+    The fractions in `shadeFor` were fitted to the shipped purple, which comes back
+    within 1-4 points per channel, so Wanshah 3 did not change. `.r3-visor` and
+    `.r3-badge` still carry purple in index.css: that is a default only, the
+    component sets the tone's own glass inline. `Robot.jsx` (the flat SVG) is kept
+    and still reads the same palette, but `AiTeam` no longer uses it.
+    **Whether Wanshah 3 can make VIDEO at all depends on the same model list, and
+    the measurement above says be careful.** The routes are there (both answered
+    401 to an unauthenticated probe while an invented path answered 404), but a
+    route existing is the gateway's software, not this account's entitlement: the
+    same `/models` that lists no chat or vision model may list no video model
+    either. `kiosVideoModel` therefore refuses with "lists no video model on this
+    gateway" rather than guessing an id, and the studio shows that as the reason.
+    Press Make once: a clear refusal means the account has no video model, not that
+    the wiring is wrong.
 33. **Google being busy must never reach the reader as an error** (Wan, 18 Oct
     2026: "Sheet feed 404", AI model "HTTP 404", Progress and Drafts stuck on
     Loading). Apps Script answers with Google's HTML "Page Not Found" (HTTP 404,

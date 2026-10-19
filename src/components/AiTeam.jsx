@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import Robot from './Robot'
 import Robot3D from './Robot3D'
 import { aiStatus } from '../lib/api'
 import { API_URL } from '../lib/config'
@@ -52,7 +51,7 @@ export default function AiTeam({ lang, runs, sample, compact = false }) {
           const chip = { active: 'bg-brand-100 text-brand-700', standby: 'bg-amber-100 text-amber-800', offline: 'bg-red-100 text-red-700' }[state]
           return (
             <div key={c.key} className={`flex ${compact ? 'flex-col items-center text-center' : 'flex-col sm:flex-row sm:items-center'} gap-3 sm:gap-4 rounded-xl border border-line p-4 bg-gradient-to-br from-paper to-white`}>
-              <div className="shrink-0">{c.image ? <Robot3D state={state} size={compact ? 104 : 118} /> : <Robot tone={c.tone} state={state} size={compact ? 104 : 118} />}</div>
+              <div className="shrink-0"><Robot3D tone={c.tone} state={state} size={compact ? 104 : 118} name={c.name} /></div>
               <div className="min-w-0 w-full sm:w-auto">
                 <div className={`flex items-center gap-2 flex-wrap ${compact ? 'justify-center' : ''}`}><span className="text-lg font-bold">{c.name}</span><span className={`chip ${chip}`}><span aria-hidden="true">●</span>&nbsp;{t(lang, 'st_' + state)}{state === 'offline' && p && p.code ? ` · ${/^\d+$/.test(p.code) ? 'HTTP ' + p.code : p.code}` : ''}</span>{st && st.mode === c.key && <span className="chip bg-brand-100 text-brand-700">{t(lang, 'ai_chosen')}</span>}</div>
                 {!compact && <div className="text-xs text-ink-400 mb-1">{c.key}</div>}
