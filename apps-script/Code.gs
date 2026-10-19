@@ -1409,6 +1409,7 @@ function markProvider(name, model) {
 function llmFail(e) {
   var m = String((e && e.message) || e || ''), h = m.match(/HTTP (\d{3})/), c = h ? h[1] : '';
   if (/key not set|no api key/i.test(m)) return { code: 'NO KEY', why: 'key' };
+  if (/offers no .* model/i.test(m)) return { code: 'NO MODEL', why: 'nomodel' };
   if (c === '401' || c === '403') return { code: 'HTTP ' + c, why: 'auth' };
   if (c === '429') return { code: 'HTTP 429', why: 'limit' };
   if (c === '404' || c === '400') return { code: 'HTTP ' + c, why: /model/i.test(m) ? 'model' : (c === '404' ? 'notfound' : 'other') };
@@ -1772,7 +1773,7 @@ function kiosModel(kind, fresh) {
   if (!fresh) { var hit = cache.get(ck); if (hit) return hit; }
   var ids = kiosIds(), sp = kiosSplit(ids), list = kind === 'image' ? sp.image : sp.vision;
   var pick = want && ids.indexOf(want) >= 0 ? want : pickBy(list, kind === 'image' ? IMG_PREFER : VISION_PREFER);
-  if (!pick) throw new Error('KIOS lists no ' + (kind === 'image' ? 'image' : 'vision') + ' model');
+  if (!pick) throw new Error('KIOS offers no ' + (kind === 'image' ? 'image' : 'vision or text') + ' model' + (ids.length ? ' (it offers: ' + ids.slice(0, 8).join(', ') + (ids.length > 8 ? ', …' : '') + ')' : ''));
   cache.put(ck, pick, 21600);
   return pick;
 }
@@ -1787,6 +1788,7 @@ function kiosConfig(fresh) {
     var ids = kiosIds(), sp = kiosSplit(ids);
     out.reachable = true; out.code = '200';
     out.vision_models = sp.vision.slice().sort(); out.image_models = (sp.image.length ? sp.image : ids).slice().sort();
+    out.all_models = ids.slice().sort(); out.chat_ok = sp.vision.length > 0;
     out.auto_vision = pickBy(sp.vision, VISION_PREFER) || ''; out.auto_image = pickBy(sp.image, IMG_PREFER) || '';
   } catch (e) { var f = llmFail(e); out.error = String(e.message || e).slice(0, 160); out.code = f.code; out.why = f.why; }
   try { cache.put('kios_cfg', JSON.stringify(out), 300); } catch (e) { /* too large */ }
@@ -1865,7 +1867,7 @@ function driveImageBlob(id) {
 // key or a model that cannot read the picture is an answer the caller handles.
 function visionRead(b) {
   if (!kiosKey()) return { ok: true, read: false, ready: false, code: 'NO KEY', why: 'key' };
-  if (b.ping) return { ok: true, ready: true }; // the pipeline asks once per run whether it is worth trying
+  if (b.ping) { var can = false; try { can = !!kiosModel('vision', false); } catch (e) { can = false; } return { ok: true, ready: can, code: can ? '' : 'NO MODEL' }; } // the pipeline asks once per run whether it is worth trying
   var t0 = Date.now();
   try {
     var r = kiosVision({ id: b.id, b64: b.b64, mime: b.mime, system: b.system, prompt: b.prompt, max_tokens: 2000 });
@@ -1887,8 +1889,8 @@ function kiosGenerate(b) {
     var p = {}; Object.keys(body).forEach(function (k) { p[k] = body[k]; }); if (withFormat) p.response_format = 'b64_json';
     return kiosFetch('/images/generations', { method: 'post', contentType: 'application/json', payload: JSON.stringify(p) });
   };
-  var r = send(true);
-  if (r.getResponseCode() === 400 && /response_format|unknown|unsupported/i.test(r.getContentText())) r = send(false); // some gateways reject the option
+  var r = b.ref_b64 ? kiosEdit({ ref_b64: b.ref_b64, ref_mime: b.ref_mime, model: model, prompt: prompt, size: size }) : send(true);
+  if (!b.ref_b64 && r.getResponseCode() === 400 && /response_format|unknown|unsupported/i.test(r.getContentText())) r = send(false); // some gateways reject the option
   if (r.getResponseCode() >= 300) throw new Error('KIOS HTTP ' + r.getResponseCode() + ': ' + r.getContentText().slice(0, 200));
   var d = (JSON.parse(r.getContentText()).data || [])[0] || {}, bytes = null, mime = 'image/png';
   if (d.b64_json) bytes = Utilities.base64Decode(d.b64_json);
@@ -1903,9 +1905,20 @@ function kiosGenerate(b) {
   if (bytes.length < 3 * 1024 * 1024) out.data = 'data:' + mime + ';base64,' + Utilities.base64Encode(bytes);
   return out;
 }
+// A reference picture (Wan, 19 Oct 2026, "pull an image and generate it"): the
+// gateway's /images/edits takes the picture and the description and returns a
+// new one. Multipart, so no contentType is set and the blob is the payload part.
+function kiosEdit(b) {
+  var bytes = Utilities.base64Decode(b.ref_b64);
+  if (bytes.length > 4 * 1024 * 1024) throw new Error('KIOS reference picture too large (over 4 MB)');
+  var mime = /^image\/(png|jpeg|webp)$/.test(String(b.ref_mime)) ? b.ref_mime : 'image/png';
+  var payload = { model: b.model, prompt: String(b.prompt).slice(0, 1500), n: '1', image: Utilities.newBlob(bytes, mime, 'reference.' + (mime === 'image/jpeg' ? 'jpg' : mime === 'image/webp' ? 'webp' : 'png')) };
+  if (b.size && b.size !== 'auto') payload.size = b.size;
+  return kiosFetch('/images/edits', { method: 'post', payload: payload });
+}
 function imageGenerate(b) {
   var t0 = Date.now();
-  try { var g = kiosGenerate({ prompt: b.prompt, size: b.size, model: cleanModel(b.model) || undefined, keep: !!b.keep }); g.ok = true; g.ms = Date.now() - t0; return g; }
+  try { var g = kiosGenerate({ prompt: b.prompt, size: b.size, model: cleanModel(b.model) || undefined, keep: !!b.keep, ref_b64: b.ref_b64, ref_mime: b.ref_mime }); g.ok = true; g.edited = !!b.ref_b64; g.ms = Date.now() - t0; return g; }
   catch (e) { var f = llmFail(e); return { ok: true, made: false, code: f.code, why: f.why, error: String(e.message || e).slice(0, 240), ms: Date.now() - t0 }; }
 }
 

@@ -287,9 +287,17 @@
     for that reason right after its first deploy). Admin has "Check read · write
     · text": a picture read, a picture made and a plain-text exchange, each with
     its HTTP code and time.
-    Untested against the real gateway until the key is in: the code follows the
-    OpenAI image and vision shapes and was run against a fake one (retries
-    without `response_format`, follows a returned link).
+    **Measured on Wan's key (19 Oct 2026): making pictures works** (`gpt-image-2`,
+    27 s, HTTP 200, a 1 MB png) **and the gateway lists no chat or vision model**, so
+    reading pictures and text there answers `NO MODEL` (the card says so and lists
+    what is offered; `visionRead` `ping` reports not ready, so the organiser does not
+    call it). Image reading for certificates therefore stays with OCR until a model
+    that reads pictures exists on some gateway. A reference picture (png, jpg, webp,
+    up to 4 MB) goes to `/images/edits` as multipart: "change this picture as I
+    describe". Do not assume a gateway has chat models: read `/models` first.
+    The generate path follows the OpenAI image shape (retries without
+    `response_format`, follows a returned link); the vision and text paths were
+    only run against a fake gateway.
 33. **Google being busy must never reach the reader as an error** (Wan, 18 Oct
     2026: "Sheet feed 404", AI model "HTTP 404", Progress and Drafts stuck on
     Loading). Apps Script answers with Google's HTML "Page Not Found" (HTTP 404,

@@ -24,6 +24,7 @@ export default function ImageAiAdmin({ lang }) {
   const [keep, setKeep] = useState(true)
   const [pic, setPic] = useState(null)
   const [making, setMaking] = useState(false)
+  const [ref, setRef] = useState(null) // { b64, mime, name, url }: a reference picture to change
 
   const load = (fresh) => adminPost('img_config', { fresh: !!fresh }).then((r) => { setCfg(r); setPick({ vision: r.vision || '', image: r.image || '' }) })
     .catch((e) => { if (/unknown action/i.test(e.message)) setOld(true); else setMsg(e.message) })
@@ -48,10 +49,19 @@ export default function ImageAiAdmin({ lang }) {
   }
   async function make() {
     setMaking(true); setPic(null)
-    try { setPic(await adminPost('image_generate', { prompt, size, keep, model: pick.image })) }
+    try { setPic(await adminPost('image_generate', { prompt, size, keep, model: pick.image, ...(ref ? { ref_b64: ref.b64, ref_mime: ref.mime } : {}) })) }
     catch (e) { setPic({ made: false, code: 'NO REPLY', why: 'network', error: e.message }) } finally { setMaking(false) }
   }
 
+  function chooseRef(e) {
+    const f = e.target.files && e.target.files[0]; e.target.value = ''
+    if (!f) return
+    if (!/^image\/(png|jpeg|webp)$/.test(f.type)) { setPic({ made: false, code: 'FILE', why: 'other', error: t(lang, 'img_ref_type') }); return }
+    if (f.size > 4 * 1024 * 1024) { setPic({ made: false, code: 'FILE', why: 'other', error: t(lang, 'img_ref_big') }); return }
+    const r = new FileReader()
+    r.onload = () => { const url = String(r.result); setRef({ b64: url.split(',')[1], mime: f.type, name: f.name, url }); setPic(null) }
+    r.readAsDataURL(f)
+  }
   const why = (w) => { const k = 'ai_why_' + (w || 'other'); const v = t(lang, k); return v === k ? t(lang, 'ai_why_other') : v }
   const options = (kind) => {
     const list = (cfg && (kind === 'image' ? cfg.image_models : cfg.vision_models)) || [], auto = cfg && (kind === 'image' ? cfg.auto_image : cfg.auto_vision), cur = pick[kind]
@@ -107,6 +117,8 @@ export default function ImageAiAdmin({ lang }) {
           <b>{t(lang, 'img_setup_title')}</b>
           <ol className="list-decimal pl-5 mt-1 space-y-0.5">{['img_setup_1', 'img_setup_2', 'img_setup_3', 'img_setup_4'].map((k) => <li key={k}>{t(lang, k)}</li>)}</ol>
         </div>}
+        {cfg.key && cfg.reachable && cfg.chat_ok === false && <div className="text-sm bg-amber-50 border border-amber-200 rounded-lg p-3 text-amber-900">{t(lang, 'img_only_images')}</div>}
+        {cfg.key && cfg.reachable && !!(cfg.all_models || []).length && <details className="text-xs text-ink-600"><summary className="cursor-pointer text-brand-600">{fill(t(lang, 'img_offered'), { n: cfg.all_models.length })}</summary><div className="mt-1 flex flex-wrap gap-1.5">{cfg.all_models.map((m) => <span key={m} className="chip bg-paper border border-line">{m}</span>)}</div></details>}
         {cfg.key && !cfg.reachable && <p className="text-xs text-red-700">{why(cfg.why)}{cfg.error ? ` (${cfg.error})` : ''}</p>}
         <div className="grid lg:grid-cols-2 gap-3">
           <div className="rounded-xl border border-line p-4 space-y-3">{row('vision', 'img_vision_model', 'img_vision_hint')}</div>
@@ -129,6 +141,11 @@ export default function ImageAiAdmin({ lang }) {
           <div><h4 className="font-semibold">{t(lang, 'img_studio')}</h4><p className="text-xs text-ink-400">{t(lang, 'img_studio_sub')}</p></div>
           <textarea className="input min-h-20" value={prompt} maxLength={1500} onChange={(e) => setPrompt(e.target.value)} placeholder={t(lang, 'img_prompt_ph')} aria-label={t(lang, 'img_prompt')} />
           <div className="flex flex-wrap items-center gap-3">
+            <label className="btn cursor-pointer">{ref ? t(lang, 'img_ref_change') : t(lang, 'img_ref_add')}<input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" onChange={chooseRef} /></label>
+            {ref && <><img src={ref.url} alt={ref.name} className="h-12 w-12 rounded-lg border border-line object-cover bg-white" /><span className="text-xs text-ink-600 max-w-48 truncate">{ref.name}</span><button type="button" className="btn px-2.5 py-1 text-xs" onClick={() => setRef(null)}>{t(lang, 'img_ref_remove')}</button></>}
+          </div>
+          <p className="text-xs text-ink-400">{t(lang, 'img_ref_hint')}</p>
+          <div className="flex flex-wrap items-center gap-3">
             <select className="input w-auto" value={size} onChange={(e) => setSize(e.target.value)} aria-label={t(lang, 'img_size')}>{SIZES.map((s) => <option key={s} value={s}>{s === 'auto' ? t(lang, 'img_size_auto') : s}</option>)}</select>
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={keep} onChange={(e) => setKeep(e.target.checked)} />{t(lang, 'img_keep')}</label>
             <button type="button" className="btn-brand" disabled={!cfg.key || making || prompt.trim().length < 3} onClick={make}>{making ? t(lang, 'img_making') : t(lang, 'img_make')}</button>
@@ -138,7 +155,7 @@ export default function ImageAiAdmin({ lang }) {
             <div className="space-y-2">
               {pic.data ? <img src={pic.data} alt={prompt.slice(0, 80)} className="max-h-96 rounded-lg border border-line bg-white" /> : <p className="text-sm text-ink-600">{t(lang, 'img_too_big')}</p>}
               <div className="flex flex-wrap items-center gap-3 text-sm">
-                <span className="text-ink-400">{pic.model} · {(pic.ms / 1000).toFixed(1)} s</span>
+                <span className="text-ink-400">{pic.model} · {(pic.ms / 1000).toFixed(1)} s{pic.edited ? ` · ${t(lang, 'img_edited')}` : ''}</span>
                 {pic.data && <a className="btn px-2.5 py-1" href={pic.data} download={`halal-executive-${Date.now()}.${pic.mime === 'image/jpeg' ? 'jpg' : 'png'}`}>{t(lang, 'img_download')}</a>}
                 {pic.drive_url && <a className="btn px-2.5 py-1" href={pic.drive_url} target="_blank" rel="noreferrer">{t(lang, 'img_in_drive')} <ExternalLink {...ICON} size={14} /></a>}
               </div>
