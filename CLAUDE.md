@@ -275,6 +275,18 @@
     `llm_vision_KIOS` / `llm_image_KIOS`. Admin actions: `img_config`,
     `img_config_save`, `img_test`, `image_generate`. Its robot card (W3, purple)
     shows Reads / Makes and is hidden when Code.gs is too old to report it.
+    **Wanshah 3 is a CSS 3D robot** (`Robot3D.jsx`, `.r3-*` in index.css: boxes in
+    `preserve-3d`, no library; the others stay shaded 2D SVG). **Response rate
+    on every AI's base URL** (Wan, 19 Oct 2026): each status check pings the AI's
+    own `/models`, `pingNote` keeps the last 48 results per AI in Script
+    Properties (`ping_<NAME>`), the status carries `host`, `ms`, `avg_ms`,
+    `best_ms`, `ok_rate`, `pings`, and the robot cards show them; `tickWatch`
+    re-checks every 10 minutes so the history does not need visitors. The status
+    cache key is versioned (`AI_STATUS_KEY`): bump it when the shape changes, or
+    a fresh deploy serves the old shape for 5 minutes (Wanshah 3 was missing
+    for that reason right after its first deploy). Admin has "Check read · write
+    · text": a picture read, a picture made and a plain-text exchange, each with
+    its HTTP code and time.
     Untested against the real gateway until the key is in: the code follows the
     OpenAI image and vision shapes and was run against a fake one (retries
     without `response_format`, follows a returned link).

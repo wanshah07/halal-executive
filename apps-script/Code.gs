@@ -55,6 +55,7 @@ var TABS = {
 // the notice or the admin list.
 var WRITABLE = ['FAQ', 'Guidelines', 'Documents', 'Certificates', 'Events', 'News', 'References', 'RefChunks', 'FHCB', 'Directory'];
 
+var AI_STATUS_KEY = 'ai_status_v3'; // bump when the status shape changes, so a new deploy never serves the old one
 var PROVIDERS = {
   MIRELD: { base: 'https://api.mireld.my/v1', keyProp: 'MIRELD_API_KEY', modelProp: 'MIRELD_MODEL' },
   AFIQ:   { base: 'https://rootsys.cloud/v1',  keyProp: 'AFIQ_API_KEY',   modelProp: 'AFIQ_MODEL' },
@@ -633,6 +634,8 @@ function pipelineStatus() {
 var WATCH_MIN = 15;
 function watchState() { try { return JSON.parse(props().getProperty('watch') || '{}'); } catch (e) { return {}; } }
 function tickWatch() {
+  // Keep the response-rate history of each AI going without anyone on the page.
+  try { CacheService.getScriptCache().remove(AI_STATUS_KEY); aiStatus(); } catch (e) { /* the check itself must never stop the watch */ }
   var P = props(), w = watchState(), now = Date.now(), hb = collectorStatus().whatsapp, problems = {};
   if (!hb) problems.whatsapp = 'The WhatsApp collector has never sent a heartbeat.';
   else {
@@ -1250,7 +1253,7 @@ function llmCfg() {
   try { cache.put('llm_cfg', JSON.stringify(cfg), 600); } catch (e) { /* cache full */ }
   return cfg;
 }
-function llmBust() { try { CacheService.getScriptCache().removeAll(['llm_cfg', 'ai_status', 'llm_models']); } catch (e) { /* nothing cached */ } }
+function llmBust() { try { CacheService.getScriptCache().removeAll(['llm_cfg', AI_STATUS_KEY, 'llm_models']); } catch (e) { /* nothing cached */ } }
 function stripLlm(st) { Object.keys(st).forEach(function (k) { if (k.indexOf('llm_') === 0) delete st[k]; }); return st; }
 
 function nextProvider() {
@@ -1796,7 +1799,7 @@ function kiosConfigSave(b) {
   [['vision', v], ['image', im]].forEach(function (x) { if (x[1] && ids && ids.indexOf(x[1]) < 0) throw new Error(x[1] + ' is not offered by Wanshah 3 right now.'); });
   var lock = LockService.getScriptLock(); lock.waitLock(30000);
   try { writeSettings({ llm_vision_KIOS: v, llm_image_KIOS: im }); } finally { lock.releaseLock(); }
-  try { CacheService.getScriptCache().removeAll(['kios_cfg', 'ai_status']); } catch (e) { /* nothing cached */ }
+  try { CacheService.getScriptCache().removeAll(['kios_cfg', AI_STATUS_KEY]); } catch (e) { /* nothing cached */ }
   return kiosConfig(true);
 }
 
@@ -1809,6 +1812,10 @@ function kiosTest(b) {
     if (b.kind === 'image') {
       var g = kiosGenerate({ prompt: 'A plain green circle on a white background, flat vector style.', model: model || undefined, test: true });
       return { ok: true, works: true, kind: 'image', model: g.model, code: 'HTTP 200', ms: Date.now() - t0, bytes: g.bytes, text: g.mime + ', ' + Math.round(g.bytes / 1024) + ' KB' };
+    }
+    if (b.kind === 'text') {
+      var tr = kiosChat({ model: model || undefined, prompt: 'Balas dengan satu perkataan sahaja: sedia.', max_tokens: 400 });
+      return { ok: true, works: true, kind: 'text', model: tr.model, code: 'HTTP 200', ms: Date.now() - t0, text: String(tr.text).replace(/<think>[\s\S]*?<\/think>/g, '').trim().slice(0, 80) };
     }
     var r = kiosVision({ model: model || undefined, prompt: 'What colour fills this picture? Reply with one word.', url: RED_PNG, max_tokens: 400 });
     return { ok: true, works: true, kind: 'vision', model: r.model, code: 'HTTP 200', ms: Date.now() - t0, text: String(r.text).replace(/<think>[\s\S]*?<\/think>/g, '').trim().slice(0, 80) };
@@ -1830,6 +1837,17 @@ function kiosVision(b) {
   if (b.system) msgs.push({ role: 'system', content: String(b.system).slice(0, 6000) });
   msgs.push({ role: 'user', content: [{ type: 'text', text: String(b.prompt || 'Describe this picture.').slice(0, 4000) }, { type: 'image_url', image_url: { url: url } }] });
   var r = kiosFetch('/chat/completions', { method: 'post', contentType: 'application/json', payload: JSON.stringify({ model: model, messages: msgs, temperature: 0.1, max_tokens: b.max_tokens || 1500 }) });
+  if (r.getResponseCode() >= 300) throw new Error('KIOS HTTP ' + r.getResponseCode() + ': ' + r.getContentText().slice(0, 200));
+  var j = JSON.parse(r.getContentText()), text = j.choices && j.choices[0] && j.choices[0].message && (j.choices[0].message.content || '');
+  if (!text) throw new Error('KIOS empty completion');
+  markProvider('KIOS', model);
+  return { text: text, model: model };
+}
+// Plain text in, text out, on the same vision-capable chat model: proves the
+// gateway also reads and writes words (not only pictures).
+function kiosChat(b) {
+  var model = b.model || kiosModel('vision', false);
+  var r = kiosFetch('/chat/completions', { method: 'post', contentType: 'application/json', payload: JSON.stringify({ model: model, messages: [{ role: 'user', content: String(b.prompt).slice(0, 2000) }], temperature: 0.1, max_tokens: b.max_tokens || 600 }) });
   if (r.getResponseCode() >= 300) throw new Error('KIOS HTTP ' + r.getResponseCode() + ': ' + r.getContentText().slice(0, 200));
   var j = JSON.parse(r.getContentText()), text = j.choices && j.choices[0] && j.choices[0].message && (j.choices[0].message.content || '');
   if (!text) throw new Error('KIOS empty completion');
@@ -1909,19 +1927,39 @@ function collectorStatus() {
 
 // Public, cached 5 minutes: which model each provider is on, whether its
 // gateway answers, and when it last did real work.
+// Response rate on the baseline URL (Wan, 19 Oct 2026): every status check
+// pings each AI's own base URL (its /models) and keeps the last 48 results per
+// AI in Script Properties, so the robot cards can show the time now, the
+// average and how often it answered. tickWatch also checks, every 10 minutes,
+// so the history does not depend on someone opening the page.
+function pingNote(name, ms, ok) {
+  var P = props(), key = 'ping_' + name, h = [];
+  try { h = JSON.parse(P.getProperty(key) || '[]'); } catch (e) { h = []; }
+  h.push({ t: Date.now(), ms: ms, ok: !!ok }); if (h.length > 48) h = h.slice(-48);
+  try { P.setProperty(key, JSON.stringify(h)); } catch (e) { /* properties busy */ }
+  return h;
+}
+function pingStats(h) {
+  var good = h.filter(function (x) { return x.ok; });
+  return { pings: h.length, ok_rate: h.length ? Math.round(100 * good.length / h.length) : null, avg_ms: good.length ? Math.round(good.reduce(function (s, x) { return s + x.ms; }, 0) / good.length) : null,
+           best_ms: good.length ? Math.min.apply(null, good.map(function (x) { return x.ms; })) : null, since: h.length ? new Date(h[0].t).toISOString() : '' };
+}
+function baseHost(url) { return String(url).replace(/^https?:\/\//, ''); }
+
 function aiStatus() {
-  var cache = CacheService.getScriptCache(), hit = cache.get('ai_status');
+  var cache = CacheService.getScriptCache(), hit = cache.get(AI_STATUS_KEY);
   if (hit) return JSON.parse(hit);
   var runs = readTab('Runs');
   var out = { ok: true, checked_at: new Date().toISOString(), mode: llmCfg().mode, strict: llmCfg().strict, providers: {} };
   Object.keys(PROVIDERS).forEach(function (n) {
-    var p = PROVIDERS[n], key = props().getProperty(p.keyProp), s = { name: n === 'AFIQ' ? 'Wanshah 1' : 'Wanshah 2', provider: n, key: !!key, reachable: false, code: key ? '' : 'NO KEY', model: '', fast_model: '', ms: null, last_used: '', last_ok: '', last_model: '' };
+    var p = PROVIDERS[n], key = props().getProperty(p.keyProp), s = { host: baseHost(p.base), name: n === 'AFIQ' ? 'Wanshah 1' : 'Wanshah 2', provider: n, key: !!key, reachable: false, code: key ? '' : 'NO KEY', model: '', fast_model: '', ms: null, last_used: '', last_ok: '', last_model: '' };
     if (key) {
       var t = Date.now();
       try {
         var r = UrlFetchApp.fetch(p.base + '/models', { headers: { Authorization: 'Bearer ' + key }, muteHttpExceptions: true });
         s.ms = Date.now() - t; s.reachable = r.getResponseCode() < 300; s.code = String(r.getResponseCode());
       } catch (e) { s.ms = Date.now() - t; s.code = llmFail(e).code; }
+      Object.assign(s, pingStats(pingNote(n, s.ms, s.reachable)));
       try { s.model = resolveModel(n, false, false); s.fast_model = resolveModel(n, false, true); } catch (e) { /* unreachable */ }
     }
     var last = runs.filter(function (x) { return x.provider === n; }).sort(function (a, b) { return Date.parse(b.ts) - Date.parse(a.ts); })[0];
@@ -1930,15 +1968,16 @@ function aiStatus() {
     out.providers[n] = s;
   });
   // Wanshah 3: gateway check and the two models it would use (vision, image).
-  var k = { name: IMAGE_AI.KIOS.name, provider: 'KIOS', key: !!kiosKey(), reachable: false, code: kiosKey() ? '' : 'NO KEY', model: '', fast_model: '', ms: null, last_used: '', last_ok: '', last_model: '', role: 'image' };
+  var k = { host: baseHost(IMAGE_AI.KIOS.base), name: IMAGE_AI.KIOS.name, provider: 'KIOS', key: !!kiosKey(), reachable: false, code: kiosKey() ? '' : 'NO KEY', model: '', fast_model: '', ms: null, last_used: '', last_ok: '', last_model: '', role: 'image' };
   if (k.key) {
     var kt = Date.now();
     try { var kr = kiosFetch('/models'); k.ms = Date.now() - kt; k.reachable = kr.getResponseCode() < 300; k.code = String(kr.getResponseCode()); } catch (e) { k.ms = Date.now() - kt; k.code = llmFail(e).code; }
+    Object.assign(k, pingStats(pingNote('KIOS', k.ms, k.reachable)));
     if (k.reachable) { try { k.model = kiosModel('vision', false); } catch (e) { /* none listed */ } try { k.fast_model = kiosModel('image', false); } catch (e) { /* none listed */ } }
   }
   var kok = cache.get('ok_KIOS'); if (kok) { try { var kj = JSON.parse(kok); k.last_ok = kj.ts; k.last_model = kj.model || ''; } catch (e) { /* ignore */ } }
   out.providers.KIOS = k;
-  cache.put('ai_status', JSON.stringify(out), 300);
+  cache.put(AI_STATUS_KEY, JSON.stringify(out), 300);
   return out;
 }
 

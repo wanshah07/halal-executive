@@ -34,6 +34,13 @@ export default function ImageAiAdmin({ lang }) {
     try { const r = await adminPost('img_test', { kind, model: pick[kind] }); setTests((x) => ({ ...x, [kind]: r })) }
     catch (e) { setTests((x) => ({ ...x, [kind]: { works: false, code: 'NO REPLY', why: 'network', error: e.message } })) }
   }
+  // One press, three real calls: reads a picture, writes (makes) a picture, and
+  // reads and writes plain text. Each result shows under its own button.
+  const [all, setAll] = useState(false)
+  async function checkAll() {
+    setAll(true)
+    try { await Promise.all(['vision', 'image', 'text'].map((k) => runTest(k))) } finally { setAll(false) }
+  }
   async function save() {
     setBusy(true); setMsg('')
     try { const r = await adminPost('img_config_save', pick); setCfg(r); setTests({}); setMsg(t(lang, 'img_saved')); runTest('vision') }
@@ -104,6 +111,14 @@ export default function ImageAiAdmin({ lang }) {
         <div className="grid lg:grid-cols-2 gap-3">
           <div className="rounded-xl border border-line p-4 space-y-3">{row('vision', 'img_vision_model', 'img_vision_hint')}</div>
           <div className="rounded-xl border border-line p-4 space-y-3">{row('image', 'img_image_model', 'img_image_hint')}</div>
+        </div>
+        <div className="rounded-xl border border-line p-4 space-y-2">
+          <div className="flex flex-wrap items-center gap-3">
+            <b className="text-sm">{t(lang, 'img_all_title')}</b>
+            <button type="button" className="btn" disabled={!cfg.key || all} onClick={checkAll}>{all ? t(lang, 'ai_testing') : t(lang, 'img_all')}</button>
+          </div>
+          <p className="text-xs text-ink-400">{t(lang, 'img_text_hint')}</p>
+          <div className="min-h-4">{result('text')}</div>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <button type="button" className="btn-brand" disabled={busy || !cfg.key} onClick={save}>{busy ? '…' : t(lang, 'ai_save')}</button>
