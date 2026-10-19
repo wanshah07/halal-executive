@@ -16,8 +16,9 @@
    strip `llm_*`), read by `complete()` in Code.gs and by `llm_router.py`
    through the `llm_config` action. It beats the `*_MODEL` variables, which
    stay as the fallback; a withdrawn model falls back to auto rather than
-   breaking the site. Never add a third provider without Wan, never mark a Raw
-   row processed when every allowed provider failed.
+   breaking the site. Never add another provider without Wan (Wan added Wanshah 3,
+   KIOS, as the image expert on 19 Oct 2026: rule 37; it is not part of this
+   rotation), never mark a Raw row processed when every allowed provider failed.
 3. **Nothing private is published.** `Raw` never reaches the page. Names,
    phone numbers, member company names and case details stay out of FAQ,
    Documents titles, Events and News. A fact the messages left unstated is
@@ -259,6 +260,24 @@
     "All countries (n)" opening the full A to Z list. The organiser also files a
     document called a certificate whose title says otherwise (announcement,
     booklet) under its real kind and hides any title-only row made for it.
+37. **Wanshah 3 (KIOS, https://kiosapi.com/v1) is the image expert, not a text provider**
+    (Wan, 19 Oct 2026). Key: Script Property `KIOS_API_KEY` only (no GitHub secret:
+    the pipeline reaches it through Code.gs `vision_read`). It is a separate table
+    (`IMAGE_AI` in Code.gs), never in `PROVIDERS`, never in the automatic rotation
+    or the handover, and cannot be pinned for answers. It does two jobs: reads a
+    picture (`vision_read`: the organiser sends a certificate whose OCR text is
+    unusable, a scanned PDF through its 1600 px preview; `read_cert_image`; one
+    `ping` per run, so nothing else is asked while there is no key; a title-only
+    row is tried once more and marked `vision-tried` when it still fails) and
+    makes pictures (Admin -> Wanshah 3 -> Image studio, `image_generate`, saved
+    to Drive `60 Generated` only when "Keep in Drive" is ticked). Models come from
+    its `/models` (image ids vs the rest); Admin's choice is Settings
+    `llm_vision_KIOS` / `llm_image_KIOS`. Admin actions: `img_config`,
+    `img_config_save`, `img_test`, `image_generate`. Its robot card (W3, purple)
+    shows Reads / Makes and is hidden when Code.gs is too old to report it.
+    Untested against the real gateway until the key is in: the code follows the
+    OpenAI image and vision shapes and was run against a fake one (retries
+    without `response_format`, follows a returned link).
 33. **Google being busy must never reach the reader as an error** (Wan, 18 Oct
     2026: "Sheet feed 404", AI model "HTTP 404", Progress and Drafts stuck on
     Loading). Apps Script answers with Google's HTML "Page Not Found" (HTTP 404,

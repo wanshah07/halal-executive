@@ -30,14 +30,15 @@ export default function AiTeam({ lang, runs, sample }) {
   const cards = [
     { key: 'AFIQ', tone: 'afiq', name: 'Wanshah 1' },
     { key: 'MIRELD', tone: 'mireld', name: 'Wanshah 2' },
-  ]
+    { key: 'KIOS', tone: 'kios', name: 'Wanshah 3', image: true },
+  ].filter((c) => c.key !== 'KIOS' || !st || !st.providers || st.providers.KIOS) // an older Code.gs has no Wanshah 3 yet
   return (
     <div className="card p-5 mb-4">
       <div className="flex flex-wrap items-baseline justify-between gap-2 mb-3">
         <h3 className="font-semibold">{t(lang, 'ai_team')}</h3>
         <span className="text-xs text-ink-400">{st ? `${t(lang, 'checked')} ${fmtDateTime(st.checked_at, lang)}` : err ? err : t(lang, 'loading')}</span>
       </div>
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {cards.map((c) => {
           const run = fromRuns(c.key)
           // Older Code.gs has no status route: judge from the pipeline's runs.
@@ -51,8 +52,8 @@ export default function AiTeam({ lang, runs, sample }) {
                 <div className="flex items-center gap-2 flex-wrap"><span className="text-lg font-bold">{c.name}</span><span className={`chip ${chip}`}><span aria-hidden="true">●</span>&nbsp;{t(lang, 'st_' + state)}{state === 'offline' && p && p.code ? ` · ${/^\d+$/.test(p.code) ? 'HTTP ' + p.code : p.code}` : ''}</span>{st && st.mode === c.key && <span className="chip bg-brand-100 text-brand-700">{t(lang, 'ai_chosen')}</span>}</div>
                 <div className="text-xs text-ink-400 mb-1">{c.key}</div>
                 <dl className="text-sm grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
-                  <dt className="text-ink-400">{t(lang, 'model_used')}</dt><dd className="truncate font-medium">{(p && p.model) || (run && run.model) || '—'}</dd>
-                  <dt className="text-ink-400">{t(lang, 'fast_model')}</dt><dd className="truncate">{(p && p.fast_model) || '—'}</dd>
+                  <dt className="text-ink-400">{t(lang, c.image ? 'img_reads' : 'model_used')}</dt><dd className="truncate font-medium">{(p && p.model) || (run && run.model) || '—'}</dd>
+                  <dt className="text-ink-400">{t(lang, c.image ? 'img_makes' : 'fast_model')}</dt><dd className="truncate">{(p && p.fast_model) || '—'}</dd>
                   {p && p.last_model && p.last_model !== p.model && <><dt className="text-ink-400">{t(lang, 'ai_pinned_last')}</dt><dd className="truncate">{p.last_model}</dd></>}
                   <dt className="text-ink-400">{t(lang, 'last_work')}</dt><dd className="truncate">{p && (p.last_ok || p.last_used) ? fmtDateTime(p.last_ok || p.last_used, lang) : run ? fmtDateTime(run.ts, lang) : '—'}</dd>
                   {p && p.ms != null && <><dt className="text-ink-400">{t(lang, 'response')}</dt><dd>{p.ms} ms</dd></>}

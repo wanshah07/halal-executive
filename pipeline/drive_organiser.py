@@ -65,6 +65,39 @@ def read_cert(text):
     return c, out["provider"], out["model"]
 
 
+def read_cert_image(file_id):
+    """Wanshah 3 (KIOS) reads the picture of a certificate that OCR could not
+    (Wan, 19 Oct 2026). The key lives only in Apps Script (vision_read); without
+    one, or when the picture cannot be read, this is just (None, "", "") and the
+    caller carries on as before. Returns (certificate | None, provider, model)."""
+    if not vision_ready():
+        return None, "", "NO KEY"
+    try:
+        r = he_api.post("vision_read", id=file_id, system=CERT, prompt="Read the halal certificate in this picture.", json=True)
+    except he_api.ApiError as e:
+        print("  vision read not available:", str(e)[:120])
+        return None, "", ""
+    if not (r.get("ok") and r.get("read")):
+        return None, "", ("NO KEY" if r.get("code") == "NO KEY" else "")
+    j = r.get("json") if isinstance(r.get("json"), dict) else {}
+    c = j.get("certificate") if isinstance(j.get("certificate"), dict) else (j if j.get("company") else None)
+    return (c if c and c.get("company") else None), "KIOS", r.get("model", "")
+
+
+_VISION = {}
+
+
+def vision_ready():
+    """True when Wanshah 3 has a key in Apps Script: one cheap call per run
+    (run() clears the answer), so nothing else asks while there is no key."""
+    if "ready" not in _VISION:
+        try:
+            _VISION["ready"] = bool(he_api.post("vision_read", ping=True).get("ready"))
+        except he_api.ApiError:
+            _VISION["ready"] = False
+    return _VISION["ready"]
+
+
 def expired(v):
     """True when an ISO date (valid_to / expiry) is already past."""
     try:
@@ -97,6 +130,7 @@ def safe(s):
 
 
 def run():
+    _VISION.clear()
     docs = he_api.read("Documents")
     inbox = [d for d in docs if d.get("status") == "inbox"]
     by_hash = {d["content_hash"]: d for d in docs if d.get("content_hash") and d.get("status") in ("current", "draft", "archived", "expired")}
@@ -138,6 +172,10 @@ def run():
             if not (cert and cert.get("company") and cert.get("issuer")) and (d.get("kind") == "certificate" or CERT_TEXT.search(f["text"] or "") or (cert and cert.get("company"))):
                 cert, p2, m2 = read_cert(f["text"])
                 provider, model = p2 or provider, m2 or model
+                if not (cert and cert.get("company")) and d.get("kind") == "certificate":
+                    cert, p3, m3 = read_cert_image(d["drive_file_id"])  # OCR gave nothing usable: Wanshah 3 reads the picture
+                    if cert:
+                        provider, model = p3, m3
             # An expired certificate (or a document past its printed expiry) is
             # kept in Drive "90 Archive" for the record and never becomes a draft.
             if (cert and expired(cert.get("valid_to"))) or expired(j.get("expiry")):
@@ -208,11 +246,18 @@ def run():
             he_api.upsert("Certificates", [{**c, "status": "hidden"}])
         print(d["id"], "is not a certificate; filed as", kind); n += 1
     certs = he_api.read("Certificates")
-    have = {str(c.get("doc_id")) for c in certs if c.get("issuer") or "full-read" in str(c.get("notes") or "") or "title-only" in str(c.get("notes") or "")}
+    kios = vision_ready()  # title-only rows are tried again with Wanshah 3 once it has a key, once each
+    have = {str(c.get("doc_id")) for c in certs if c.get("issuer") or "full-read" in str(c.get("notes") or "") or ("title-only" in str(c.get("notes") or "") and ("vision-tried" in str(c.get("notes") or "") or not kios))}
     for d in [x for x in he_api.read("Documents") if certs_ready and x.get("status") in ("current", "draft") and x.get("kind") == "certificate" and str(x["id"]) not in have]:
         try:
             f = he_api.drive_get(d["drive_file_id"], text=True)
             cert, p2, m2 = read_cert(f["text"])
+            vision_failed = False
+            if not (cert and cert.get("company")):
+                cert, p2, m2 = read_cert_image(d["drive_file_id"])  # Wanshah 3 reads the picture itself
+                vision_failed = not cert and m2 != "NO KEY"
+                if not cert:
+                    m2 = ""
             if not (cert and cert.get("company")):
                 # Unreadable scan: list it by the holder named in its title, so it
                 # shows on its card with the file; details can be re-read in Admin.
@@ -222,7 +267,7 @@ def run():
                     print(d["id"], "certificate text could not be read and the title names no holder; left for the admin"); continue
                 prev = next((c for c in certs if str(c.get("doc_id")) == str(d["id"])), None)
                 cid = prev["id"] if prev else ids_cert()
-                he_api.upsert("Certificates", [cert_row(cid, {"company": holder}, d, d.get("drive_url", ""), f.get("modified", ""), "title-only: the file could not be read; re-read it in Admin",
+                he_api.upsert("Certificates", [cert_row(cid, {"company": holder}, d, d.get("drive_url", ""), f.get("modified", ""), "title-only: the file could not be read" + ("; vision-tried" if vision_failed else "") + "; re-read it in Admin",
                                                         status="current")])
                 if not prev:
                     certs.append({"id": cid, "cert_no": "", "doc_id": d["id"], "notes": "title-only"})

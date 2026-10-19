@@ -18,6 +18,8 @@
  *   INGEST_TOKEN       random; GitHub secret HE_INGEST_TOKEN + collectors
  *   DRIVE_ROOT_ID      id of the "Halal Executive" Drive folder it creates
  * Optional:
+ *   KIOS_API_KEY       Bearer key for https://kiosapi.com/v1 (Wanshah 3, the image expert:
+ *                      reads pictures OCR cannot, makes pictures; Admin -> AI model).
  *   (Admin -> AI model now sets the provider and the model; these are the fallback.)
  *   MIRELD_MODEL / AFIQ_MODEL   leave empty or "auto" and the model is picked
  *                      from the gateway's own /models list and re-picked by
@@ -335,6 +337,11 @@ function doPost(e) {
     if (a === 'llm_test')     { needAdmin(); return json(llmTest(body)); }          // one real call, no Sheet write
     if (a === 'llm_config_save') { needAdmin(); return json(llmConfigSave(body)); } // validates first, locks only for the write
     if (a === 'llm')          return json(llmProxy(body));
+    if (a === 'vision_read')  return json(visionRead(body));                       // the pipeline reads a picture OCR could not (ingest token)
+    if (a === 'img_config')   { needAdmin(); return json(kiosConfig(!!body.fresh)); }
+    if (a === 'img_config_save') { needAdmin(); return json(kiosConfigSave(body)); }
+    if (a === 'img_test')     { needAdmin(); return json(kiosTest(body)); }
+    if (a === 'image_generate') { needAdmin(); return json(imageGenerate(body)); } // makes a picture; the file goes to Drive only when asked
     if (a === 'heartbeat')    return json(heartbeat(body));
     if (a === 'progress')     return json(saveProgress(body));
     if (a === 'poster_from_drive') return json(posterFromDrive(body.id));
@@ -1711,6 +1718,179 @@ function askReferences(b) {
   return out;
 }
 
+
+// =====================================================================
+// Wanshah 3 (KIOS, https://kiosapi.com/v1): the image expert (Wan, 19 Oct 2026).
+// It is NOT in the text rotation of Wanshah 1 and 2 and cannot be pinned for
+// answers: it reads pictures (a certificate or poster the OCR could not read)
+// and makes pictures (Admin -> Image studio). The key is the Script Property
+// KIOS_API_KEY; nothing else is needed anywhere. Models are listed from its
+// /models: the picker offers image models for "make" and the other chat models
+// for "read". Admin's choice is the Settings keys llm_vision_KIOS and
+// llm_image_KIOS (stripped from every public output with the other llm_*).
+// =====================================================================
+var IMAGE_AI = { KIOS: { base: 'https://kiosapi.com/v1', keyProp: 'KIOS_API_KEY', name: 'Wanshah 3' } };
+var IMG_ID = /(image|dall|flux|sdxl|stable-?diff|imagen|midjourney|banana|seedream|recraft|ideogram|kolors|cogview|hidream|qwen-image)/i;
+var IMG_PREFER = ['gpt-image', 'flux', 'nano-banana', 'seedream', 'imagen', 'dall-e', 'recraft', 'ideogram', 'qwen-image'];
+var VISION_PREFER = ['gpt-4o', 'gpt-5', 'gpt-4.1', 'gemini', 'claude', 'qwen', 'glm-4', 'pixtral', 'llava'];
+var VISION_OK = /(vision|vl\b|-vl|4o|gpt-5|gpt-4\.1|gemini|claude|pixtral|llava|omni|qwen|glm-4)/i;
+var RED_PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAAKklEQVR4nGO4IydHU8QwasGoBaMWjFowasGoBaMWjFowasGoBaMWDBULAJI2YD1ZaHIvAAAAAElFTkSuQmCC';
+
+function kiosKey() { return props().getProperty(IMAGE_AI.KIOS.keyProp) || ''; }
+function kiosFetch(path, opt) {
+  var o = opt || {}; o.muteHttpExceptions = true; o.followRedirects = true;
+  o.headers = { Authorization: 'Bearer ' + kiosKey() };
+  return UrlFetchApp.fetch(IMAGE_AI.KIOS.base + path, o);
+}
+function kiosIds() {
+  var r = kiosFetch('/models');
+  if (r.getResponseCode() >= 300) throw new Error('KIOS /models HTTP ' + r.getResponseCode());
+  return (JSON.parse(r.getContentText()).data || []).map(function (m) { return m.id; });
+}
+function pickBy(ids, prefer) {
+  var pick = null;
+  prefer.some(function (pre) { pick = ids.filter(function (i) { return i.toLowerCase().indexOf(pre) >= 0; })[0] || null; return !!pick; });
+  return pick || ids[0] || null;
+}
+function kiosSplit(ids) {
+  var image = ids.filter(function (i) { return IMG_ID.test(i); });
+  var chat = ids.filter(function (i) { return !IMG_ID.test(i) && !/(embed|tts|whisper|audio|moderation|rerank)/i.test(i); });
+  var vision = chat.filter(function (i) { return VISION_OK.test(i); });
+  return { image: image, vision: vision.length ? vision : chat };
+}
+function kiosWanted(kind) {
+  var st = {}; try { st = readSettings(); } catch (e) { /* Sheet busy: automatic */ }
+  return cleanModel(st['llm_' + kind + '_KIOS']) || String(props().getProperty(kind === 'image' ? 'KIOS_IMAGE_MODEL' : 'KIOS_VISION_MODEL') || '').trim();
+}
+// The model to use for 'vision' or 'image': Admin's choice while the gateway
+// still offers it, else the automatic pick; cached 6 h like the other robots.
+function kiosModel(kind, fresh) {
+  var want = kiosWanted(kind), cache = CacheService.getScriptCache(), ck = 'kios_' + kind + '|' + want;
+  if (!fresh) { var hit = cache.get(ck); if (hit) return hit; }
+  var ids = kiosIds(), sp = kiosSplit(ids), list = kind === 'image' ? sp.image : sp.vision;
+  var pick = want && ids.indexOf(want) >= 0 ? want : pickBy(list, kind === 'image' ? IMG_PREFER : VISION_PREFER);
+  if (!pick) throw new Error('KIOS lists no ' + (kind === 'image' ? 'image' : 'vision') + ' model');
+  cache.put(ck, pick, 21600);
+  return pick;
+}
+
+// Admin -> Wanshah 3: key, gateway state, the two models and what is on offer.
+function kiosConfig(fresh) {
+  var cache = CacheService.getScriptCache();
+  if (!fresh) { var hit = cache.get('kios_cfg'); if (hit) { try { return JSON.parse(hit); } catch (e) { /* ask again */ } } }
+  var out = { ok: true, name: IMAGE_AI.KIOS.name, key: !!kiosKey(), reachable: false, code: '', why: '', error: '', vision: kiosWanted('vision'), image: kiosWanted('image'), vision_models: [], image_models: [], auto_vision: '', auto_image: '' };
+  if (!out.key) { out.code = 'NO KEY'; out.why = 'key'; return out; }
+  try {
+    var ids = kiosIds(), sp = kiosSplit(ids);
+    out.reachable = true; out.code = '200';
+    out.vision_models = sp.vision.slice().sort(); out.image_models = (sp.image.length ? sp.image : ids).slice().sort();
+    out.auto_vision = pickBy(sp.vision, VISION_PREFER) || ''; out.auto_image = pickBy(sp.image, IMG_PREFER) || '';
+  } catch (e) { var f = llmFail(e); out.error = String(e.message || e).slice(0, 160); out.code = f.code; out.why = f.why; }
+  try { cache.put('kios_cfg', JSON.stringify(out), 300); } catch (e) { /* too large */ }
+  return out;
+}
+function kiosConfigSave(b) {
+  if (!kiosKey()) throw new Error('KIOS_API_KEY is not set in Script Properties, so Wanshah 3 cannot be set up yet.');
+  var v = cleanModel(b.vision), im = cleanModel(b.image), ids = null;
+  if (v || im) { try { ids = kiosIds(); } catch (e) { ids = null; } }
+  [['vision', v], ['image', im]].forEach(function (x) { if (x[1] && ids && ids.indexOf(x[1]) < 0) throw new Error(x[1] + ' is not offered by Wanshah 3 right now.'); });
+  var lock = LockService.getScriptLock(); lock.waitLock(30000);
+  try { writeSettings({ llm_vision_KIOS: v, llm_image_KIOS: im }); } finally { lock.releaseLock(); }
+  try { CacheService.getScriptCache().removeAll(['kios_cfg', 'ai_status']); } catch (e) { /* nothing cached */ }
+  return kiosConfig(true);
+}
+
+// Prove one choice with one real call, timed. A failed test is still a reply
+// (ok:true, works:false) so the page can show the code and the reason.
+function kiosTest(b) {
+  if (!kiosKey()) return { ok: true, works: false, kind: b.kind, code: 'NO KEY', why: 'key', ms: 0, error: 'No KIOS_API_KEY in Script Properties.' };
+  var t0 = Date.now(), model = cleanModel(b.model).split(',')[0].trim();
+  try {
+    if (b.kind === 'image') {
+      var g = kiosGenerate({ prompt: 'A plain green circle on a white background, flat vector style.', model: model || undefined, test: true });
+      return { ok: true, works: true, kind: 'image', model: g.model, code: 'HTTP 200', ms: Date.now() - t0, bytes: g.bytes, text: g.mime + ', ' + Math.round(g.bytes / 1024) + ' KB' };
+    }
+    var r = kiosVision({ model: model || undefined, prompt: 'What colour fills this picture? Reply with one word.', url: RED_PNG, max_tokens: 400 });
+    return { ok: true, works: true, kind: 'vision', model: r.model, code: 'HTTP 200', ms: Date.now() - t0, text: String(r.text).replace(/<think>[\s\S]*?<\/think>/g, '').trim().slice(0, 80) };
+  } catch (e) { var f = llmFail(e); return { ok: true, works: false, kind: b.kind, model: model, ms: Date.now() - t0, code: f.code, why: f.why, error: String(e.message || e).slice(0, 240) }; }
+}
+
+// Read a picture: one image (a Drive file id, or base64, or a data URL) and a
+// question; returns text, and parsed JSON when asked. Drive files that are not
+// pictures (a scanned PDF) are read from their first-page preview.
+function kiosVision(b) {
+  var url = b.url;
+  if (!url) {
+    var blob = b.id ? driveImageBlob(String(b.id)) : Utilities.newBlob(Utilities.base64Decode(b.b64), b.mime || 'image/png', 'img');
+    if (!blob) throw new Error('KIOS has no picture to read');
+    if (blob.getBytes().length > 7 * 1024 * 1024) throw new Error('KIOS picture too large (over 7 MB)');
+    url = 'data:' + blob.getContentType() + ';base64,' + Utilities.base64Encode(blob.getBytes());
+  }
+  var model = b.model || kiosModel('vision', false), msgs = [];
+  if (b.system) msgs.push({ role: 'system', content: String(b.system).slice(0, 6000) });
+  msgs.push({ role: 'user', content: [{ type: 'text', text: String(b.prompt || 'Describe this picture.').slice(0, 4000) }, { type: 'image_url', image_url: { url: url } }] });
+  var r = kiosFetch('/chat/completions', { method: 'post', contentType: 'application/json', payload: JSON.stringify({ model: model, messages: msgs, temperature: 0.1, max_tokens: b.max_tokens || 1500 }) });
+  if (r.getResponseCode() >= 300) throw new Error('KIOS HTTP ' + r.getResponseCode() + ': ' + r.getContentText().slice(0, 200));
+  var j = JSON.parse(r.getContentText()), text = j.choices && j.choices[0] && j.choices[0].message && (j.choices[0].message.content || '');
+  if (!text) throw new Error('KIOS empty completion');
+  markProvider('KIOS', model);
+  return { text: text, model: model };
+}
+function driveImageBlob(id) {
+  var meta = Drive.Files.get(id, { fields: 'thumbnailLink,mimeType,size' });
+  if (/^image\//.test(meta.mimeType)) return DriveApp.getFileById(id).getBlob();
+  if (!meta.thumbnailLink) return null;
+  var r = UrlFetchApp.fetch(meta.thumbnailLink.replace(/=s\d+$/, '=s1600'), { headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }, muteHttpExceptions: true });
+  return r.getResponseCode() === 200 ? r.getBlob().setContentType(r.getHeaders()['Content-Type'] || 'image/png') : null;
+}
+// The pipeline's door (ingest token): never throws a bare error, so a missing
+// key or a model that cannot read the picture is an answer the caller handles.
+function visionRead(b) {
+  if (!kiosKey()) return { ok: true, read: false, ready: false, code: 'NO KEY', why: 'key' };
+  if (b.ping) return { ok: true, ready: true }; // the pipeline asks once per run whether it is worth trying
+  var t0 = Date.now();
+  try {
+    var r = kiosVision({ id: b.id, b64: b.b64, mime: b.mime, system: b.system, prompt: b.prompt, max_tokens: 2000 });
+    var out = { ok: true, read: true, provider: 'KIOS', model: r.model, text: r.text, ms: Date.now() - t0 };
+    if (b.json) { try { out.json = parseJson(r.text); } catch (e) { out.read = false; out.code = 'NOT JSON'; out.why = 'other'; } }
+    return out;
+  } catch (e) { var f = llmFail(e); return { ok: true, read: false, code: f.code, why: f.why, error: String(e.message || e).slice(0, 240), ms: Date.now() - t0 }; }
+}
+
+// Make a picture. Asks for base64 first; a gateway that only hands back a link
+// is followed once. With keep:true the file goes to Drive "60 Generated".
+var IMG_SIZES = ['auto', '512x512', '1024x1024', '1024x1536', '1536x1024', '1792x1024', '1024x1792'];
+function kiosGenerate(b) {
+  var prompt = String(b.prompt || '').trim().slice(0, 1500);
+  if (prompt.length < 3) throw new Error('Describe the picture first.');
+  var model = b.model || kiosModel('image', false), size = IMG_SIZES.indexOf(b.size) >= 0 ? b.size : '';
+  var body = { model: model, prompt: prompt, n: 1 }; if (size && size !== 'auto') body.size = size;
+  var send = function (withFormat) {
+    var p = {}; Object.keys(body).forEach(function (k) { p[k] = body[k]; }); if (withFormat) p.response_format = 'b64_json';
+    return kiosFetch('/images/generations', { method: 'post', contentType: 'application/json', payload: JSON.stringify(p) });
+  };
+  var r = send(true);
+  if (r.getResponseCode() === 400 && /response_format|unknown|unsupported/i.test(r.getContentText())) r = send(false); // some gateways reject the option
+  if (r.getResponseCode() >= 300) throw new Error('KIOS HTTP ' + r.getResponseCode() + ': ' + r.getContentText().slice(0, 200));
+  var d = (JSON.parse(r.getContentText()).data || [])[0] || {}, bytes = null, mime = 'image/png';
+  if (d.b64_json) bytes = Utilities.base64Decode(d.b64_json);
+  else if (d.url && /^https:\/\//.test(d.url)) { var g = UrlFetchApp.fetch(d.url, { muteHttpExceptions: true }); if (g.getResponseCode() === 200) { bytes = g.getContent(); mime = g.getHeaders()['Content-Type'] || mime; } }
+  if (!bytes || !bytes.length) throw new Error('KIOS empty completion');
+  if (bytes[0] === 0xFF && bytes[1] === 0xD8 || bytes[0] === -1 && bytes[1] === -40) mime = 'image/jpeg';
+  markProvider('KIOS', model);
+  var out = { model: model, mime: mime, bytes: bytes.length, revised: d.revised_prompt || '' };
+  if (b.test) return out;
+  var blob = Utilities.newBlob(bytes, mime, 'generated-' + Utilities.formatDate(new Date(), 'Asia/Kuala_Lumpur', 'yyyyMMdd-HHmmss') + (mime === 'image/jpeg' ? '.jpg' : '.png'));
+  if (b.keep) { var f = folder('60 Generated').createFile(blob); out.drive_url = f.getUrl(); out.id = f.getId(); }
+  if (bytes.length < 3 * 1024 * 1024) out.data = 'data:' + mime + ';base64,' + Utilities.base64Encode(bytes);
+  return out;
+}
+function imageGenerate(b) {
+  var t0 = Date.now();
+  try { var g = kiosGenerate({ prompt: b.prompt, size: b.size, model: cleanModel(b.model) || undefined, keep: !!b.keep }); g.ok = true; g.ms = Date.now() - t0; return g; }
+  catch (e) { var f = llmFail(e); return { ok: true, made: false, code: f.code, why: f.why, error: String(e.message || e).slice(0, 240), ms: Date.now() - t0 }; }
+}
+
 // =====================================================================
 // Status for the robot cards and the collectors' live indicator.
 // =====================================================================
@@ -1749,6 +1929,15 @@ function aiStatus() {
     var ok = cache.get('ok_' + n); if (ok) { try { var okj = JSON.parse(ok); s.last_ok = okj.ts; s.last_model = okj.model || ''; } catch (e) { /* ignore */ } }
     out.providers[n] = s;
   });
+  // Wanshah 3: gateway check and the two models it would use (vision, image).
+  var k = { name: IMAGE_AI.KIOS.name, provider: 'KIOS', key: !!kiosKey(), reachable: false, code: kiosKey() ? '' : 'NO KEY', model: '', fast_model: '', ms: null, last_used: '', last_ok: '', last_model: '', role: 'image' };
+  if (k.key) {
+    var kt = Date.now();
+    try { var kr = kiosFetch('/models'); k.ms = Date.now() - kt; k.reachable = kr.getResponseCode() < 300; k.code = String(kr.getResponseCode()); } catch (e) { k.ms = Date.now() - kt; k.code = llmFail(e).code; }
+    if (k.reachable) { try { k.model = kiosModel('vision', false); } catch (e) { /* none listed */ } try { k.fast_model = kiosModel('image', false); } catch (e) { /* none listed */ } }
+  }
+  var kok = cache.get('ok_KIOS'); if (kok) { try { var kj = JSON.parse(kok); k.last_ok = kj.ts; k.last_model = kj.model || ''; } catch (e) { /* ignore */ } }
+  out.providers.KIOS = k;
   cache.put('ai_status', JSON.stringify(out), 300);
   return out;
 }

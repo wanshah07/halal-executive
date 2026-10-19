@@ -48,6 +48,9 @@ Sheet ──(GET ?action=data)──► this page (Vite + React + Tailwind) ─�
   Drive organiser after every pass and once a day. See
   `.github/workflows/pipeline.yml` (primary) and `routines/` (Claude Routine
   alternative).
+* **Wanshah 3 (kiosapi.com) is the image expert.** Add one Script Property, `KIOS_API_KEY`, deploy Code.gs
+  as a New version, then Admin → Wanshah 3: check, pick the models, test, and use the Image studio.
+  It reads certificate pictures OCR cannot read; it does not answer questions.
 * **Order of work.** WhatsApp first; Facebook and Telegram after it is stable.
 * **Telegram without being a group admin.** Three routes, all into the same Raw tab:
   (1) ask an admin to add the bot (the only live read of the group);

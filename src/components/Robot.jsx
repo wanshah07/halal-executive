@@ -3,6 +3,7 @@
 // the provider is active. Motion stops for people who ask for reduced motion.
 const THEMES = {
   afiq:   { shell: ['#2bd18a', '#0b6b3a', '#063d22'], visor: ['#0c2b1d', '#04140c'], eye: '#7dffc4', glow: '#29f0a0', accent: '#c9a227', label: 'W1' },
+  kios:   { shell: ['#c58bff', '#7a3fd1', '#3d1a7a'], visor: ['#25103f', '#10061f'], eye: '#f1d4ff', glow: '#d08cff', accent: '#f0b429', label: 'W3' },
   mireld: { shell: ['#7fb2ff', '#2a5fc4', '#15306b'], visor: ['#0f1d3a', '#060c1c'], eye: '#9fe0ff', glow: '#5cc8ff', accent: '#f0b429', label: 'W2' },
 }
 
@@ -11,7 +12,7 @@ export default function Robot({ tone = 'afiq', state = 'standby', size = 140 }) 
   const id = `rb-${tone}`
   const on = state === 'active', off = state === 'offline'
   return (
-    <svg viewBox="0 0 160 180" width={size} height={size * 1.125} role="img" aria-label={`${tone === 'afiq' ? 'Wanshah 1' : 'Wanshah 2'} robot, ${state}`} className={`robot ${off ? 'robot-off' : ''}`}>
+    <svg viewBox="0 0 160 180" width={size} height={size * 1.125} role="img" aria-label={`${{ afiq: 'Wanshah 1', mireld: 'Wanshah 2', kios: 'Wanshah 3' }[tone] || 'Wanshah'} robot, ${state}`} className={`robot ${off ? 'robot-off' : ''}`}>
       <defs>
         <linearGradient id={`${id}-shell`} x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor={t.shell[0]} /><stop offset=".55" stopColor={t.shell[1]} /><stop offset="1" stopColor={t.shell[2]} /></linearGradient>
         <linearGradient id={`${id}-visor`} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor={t.visor[0]} /><stop offset="1" stopColor={t.visor[1]} /></linearGradient>
