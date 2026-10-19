@@ -1480,11 +1480,12 @@ function llmTest(b) {
       var vr = callProvider(name, [{ role: 'user', content: [{ type: 'text', text: TEXT_PNG_ASK }, { type: 'image_url', image_url: { url: TEXT_PNG } }] }], { model: model, max_tokens: 700, temperature: 0 });
       var said = String(vr.text).replace(/<think>[\s\S]*?<\/think>/g, '').trim();
       if (said.replace(/\s/g, '').indexOf('7391') < 0) throw new Error(name + ' did not read the picture (it said: ' + said.slice(0, 80) + ')');
+      rememberSight(name, true);
       return { ok: true, works: true, provider: name, model: vr.model, code: 'HTTP 200', ms: Date.now() - t0, text: said.slice(0, 80), vision: true };
     }
     var r = callProvider(name, [{ role: 'user', content: 'Balas dengan satu perkataan sahaja: sedia.' }], { model: model, max_tokens: 600, temperature: 0 });
     return { ok: true, works: true, provider: name, model: r.model, code: 'HTTP 200', ms: Date.now() - t0, text: String(r.text).replace(/<think>[\s\S]*?<\/think>/g, '').trim().slice(0, 120) };
-  } catch (e) { var f = llmFail(e); return { ok: true, works: false, provider: name, model: model, ms: Date.now() - t0, code: f.code, why: f.why, error: String(e.message || e).slice(0, 240) }; }
+  } catch (e) { var f = llmFail(e); if (b.vision && f.why === 'novision') rememberSight(name, false); return { ok: true, works: false, provider: name, model: model, ms: Date.now() - t0, code: f.code, why: f.why, error: String(e.message || e).slice(0, 240) }; }
 }
 
 function llmProxy(b) { var r = complete(b.messages || [], b.opts || {}); return { ok: true, text: r.text, provider: r.provider, model: r.model, fallback_from: r.fallback_from || '' }; }
@@ -1901,9 +1902,27 @@ function visionOrder() {
   var order = [];
   if (kiosKey()) { try { if (kiosModel('vision', false)) order.push('KIOS'); } catch (e) { /* gateway lists no reading model */ } }
   var first = null; try { first = nextProvider(); } catch (e) { first = null; }
-  [first, first === 'MIRELD' ? 'AFIQ' : 'MIRELD'].forEach(function (n) { if (n && PROVIDERS[n] && props().getProperty(PROVIDERS[n].keyProp) && order.indexOf(n) < 0) order.push(n); });
+  [first, first === 'MIRELD' ? 'AFIQ' : 'MIRELD'].forEach(function (n) { if (n && PROVIDERS[n] && props().getProperty(PROVIDERS[n].keyProp) && order.indexOf(n) < 0 && canSee(n)) order.push(n); });
   return order;
 }
+// A text AI is only asked to read a picture once it has shown it can: the test
+// picture's number must come back (llmTest vision). A model that cannot see makes
+// up an answer (deepseek-v4-pro invented a sign when no picture was attached), and
+// an invented certificate must never reach the page. The verdict is remembered for
+// 7 days (Script Property vision_ok_<NAME>), set by the Admin test or here, once.
+function canSee(name) {
+  var P = props(), key = 'vision_ok_' + name, v = null;
+  try { v = JSON.parse(P.getProperty(key) || 'null'); } catch (e) { v = null; }
+  if (v && Date.now() - v.t < 7 * 864e5) return !!v.ok;
+  var r = llmTest({ provider: name, vision: true });
+  // Only "answered without seeing it" is remembered as a no; an outage or a timeout is not, so a
+  // gateway that was down for a minute is asked again next time, not ignored for a week.
+  if (r && r.works) rememberSight(name, true); else if (r && r.why === 'novision') rememberSight(name, false);
+  return !!(r && r.works);
+}
+// true / false once tested (the Admin test or the first picture to read), null before.
+function sightVerdict(name) { try { var v = JSON.parse(props().getProperty('vision_ok_' + name) || 'null'); return v ? !!v.ok : null; } catch (e) { return null; } }
+function rememberSight(name, ok) { try { props().setProperty('vision_ok_' + name, JSON.stringify({ ok: !!ok, t: Date.now() })); } catch (e) { /* properties busy */ } }
 function textVision(name, b) {
   var blob = b.id ? driveImageBlob(String(b.id)) : Utilities.newBlob(Utilities.base64Decode(b.b64), b.mime || 'image/png', 'img');
   if (!blob) throw new Error(name + ' has no picture to read');
@@ -1986,6 +2005,7 @@ function aiStatus() {
         s.ms = Date.now() - t; s.reachable = r.getResponseCode() < 300; s.code = String(r.getResponseCode());
       } catch (e) { s.ms = Date.now() - t; s.code = llmFail(e).code; }
       Object.assign(s, pingStats(pingNote(n, s.ms, s.reachable)));
+      s.sees = sightVerdict(n);
       try { s.model = resolveModel(n, false, false); s.fast_model = resolveModel(n, false, true); } catch (e) { /* unreachable */ }
     }
     var last = runs.filter(function (x) { return x.provider === n; }).sort(function (a, b) { return Date.parse(b.ts) - Date.parse(a.ts); })[0];
@@ -2002,6 +2022,7 @@ function aiStatus() {
     if (k.reachable) { try { k.model = kiosModel('vision', false); } catch (e) { /* none listed */ } try { k.fast_model = kiosModel('image', false); } catch (e) { /* none listed */ } }
   }
   var kok = cache.get('ok_KIOS'); if (kok) { try { var kj = JSON.parse(kok); k.last_ok = kj.ts; k.last_model = kj.model || ''; } catch (e) { /* ignore */ } }
+  k.sees = k.reachable ? !!k.model : null; // Wanshah 3 reads pictures when its gateway lists a model that does
   out.providers.KIOS = k;
   cache.put(AI_STATUS_KEY, JSON.stringify(out), 300);
   return out;
