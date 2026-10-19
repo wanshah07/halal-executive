@@ -10,6 +10,7 @@ import { ICON, Sparkles, Check } from './Icon'
 const NAMES = { AFIQ: 'Wanshah 1', MIRELD: 'Wanshah 2' }
 const ORDER = ['AFIQ', 'MIRELD']
 const FIELDS = [['model', 'ai_main_model'], ['fast', 'ai_fast_model']]
+const SEES = 'vision' // third test per AI: can it read a picture?
 const fill = (s, o) => Object.keys(o).reduce((a, k) => a.replace('{' + k + '}', o[k]), s)
 const draftOf = (r) => ({ mode: r.mode || 'auto', strict: !!r.strict, model: { AFIQ: '', MIRELD: '', ...(r.model || {}) }, fast: { AFIQ: '', MIRELD: '', ...(r.fast || {}) }, keys: r.keys || {} })
 
@@ -31,7 +32,7 @@ export default function AiModelAdmin({ lang }) {
   async function runTest(n, f, value) {
     const k = n + ':' + f
     setTest(k, { run: true })
-    try { const r = await adminPost('llm_test', { provider: n, model: value, fast: f === 'fast' }); setTest(k, r); return r }
+    try { const r = await adminPost('llm_test', { provider: n, model: value, fast: f === 'fast', vision: f === SEES }); setTest(k, r); return r }
     catch (e) { const r = { works: false, code: 'NO REPLY', why: 'network', error: e.message }; setTest(k, r); return r }
   }
   async function save() {
@@ -64,7 +65,7 @@ export default function AiModelAdmin({ lang }) {
     if (!r) return null
     if (r.run) return <span className="text-xs text-ink-400">{t(lang, 'ai_testing')}</span>
     return r.works
-      ? <div className="text-xs"><span className="chip bg-brand-100 text-brand-700"><span aria-hidden="true">●</span>&nbsp;{t(lang, 'ai_active')}</span> <span className="text-brand-700">{fill(t(lang, 'ai_test_ok'), { m: r.model, s: (r.ms / 1000).toFixed(1), c: r.code || 'HTTP 200' })}</span></div>
+      ? <div className="text-xs"><span className="chip bg-brand-100 text-brand-700"><span aria-hidden="true">●</span>&nbsp;{t(lang, 'ai_active')}</span> <span className="text-brand-700">{fill(t(lang, 'ai_test_ok'), { m: r.model, s: (r.ms / 1000).toFixed(1), c: r.code || 'HTTP 200' })}{r.vision && r.text ? ` · “${r.text}”` : ''}</span></div>
       : <div className="text-xs space-y-0.5">
           <div><span className="chip bg-red-100 text-red-700"><span aria-hidden="true">●</span>&nbsp;{t(lang, 'ai_inactive')} · {r.code || 'ERROR'}</span> <span className="text-red-700">{why(r.why)}</span></div>
           {r.error && <div className="font-mono text-[11px] text-ink-400 break-words">{r.error}</div>}
@@ -125,6 +126,14 @@ export default function AiModelAdmin({ lang }) {
                     <div className="mt-1 min-h-4">{result(n, f)}</div>
                   </div>
                 ))}
+                <div>
+                  <div className="label">{t(lang, 'ai_vision_test')}</div>
+                  <div className="flex gap-2 items-center">
+                    <button type="button" className="btn shrink-0" disabled={!cfg.keys[n] || (tests[n + ':' + SEES] || {}).run} onClick={() => runTest(n, SEES, cfg.model[n])}>{t(lang, 'ai_vision_btn')}</button>
+                    <span className="text-xs text-ink-400">{t(lang, 'ai_vision_hint')}</span>
+                  </div>
+                  <div className="mt-1 min-h-4">{result(n, SEES)}</div>
+                </div>
               </div>
             )
           })}

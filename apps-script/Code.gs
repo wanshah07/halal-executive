@@ -1411,6 +1411,8 @@ function markProvider(name, model) {
 function llmFail(e) {
   var m = String((e && e.message) || e || ''), h = m.match(/HTTP (\d{3})/), c = h ? h[1] : '';
   if (/key not set|no api key/i.test(m)) return { code: 'NO KEY', why: 'key' };
+  if (/offers no .* model/i.test(m)) return { code: 'NO MODEL', why: 'nomodel' };
+  if (/did not read the picture/i.test(m)) return { code: 'CANNOT READ', why: 'novision' };
   if (c === '401' || c === '403') return { code: 'HTTP ' + c, why: 'auth' };
   if (c === '429') return { code: 'HTTP 429', why: 'limit' };
   if (c === '404' || c === '400') return { code: 'HTTP ' + c, why: /model/i.test(m) ? 'model' : (c === '404' ? 'notfound' : 'other') };
@@ -1477,6 +1479,12 @@ function llmTest(b) {
   var model = cleanModel(b.model).split(',')[0].trim(), t0 = Date.now();
   try {
     if (!model) { var ids = listIds(name); model = (b.fast ? pickFast(ids) : null) || pickMain(ids, []); }
+    if (b.vision) {
+      var vr = callProvider(name, [{ role: 'user', content: [{ type: 'text', text: TEXT_PNG_ASK }, { type: 'image_url', image_url: { url: TEXT_PNG } }] }], { model: model, max_tokens: 700, temperature: 0 });
+      var said = String(vr.text).replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+      if (said.replace(/\s/g, '').indexOf('7391') < 0) throw new Error(name + ' did not read the picture (it said: ' + said.slice(0, 80) + ')');
+      return { ok: true, works: true, provider: name, model: vr.model, code: 'HTTP 200', ms: Date.now() - t0, text: said.slice(0, 80), vision: true };
+    }
     var r = callProvider(name, [{ role: 'user', content: 'Balas dengan satu perkataan sahaja: sedia.' }], { model: model, max_tokens: 600, temperature: 0 });
     return { ok: true, works: true, provider: name, model: r.model, code: 'HTTP 200', ms: Date.now() - t0, text: String(r.text).replace(/<think>[\s\S]*?<\/think>/g, '').trim().slice(0, 120) };
   } catch (e) { var f = llmFail(e); return { ok: true, works: false, provider: name, model: model, ms: Date.now() - t0, code: f.code, why: f.why, error: String(e.message || e).slice(0, 240) }; }
@@ -1740,6 +1748,9 @@ var IMG_PREFER = ['gpt-image', 'flux', 'nano-banana', 'seedream', 'imagen', 'dal
 var VISION_PREFER = ['gpt-4o', 'gpt-5', 'gpt-4.1', 'gemini', 'claude', 'qwen', 'glm-4', 'pixtral', 'llava'];
 var VISION_OK = /(vision|vl\b|-vl|4o|gpt-5|gpt-4\.1|gemini|claude|pixtral|llava|omni|qwen|glm-4)/i;
 var RED_PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAAKklEQVR4nGO4IydHU8QwasGoBaMWjFowasGoBaMWjFowasGoBaMWDBULAJI2YD1ZaHIvAAAAAElFTkSuQmCC';
+// A picture with words in it, for the "can it read pictures" tests: the answer must contain the number.
+var TEXT_PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQQAAABQBAMAAAANThZsAAAAGFBMVEX////w8PDT09O4uLiZmZlqamouLi4UFBSAyEhaAAADeUlEQVR42u2YvW/bRhiHH1JKV5+UBl0pxejMyHK8ynHszE5hdO2SPyBo8kcEKdrdQJquNewgs4PK7pjIX7sbm2thfTBrY/M63JGSaIlfthEEuGchKVF3v3vv/TqBwWAwGAwGg8Fg+KqworvZRmXGH/TaVxptrlaxZgb9Lf1sL9XEYO8wo4TvV9U1eAkstOBPj9Iz+Pxr9Kgvo5SeRbfBS/juJ3Xf2/QB7DUHkB92AexGrSrg/W5cgq2v5dXYB1fithpt2QGw5gXA8lJdTHw5nHHpevf3DkDZ1XOsJr6rJVjuNbtYC5gLn75NfLes9xS42PIqc1OMlQEJID8eeM0HgABckJ2/1xxs9yjdCjaweSr779YPi0q4AILtrVPZ2VUSSgLOd4I3gAPIk73fk6xggfQA5Ha+eV+oUX6GU+DsDOCgBUIt6wTOgTqwDbeSrCCutvVVYNzWfnSRfkqYDb+0nOIS7kHgxSVYQyVWBgk+sFY8KhzlCpoG4E3JwdMlSMB+9ORBMQVlAf1ouvkWBEdjG2yJ9KAM1JZW73aOCkiwh66w0AKgo5cl9PTCT7XChX6luuIWcwU5Jv3DrpZQjxaZvhE7oRkfFpDghmYMuSu0ZcuL9uO0iAsj4jj0n1Irt4KSgO54mXqMihHr/nNnJEYTJchNb2jVAq7gxcqUA+xk/7nyho22H5WLfNRHEtP7F+ttgBbQ9eOZKiU1yc5620+L4amuMJxj0Hmt82XwBpSjymwSQHZeFZFgO6oQRHTDcc9endLvHOkqmpIXNOdegSxdQtWoYQvnC72Q7gbwKEVCrID411KjLmXvIIOEW+5465GHVrxG2WJ0lLKAkyyN28piWC3zSrBEtMrSD1GfJqN1LV0O2cm+YN2f3T+xmyLFaFMSUy88izz5ePCp2dCp0V65vW833WHRSnPH6rK6JhqNH1US+WVijYJqdV7dHAJYzWYUImEBW1jgv9+S3DFebzKwOOk3weiBRe6QIyKg6+VvVy7v3fHow5mXRcJ52DirjJal2ZngCkMFbwE+q6l7r8lyjgi29xuVyozf+8ufdDzImJguNus1KoPBP2pBwcbDWqUfnXHTT9YT+OYp/PvHTR/u7RRPK5Qvc3aeCQaaddOyyg1LUH8d5I7Ra94I4g3Zl5Ag219agjy+eVdI7PIHcu8Qg8FgMBgMBoNB8z/gqQPXUXTMsgAAAABJRU5ErkJggg==';
+var TEXT_PNG_ASK = 'Reply with only the word and the number written in this picture.';
 
 function kiosKey() { return props().getProperty(IMAGE_AI.KIOS.keyProp) || ''; }
 function kiosFetch(path, opt) {
@@ -1774,7 +1785,7 @@ function kiosModel(kind, fresh) {
   if (!fresh) { var hit = cache.get(ck); if (hit) return hit; }
   var ids = kiosIds(), sp = kiosSplit(ids), list = kind === 'image' ? sp.image : sp.vision;
   var pick = want && ids.indexOf(want) >= 0 ? want : pickBy(list, kind === 'image' ? IMG_PREFER : VISION_PREFER);
-  if (!pick) throw new Error('KIOS lists no ' + (kind === 'image' ? 'image' : 'vision') + ' model');
+  if (!pick) throw new Error('KIOS offers no ' + (kind === 'image' ? 'image' : 'vision or text') + ' model' + (ids.length ? ' (it offers: ' + ids.slice(0, 8).join(', ') + (ids.length > 8 ? ', …' : '') + ')' : ''));
   cache.put(ck, pick, 21600);
   return pick;
 }
@@ -1789,6 +1800,7 @@ function kiosConfig(fresh) {
     var ids = kiosIds(), sp = kiosSplit(ids);
     out.reachable = true; out.code = '200';
     out.vision_models = sp.vision.slice().sort(); out.image_models = (sp.image.length ? sp.image : ids).slice().sort();
+    out.all_models = ids.slice().sort(); out.chat_ok = sp.vision.length > 0;
     out.auto_vision = pickBy(sp.vision, VISION_PREFER) || ''; out.auto_image = pickBy(sp.image, IMG_PREFER) || '';
   } catch (e) { var f = llmFail(e); out.error = String(e.message || e).slice(0, 160); out.code = f.code; out.why = f.why; }
   try { cache.put('kios_cfg', JSON.stringify(out), 300); } catch (e) { /* too large */ }
@@ -1866,15 +1878,44 @@ function driveImageBlob(id) {
 // The pipeline's door (ingest token): never throws a bare error, so a missing
 // key or a model that cannot read the picture is an answer the caller handles.
 function visionRead(b) {
-  if (!kiosKey()) return { ok: true, read: false, ready: false, code: 'NO KEY', why: 'key' };
-  if (b.ping) return { ok: true, ready: true }; // the pipeline asks once per run whether it is worth trying
+  var order = visionOrder();
+  if (b.ping) return { ok: true, ready: order.length > 0, code: order.length ? '' : 'NO MODEL', via: order[0] || '' };
+  if (!order.length) return { ok: true, read: false, ready: false, code: kiosKey() || llmAnyKey() ? 'NO MODEL' : 'NO KEY', why: kiosKey() || llmAnyKey() ? 'nomodel' : 'key' };
+  var errs = [], t0 = Date.now(), last = null;
+  for (var i = 0; i < order.length; i++) {
+    try {
+      var r = order[i] === 'KIOS'
+        ? kiosVision({ id: b.id, b64: b.b64, mime: b.mime, system: b.system, prompt: b.prompt, max_tokens: 2000 })
+        : textVision(order[i], b);
+      var out = { ok: true, read: true, provider: order[i], model: r.model, text: r.text, ms: Date.now() - t0 };
+      if (b.json) { try { out.json = parseJson(r.text); } catch (e) { out.read = false; out.code = 'NOT JSON'; out.why = 'other'; errs.push(order[i] + ': not JSON'); last = out; continue; } }
+      if (i) out.fallback_from = order[0];
+      return out;
+    } catch (e) { var f = llmFail(e); last = { ok: true, read: false, code: f.code, why: f.why, error: String(e.message || e).slice(0, 240), ms: Date.now() - t0 }; errs.push(order[i] + ': ' + String(e.message || e).slice(0, 120)); }
+  }
+  last.tried = errs; return last;
+}
+// Who can read a picture, in order: Wanshah 3 when its gateway lists a model that
+// reads; then Wanshah 1 and 2 (their models do: measured 19 Oct 2026, a fresh
+// picture's words and shapes read back correctly), the pinned or faster first.
+function llmAnyKey() { return Object.keys(PROVIDERS).some(function (n) { return !!props().getProperty(PROVIDERS[n].keyProp); }); }
+function visionOrder() {
+  var order = [];
+  if (kiosKey()) { try { if (kiosModel('vision', false)) order.push('KIOS'); } catch (e) { /* gateway lists no reading model */ } }
+  var first = null; try { first = nextProvider(); } catch (e) { first = null; }
+  [first, first === 'MIRELD' ? 'AFIQ' : 'MIRELD'].forEach(function (n) { if (n && PROVIDERS[n] && props().getProperty(PROVIDERS[n].keyProp) && order.indexOf(n) < 0) order.push(n); });
+  return order;
+}
+function textVision(name, b) {
+  var blob = b.id ? driveImageBlob(String(b.id)) : Utilities.newBlob(Utilities.base64Decode(b.b64), b.mime || 'image/png', 'img');
+  if (!blob) throw new Error(name + ' has no picture to read');
+  if (blob.getBytes().length > 7 * 1024 * 1024) throw new Error(name + ' picture too large (over 7 MB)');
+  var url = 'data:' + blob.getContentType() + ';base64,' + Utilities.base64Encode(blob.getBytes()), msgs = [];
+  if (b.system) msgs.push({ role: 'system', content: String(b.system).slice(0, 6000) });
+  msgs.push({ role: 'user', content: [{ type: 'text', text: String(b.prompt || 'Describe this picture.').slice(0, 4000) }, { type: 'image_url', image_url: { url: url } }] });
   var t0 = Date.now();
-  try {
-    var r = kiosVision({ id: b.id, b64: b.b64, mime: b.mime, system: b.system, prompt: b.prompt, max_tokens: 2000 });
-    var out = { ok: true, read: true, provider: 'KIOS', model: r.model, text: r.text, ms: Date.now() - t0 };
-    if (b.json) { try { out.json = parseJson(r.text); } catch (e) { out.read = false; out.code = 'NOT JSON'; out.why = 'other'; } }
-    return out;
-  } catch (e) { var f = llmFail(e); return { ok: true, read: false, code: f.code, why: f.why, error: String(e.message || e).slice(0, 240), ms: Date.now() - t0 }; }
+  try { var r = callProvider(name, msgs, { max_tokens: 2000, temperature: 0.1, whole: true }); recordSpeed(name, Date.now() - t0, true); return r; }
+  catch (e) { recordSpeed(name, Date.now() - t0, false); throw e; }
 }
 
 // Make a picture. Asks for base64 first; a gateway that only hands back a link
@@ -1889,8 +1930,8 @@ function kiosGenerate(b) {
     var p = {}; Object.keys(body).forEach(function (k) { p[k] = body[k]; }); if (withFormat) p.response_format = 'b64_json';
     return kiosFetch('/images/generations', { method: 'post', contentType: 'application/json', payload: JSON.stringify(p) });
   };
-  var r = send(true);
-  if (r.getResponseCode() === 400 && /response_format|unknown|unsupported/i.test(r.getContentText())) r = send(false); // some gateways reject the option
+  var r = b.ref_b64 ? kiosEdit({ ref_b64: b.ref_b64, ref_mime: b.ref_mime, model: model, prompt: prompt, size: size }) : send(true);
+  if (!b.ref_b64 && r.getResponseCode() === 400 && /response_format|unknown|unsupported/i.test(r.getContentText())) r = send(false); // some gateways reject the option
   if (r.getResponseCode() >= 300) throw new Error('KIOS HTTP ' + r.getResponseCode() + ': ' + r.getContentText().slice(0, 200));
   var d = (JSON.parse(r.getContentText()).data || [])[0] || {}, bytes = null, mime = 'image/png';
   if (d.b64_json) bytes = Utilities.base64Decode(d.b64_json);
@@ -1905,9 +1946,20 @@ function kiosGenerate(b) {
   if (bytes.length < 3 * 1024 * 1024) out.data = 'data:' + mime + ';base64,' + Utilities.base64Encode(bytes);
   return out;
 }
+// A reference picture (Wan, 19 Oct 2026, "pull an image and generate it"): the
+// gateway's /images/edits takes the picture and the description and returns a
+// new one. Multipart, so no contentType is set and the blob is the payload part.
+function kiosEdit(b) {
+  var bytes = Utilities.base64Decode(b.ref_b64);
+  if (bytes.length > 4 * 1024 * 1024) throw new Error('KIOS reference picture too large (over 4 MB)');
+  var mime = /^image\/(png|jpeg|webp)$/.test(String(b.ref_mime)) ? b.ref_mime : 'image/png';
+  var payload = { model: b.model, prompt: String(b.prompt).slice(0, 1500), n: '1', image: Utilities.newBlob(bytes, mime, 'reference.' + (mime === 'image/jpeg' ? 'jpg' : mime === 'image/webp' ? 'webp' : 'png')) };
+  if (b.size && b.size !== 'auto') payload.size = b.size;
+  return kiosFetch('/images/edits', { method: 'post', payload: payload });
+}
 function imageGenerate(b) {
   var t0 = Date.now();
-  try { var g = kiosGenerate({ prompt: b.prompt, size: b.size, model: cleanModel(b.model) || undefined, keep: !!b.keep }); g.ok = true; g.ms = Date.now() - t0; return g; }
+  try { var g = kiosGenerate({ prompt: b.prompt, size: b.size, model: cleanModel(b.model) || undefined, keep: !!b.keep, ref_b64: b.ref_b64, ref_mime: b.ref_mime }); g.ok = true; g.edited = !!b.ref_b64; g.ms = Date.now() - t0; return g; }
   catch (e) { var f = llmFail(e); return { ok: true, made: false, code: f.code, why: f.why, error: String(e.message || e).slice(0, 240), ms: Date.now() - t0 }; }
 }
 

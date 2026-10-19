@@ -287,6 +287,29 @@
     for that reason right after its first deploy). Admin has "Check read · write
     · text": a picture read, a picture made and a plain-text exchange, each with
     its HTTP code and time.
+    **Measured on Wan's key (19 Oct 2026): making pictures works** (`gpt-image-2`,
+    27 s, HTTP 200, a 1 MB png) **and the gateway lists no chat or vision model**, so
+    reading pictures and text there answers `NO MODEL` (the card says so and lists
+    what is offered; `visionRead` `ping` reports not ready, so the organiser does not
+    call it). Image reading for certificates therefore stays with OCR until a model
+    that reads pictures exists on some gateway. A reference picture (png, jpg, webp,
+    up to 4 MB) goes to `/images/edits` as multipart: "change this picture as I
+    describe". Do not assume a gateway has chat models: read `/models` first.
+    **Wanshah 1 and 2 read pictures** (tested 19 Oct 2026 through the rootsys.cloud
+    connection: all 22 Wanshah 1 models read a fresh picture's words, number and
+    shape back correctly; a control without a picture made `glm-5.3` say no image
+    was attached, but `deepseek-v4-pro` invented a sign, so prefer `glm-5.3`, never
+    trust a reading that was asked of a text model with no picture; the gateway
+    limits to 30 requests a minute). `visionRead` therefore picks the reader:
+    Wanshah 3 if its gateway lists a model that reads, else Wanshah 1 or 2 (the
+    pinned or faster first, the other as handover; `visionOrder`, `textVision`).
+    Each AI card in Admin has "Test picture reading": a small picture with
+    "SIJIL 7391" in it, and the answer must contain 7391 (`llmTest` `vision`;
+    an AI that answers without seeing it fails with `CANNOT READ`). Wanshah 2
+    (api.mireld.my) could not be reached from a session: press its test in Admin.
+    The generate path follows the OpenAI image shape (retries without
+    `response_format`, follows a returned link); the vision and text paths were
+    only run against a fake gateway.
     Untested against the real gateway until the key is in: the code follows the
     OpenAI image and vision shapes and was run against a fake one (retries
     without `response_format`, follows a returned link).
@@ -336,6 +359,15 @@
     `.r3-badge` still carry purple in index.css: that is a default only, the
     component sets the tone's own glass inline. `Robot.jsx` (the flat SVG) is kept
     and still reads the same palette, but `AiTeam` no longer uses it.
+    **Whether Wanshah 3 can make VIDEO at all depends on the same model list, and
+    the measurement above says be careful.** The routes are there (both answered
+    401 to an unauthenticated probe while an invented path answered 404), but a
+    route existing is the gateway's software, not this account's entitlement: the
+    same `/models` that lists no chat or vision model may list no video model
+    either. `kiosVideoModel` therefore refuses with "lists no video model on this
+    gateway" rather than guessing an id, and the studio shows that as the reason.
+    Press Make once: a clear refusal means the account has no video model, not that
+    the wiring is wrong.
 33. **Google being busy must never reach the reader as an error** (Wan, 18 Oct
     2026: "Sheet feed 404", AI model "HTTP 404", Progress and Drafts stuck on
     Loading). Apps Script answers with Google's HTML "Page Not Found" (HTTP 404,
