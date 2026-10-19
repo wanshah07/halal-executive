@@ -269,14 +269,25 @@
     unusable, a scanned PDF through its 1600 px preview; `read_cert_image`; one
     `ping` per run, so nothing else is asked while there is no key; a title-only
     row is tried once more and marked `vision-tried` when it still fails) and
-    makes pictures (Admin -> Wanshah 3 -> Image studio, `image_generate`, saved
-    to Drive `60 Generated` only when "Keep in Drive" is ticked). Models come from
+    makes a test picture (Admin -> Wanshah 3 -> Test; the studio is gone, see below). Models come from
     its `/models` (image ids vs the rest); Admin's choice is Settings
     `llm_vision_KIOS` / `llm_image_KIOS`. Admin actions: `img_config`,
-    `img_config_save`, `img_test`, `image_generate`. Its robot card (W3, purple)
+    `img_config_save`, `img_test`. Its robot card (W3, purple)
     shows Reads / Makes and is hidden when Code.gs is too old to report it.
-    **Wanshah 3 is a CSS 3D robot** (`Robot3D.jsx`, `.r3-*` in index.css: boxes in
-    `preserve-3d`, no library; the others stay shaded 2D SVG). **Response rate
+    **Image studio removed** (Wan, 19 Oct 2026): no prompt box, no reference picture, no
+    `image_generate` route, nothing saved to Drive `60 Generated`. What stays is the
+    Admin card (models, tests) and `kiosGenerate`, used only by the image test.
+    The **Video studio** is therefore the only generator left in Admin, and it
+    survives the removal because it shares nothing with the image path: its own
+    routes (`video_generate` / `video_status`), its own model setting, and a clip
+    parked in Drive whatever the (now deleted) "Keep in Drive" box used to say.
+    **The AI team card is split** (Wan, 19 Oct 2026): the public Overview shows each
+    robot with its name and status only (`AiTeam compact`); Admin shows the full card
+    (models, last work, response, average, answer rate, base URL) above the AI model
+    pickers.
+    **Every Wanshah is a CSS 3D robot** (`Robot3D.jsx`, `.r3-*` in index.css: boxes
+    in `preserve-3d`, no library; see "All three Wanshah are 3D robots" below —
+    Wanshah 3 was the only box until 19 Oct 2026). **Response rate
     on every AI's base URL** (Wan, 19 Oct 2026): each status check pings the AI's
     own `/models`, `pingNote` keeps the last 48 results per AI in Script
     Properties (`ping_<NAME>`), the status carries `host`, `ms`, `avg_ms`,
@@ -333,16 +344,31 @@
     saved on the spot for the same reason. Over 45 MB it is refused with a message
     rather than killing the run. Model: Settings `llm_video_KIOS`, else Script
     Property `KIOS_VIDEO_MODEL`, else the automatic pick from `VID_ID` ids.
-    **The image expert is wired into the three places that actually use pictures**
-    (Wan, 19 Oct 2026, "connect it to all relevant segments"): the Events edit
-    form, the popup `notice_posters` (square) and Admin's Event posters, all
-    through `PosterGen.jsx`. **It adds no server action, and that is the design:**
-    `image_generate` already returns a data URI and `poster_upload` already takes
-    base64, so a generated poster reaches Drive by exactly the route an uploaded
-    one does and is the same kind of thing afterwards — same folder, url,
-    `poster_file`, thumbnail and purge rules. A second upload path would have been
-    a second set of rules to keep in step. Over ~3 MB Code.gs omits the data URI,
-    so the button says to use the Image studio instead of failing blank.
+    **Poster generation was built and is HELD, because two sessions were given
+    opposite instructions inside ten minutes** (19 Oct 2026). Wan asked this
+    session to "connect it to all relevant segments such as kanvas", and named
+    three: the Image studio, Canva, and the event/notice posters. `PosterGen.jsx`
+    did the third — **Make one with Wanshah 3** beside all three poster uploads
+    (Events edit form, popup `notice_posters` square, Admin's Event posters) —
+    and **added no server action, which was its whole design**: `image_generate`
+    already returned a data URI and `poster_upload` already took base64, so a
+    generated poster reached Drive by exactly the route an uploaded one does and
+    was the same kind of thing afterwards (same folder, url, `poster_file`,
+    thumbnail, purge rules). That design is also what killed it: **another session
+    removed the `image_generate` route seven minutes later**, on Wan's own
+    instruction (the "Image studio removed" note above, `9cd4c40`, Sonnet 5.5
+    `session_01NqPM77UEMoDz4gSMZcN2VK`), so all three buttons would have called a
+    route that no longer exists.
+    It was removed from the merge rather than re-added, and the rule is the one
+    worth keeping: **a session does not resurrect what another session deleted on
+    Wan's say-so, and does not ship a control wired to nothing either.** Those are
+    the only two options once the route is gone, and both are wrong, so the work
+    is parked in commit `e79ad1e` and comes back as a cherry-pick plus a
+    three-line route the day Wan wants it. Picture-making itself still works on
+    the gateway (`gpt-image-2`, 27 s, 1 MB png), so what is missing is the route
+    and the buttons, not the capability. The failure this avoids is the one this
+    file already catalogues four times over — a tickbox, a config field, a
+    Background select and an `attach to LinkedIn` box, each wired to nothing.
     **Canva is NOT connected and cannot be with a key alone.** Pushing to Canva
     needs a registered Canva developer app and an OAuth round trip (Connect API
     `/v1/asset-uploads`), not a bearer token, so it is Wan's setup before it is

@@ -19,7 +19,7 @@
  *   DRIVE_ROOT_ID      id of the "Halal Executive" Drive folder it creates
  * Optional:
  *   KIOS_API_KEY       Bearer key for https://kiosapi.com/v1 (Wanshah 3, the image expert:
- *                      reads pictures OCR cannot, makes pictures; Admin -> AI model).
+ *                      makes a test picture; Admin -> Wanshah 3).
  *   (Admin -> AI model now sets the provider and the model; these are the fallback.)
  *   MIRELD_MODEL / AFIQ_MODEL   leave empty or "auto" and the model is picked
  *                      from the gateway's own /models list and re-picked by
@@ -342,7 +342,6 @@ function doPost(e) {
     if (a === 'img_config')   { needAdmin(); return json(kiosConfig(!!body.fresh)); }
     if (a === 'img_config_save') { needAdmin(); return json(kiosConfigSave(body)); }
     if (a === 'img_test')     { needAdmin(); return json(kiosTest(body)); }
-    if (a === 'image_generate') { needAdmin(); return json(imageGenerate(body)); } // makes a picture; the file goes to Drive only when asked
     if (a === 'video_generate') { needAdmin(); return json(videoGenerate(body)); }    // starts a video job; it is too slow to finish inside one call
     if (a === 'video_status')   { needAdmin(); return json(videoStatus(body)); }      // asks after that job and parks the clip in Drive when it is ready
     if (a === 'heartbeat')    return json(heartbeat(body));
@@ -1735,8 +1734,9 @@ function askReferences(b) {
 // =====================================================================
 // Wanshah 3 (KIOS, https://kiosapi.com/v1): the image expert (Wan, 19 Oct 2026).
 // It is NOT in the text rotation of Wanshah 1 and 2 and cannot be pinned for
-// answers: it reads pictures (a certificate or poster the OCR could not read)
-// and makes pictures (Admin -> Image studio). The key is the Script Property
+// answers. Its gateway on Wan's key offers image models only; pictures are read by
+// Wanshah 1 or 2 (visionRead), and Wanshah 3 makes a test picture for the Admin
+// check. The key is the Script Property
 // KIOS_API_KEY; nothing else is needed anywhere. Models are listed from its
 // /models: the picker offers image models for "make" and the other chat models
 // for "read". Admin's choice is the Settings keys llm_vision_KIOS and
@@ -1918,20 +1918,16 @@ function textVision(name, b) {
   catch (e) { recordSpeed(name, Date.now() - t0, false); throw e; }
 }
 
-// Make a picture. Asks for base64 first; a gateway that only hands back a link
-// is followed once. With keep:true the file goes to Drive "60 Generated".
-var IMG_SIZES = ['auto', '512x512', '1024x1024', '1024x1536', '1536x1024', '1792x1024', '1024x1792'];
 function kiosGenerate(b) {
   var prompt = String(b.prompt || '').trim().slice(0, 1500);
   if (prompt.length < 3) throw new Error('Describe the picture first.');
-  var model = b.model || kiosModel('image', false), size = IMG_SIZES.indexOf(b.size) >= 0 ? b.size : '';
-  var body = { model: model, prompt: prompt, n: 1 }; if (size && size !== 'auto') body.size = size;
+  var model = b.model || kiosModel('image', false), body = { model: model, prompt: prompt, n: 1 };
   var send = function (withFormat) {
     var p = {}; Object.keys(body).forEach(function (k) { p[k] = body[k]; }); if (withFormat) p.response_format = 'b64_json';
     return kiosFetch('/images/generations', { method: 'post', contentType: 'application/json', payload: JSON.stringify(p) });
   };
-  var r = b.ref_b64 ? kiosEdit({ ref_b64: b.ref_b64, ref_mime: b.ref_mime, model: model, prompt: prompt, size: size }) : send(true);
-  if (!b.ref_b64 && r.getResponseCode() === 400 && /response_format|unknown|unsupported/i.test(r.getContentText())) r = send(false); // some gateways reject the option
+  var r = send(true);
+  if (r.getResponseCode() === 400 && /response_format|unknown|unsupported/i.test(r.getContentText())) r = send(false); // some gateways reject the option
   if (r.getResponseCode() >= 300) throw new Error('KIOS HTTP ' + r.getResponseCode() + ': ' + r.getContentText().slice(0, 200));
   var d = (JSON.parse(r.getContentText()).data || [])[0] || {}, bytes = null, mime = 'image/png';
   if (d.b64_json) bytes = Utilities.base64Decode(d.b64_json);
@@ -1939,30 +1935,8 @@ function kiosGenerate(b) {
   if (!bytes || !bytes.length) throw new Error('KIOS empty completion');
   if (bytes[0] === 0xFF && bytes[1] === 0xD8 || bytes[0] === -1 && bytes[1] === -40) mime = 'image/jpeg';
   markProvider('KIOS', model);
-  var out = { model: model, mime: mime, bytes: bytes.length, revised: d.revised_prompt || '' };
-  if (b.test) return out;
-  var blob = Utilities.newBlob(bytes, mime, 'generated-' + Utilities.formatDate(new Date(), 'Asia/Kuala_Lumpur', 'yyyyMMdd-HHmmss') + (mime === 'image/jpeg' ? '.jpg' : '.png'));
-  if (b.keep) { var f = folder('60 Generated').createFile(blob); out.drive_url = f.getUrl(); out.id = f.getId(); }
-  if (bytes.length < 3 * 1024 * 1024) out.data = 'data:' + mime + ';base64,' + Utilities.base64Encode(bytes);
-  return out;
+  return { model: model, mime: mime, bytes: bytes.length };
 }
-// A reference picture (Wan, 19 Oct 2026, "pull an image and generate it"): the
-// gateway's /images/edits takes the picture and the description and returns a
-// new one. Multipart, so no contentType is set and the blob is the payload part.
-function kiosEdit(b) {
-  var bytes = Utilities.base64Decode(b.ref_b64);
-  if (bytes.length > 4 * 1024 * 1024) throw new Error('KIOS reference picture too large (over 4 MB)');
-  var mime = /^image\/(png|jpeg|webp)$/.test(String(b.ref_mime)) ? b.ref_mime : 'image/png';
-  var payload = { model: b.model, prompt: String(b.prompt).slice(0, 1500), n: '1', image: Utilities.newBlob(bytes, mime, 'reference.' + (mime === 'image/jpeg' ? 'jpg' : mime === 'image/webp' ? 'webp' : 'png')) };
-  if (b.size && b.size !== 'auto') payload.size = b.size;
-  return kiosFetch('/images/edits', { method: 'post', payload: payload });
-}
-function imageGenerate(b) {
-  var t0 = Date.now();
-  try { var g = kiosGenerate({ prompt: b.prompt, size: b.size, model: cleanModel(b.model) || undefined, keep: !!b.keep, ref_b64: b.ref_b64, ref_mime: b.ref_mime }); g.ok = true; g.edited = !!b.ref_b64; g.ms = Date.now() - t0; return g; }
-  catch (e) { var f = llmFail(e); return { ok: true, made: false, code: f.code, why: f.why, error: String(e.message || e).slice(0, 240), ms: Date.now() - t0 }; }
-}
-
 // =====================================================================
 // Wanshah 3 makes VIDEO too (Wan, 19 Oct 2026: "image and video generation").
 //

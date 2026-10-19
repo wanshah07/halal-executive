@@ -18,7 +18,9 @@ function stateOf(p) {
 
 const fmtMs = (ms) => (ms >= 1000 ? `${(ms / 1000).toFixed(1)} s` : `${ms} ms`)
 
-export default function AiTeam({ lang, runs, sample }) {
+// compact = the public Overview: each robot with its name and status only. The
+// full card (models, response time, average, answer rate, base URL) is in Admin.
+export default function AiTeam({ lang, runs, sample, compact = false }) {
   const [st, setSt] = useState(null)
   const [err, setErr] = useState('')
   useEffect(() => {
@@ -40,7 +42,7 @@ export default function AiTeam({ lang, runs, sample }) {
         <h3 className="font-semibold">{t(lang, 'ai_team')}</h3>
         <span className="text-xs text-ink-400">{st ? `${t(lang, 'checked')} ${fmtDateTime(st.checked_at, lang)}` : err ? err : t(lang, 'loading')}</span>
       </div>
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+      <div className={compact ? 'grid gap-4 grid-cols-1 min-[480px]:grid-cols-3' : 'grid gap-4 sm:grid-cols-2 xl:grid-cols-3'}>
         {cards.map((c) => {
           const run = fromRuns(c.key)
           // Older Code.gs has no status route: judge from the pipeline's runs.
@@ -48,12 +50,12 @@ export default function AiTeam({ lang, runs, sample }) {
           const state = st && st.providers ? stateOf(p) : run ? stateOf(p) : 'standby'
           const chip = { active: 'bg-brand-100 text-brand-700', standby: 'bg-amber-100 text-amber-800', offline: 'bg-red-100 text-red-700' }[state]
           return (
-            <div key={c.key} className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 rounded-xl border border-line p-4 bg-gradient-to-br from-paper to-white">
-              <div className="shrink-0"><Robot3D tone={c.tone} state={state} size={118} name={c.name} /></div>
+            <div key={c.key} className={`flex ${compact ? 'flex-col items-center text-center' : 'flex-col sm:flex-row sm:items-center'} gap-3 sm:gap-4 rounded-xl border border-line p-4 bg-gradient-to-br from-paper to-white`}>
+              <div className="shrink-0"><Robot3D tone={c.tone} state={state} size={compact ? 104 : 118} name={c.name} /></div>
               <div className="min-w-0 w-full sm:w-auto">
-                <div className="flex items-center gap-2 flex-wrap"><span className="text-lg font-bold">{c.name}</span><span className={`chip ${chip}`}><span aria-hidden="true">●</span>&nbsp;{t(lang, 'st_' + state)}{state === 'offline' && p && p.code ? ` · ${/^\d+$/.test(p.code) ? 'HTTP ' + p.code : p.code}` : ''}</span>{st && st.mode === c.key && <span className="chip bg-brand-100 text-brand-700">{t(lang, 'ai_chosen')}</span>}</div>
-                <div className="text-xs text-ink-400 mb-1">{c.key}</div>
-                <dl className="text-sm grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
+                <div className={`flex items-center gap-2 flex-wrap ${compact ? 'justify-center' : ''}`}><span className="text-lg font-bold">{c.name}</span><span className={`chip ${chip}`}><span aria-hidden="true">●</span>&nbsp;{t(lang, 'st_' + state)}{state === 'offline' && p && p.code ? ` · ${/^\d+$/.test(p.code) ? 'HTTP ' + p.code : p.code}` : ''}</span>{st && st.mode === c.key && <span className="chip bg-brand-100 text-brand-700">{t(lang, 'ai_chosen')}</span>}</div>
+                {!compact && <div className="text-xs text-ink-400 mb-1">{c.key}</div>}
+                {!compact && <dl className="text-sm grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
                   <dt className="text-ink-400">{t(lang, c.image ? 'img_reads' : 'model_used')}</dt><dd className="truncate font-medium">{(p && p.model) || (run && run.model) || '—'}</dd>
                   <dt className="text-ink-400">{t(lang, c.image ? 'img_makes' : 'fast_model')}</dt><dd className="truncate">{(p && p.fast_model) || '—'}</dd>
                   {p && p.last_model && p.last_model !== p.model && <><dt className="text-ink-400">{t(lang, 'ai_pinned_last')}</dt><dd className="truncate">{p.last_model}</dd></>}
@@ -61,7 +63,7 @@ export default function AiTeam({ lang, runs, sample }) {
                   {p && p.ms != null && <><dt className="text-ink-400">{t(lang, 'response')}</dt><dd>{fmtMs(p.ms)}{p.host ? <span className="text-ink-400"> · {p.host}</span> : null}</dd></>}
                   {p && p.avg_ms != null && <><dt className="text-ink-400">{t(lang, 'resp_avg')}</dt><dd>{fmtMs(p.avg_ms)}{p.best_ms != null ? <span className="text-ink-400"> · {t(lang, 'resp_best')} {fmtMs(p.best_ms)}</span> : null}</dd></>}
                   {p && p.ok_rate != null && <><dt className="text-ink-400">{t(lang, 'resp_rate')}</dt><dd><span className={p.ok_rate >= 95 ? 'text-brand-700 font-medium' : p.ok_rate >= 80 ? 'text-amber-700 font-medium' : 'text-red-700 font-medium'}>{p.ok_rate}%</span> <span className="text-ink-400">({p.pings} {t(lang, 'resp_checks')})</span></dd></>}
-                </dl>
+                </dl>}
               </div>
             </div>
           )

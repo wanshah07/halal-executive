@@ -7,10 +7,11 @@ import { ICON, Sparkles, ExternalLink } from './Icon'
 // It reads pictures (a certificate OCR could not read) and makes pictures. It is
 // not in the text rotation of Wanshah 1 and 2. The key is the Script Property
 // KIOS_API_KEY; this card shows whether it works, lets Wan pick the two models
-// (the one that reads, the one that draws), tests each with one real call, and
-// holds a small Image studio.
+// (the one that reads, the one that draws), and tests each with one real call.
+// The Image studio was removed on 19 Oct 2026 (Wan); the Video studio below is
+// the only generator left here, and a clip is always parked in Drive because
+// the gateway's own link expires.
 const fill = (s, o) => Object.keys(o).reduce((a, k) => a.replace('{' + k + '}', o[k]), s)
-const SIZES = ['auto', '1024x1024', '1024x1536', '1536x1024', '512x512']
 const SECS = ['auto', '4', '5', '8', '10']
 // A video is started, not awaited: Apps Script stops a run at six minutes, so
 // the job id comes back at once and the panel asks after it. 10 minutes of
@@ -24,12 +25,6 @@ export default function ImageAiAdmin({ lang }) {
   const [msg, setMsg] = useState('')
   const [busy, setBusy] = useState(false)
   const [tests, setTests] = useState({})
-  const [prompt, setPrompt] = useState('')
-  const [size, setSize] = useState('auto')
-  const [keep, setKeep] = useState(true)
-  const [pic, setPic] = useState(null)
-  const [making, setMaking] = useState(false)
-  const [ref, setRef] = useState(null) // { b64, mime, name, url }: a reference picture to change
 
   const load = (fresh) => adminPost('img_config', { fresh: !!fresh }).then((r) => { setCfg(r); setPick({ vision: r.vision || '', image: r.image || '' }) })
     .catch((e) => { if (/unknown action/i.test(e.message)) setOld(true); else setMsg(e.message) })
@@ -52,22 +47,6 @@ export default function ImageAiAdmin({ lang }) {
     try { const r = await adminPost('img_config_save', pick); setCfg(r); setTests({}); setMsg(t(lang, 'img_saved')); runTest('vision') }
     catch (e) { setMsg(e.message) } finally { setBusy(false) }
   }
-  async function make() {
-    setMaking(true); setPic(null)
-    try { setPic(await adminPost('image_generate', { prompt, size, keep, model: pick.image, ...(ref ? { ref_b64: ref.b64, ref_mime: ref.mime } : {}) })) }
-    catch (e) { setPic({ made: false, code: 'NO REPLY', why: 'network', error: e.message }) } finally { setMaking(false) }
-  }
-
-  function chooseRef(e) {
-    const f = e.target.files && e.target.files[0]; e.target.value = ''
-    if (!f) return
-    if (!/^image\/(png|jpeg|webp)$/.test(f.type)) { setPic({ made: false, code: 'FILE', why: 'other', error: t(lang, 'img_ref_type') }); return }
-    if (f.size > 4 * 1024 * 1024) { setPic({ made: false, code: 'FILE', why: 'other', error: t(lang, 'img_ref_big') }); return }
-    const r = new FileReader()
-    r.onload = () => { const url = String(r.result); setRef({ b64: url.split(',')[1], mime: f.type, name: f.name, url }); setPic(null) }
-    r.readAsDataURL(f)
-  }
-
   // ---- video ----------------------------------------------------------
   const [vprompt, setVprompt] = useState('')
   const [vsecs, setVsecs] = useState('auto')
@@ -81,7 +60,7 @@ export default function ImageAiAdmin({ lang }) {
       await new Promise((r) => setTimeout(r, POLL_MS))
       if (stop.current) return
       let r
-      try { r = await adminPost('video_status', { job, keep }) }
+      try { r = await adminPost('video_status', { job }) }
       catch (e) { r = { done: false, failed: true, code: 'NO REPLY', why: 'network', error: e.message } }
       if (stop.current) return
       setVid((v) => ({ ...(v || {}), ...r, job }))
@@ -92,7 +71,7 @@ export default function ImageAiAdmin({ lang }) {
   async function makeVideo() {
     setVbusy(true); setVid(null); stop.current = false
     try {
-      const r = await adminPost('video_generate', { prompt: vprompt, seconds: vsecs === 'auto' ? '' : vsecs, keep, model: '' })
+      const r = await adminPost('video_generate', { prompt: vprompt, seconds: vsecs === 'auto' ? '' : vsecs, model: '' })
       setVid(r)
       // Already finished (Code.gs saved it on the spot) -> nothing to wait for.
       if (r.made !== false && !r.done && r.job) await pollVideo(r.job)
@@ -181,33 +160,6 @@ export default function ImageAiAdmin({ lang }) {
         </div>
 
         <div className="rounded-xl border border-line p-4 space-y-3">
-          <div><h4 className="font-semibold">{t(lang, 'img_studio')}</h4><p className="text-xs text-ink-400">{t(lang, 'img_studio_sub')}</p></div>
-          <textarea className="input min-h-20" value={prompt} maxLength={1500} onChange={(e) => setPrompt(e.target.value)} placeholder={t(lang, 'img_prompt_ph')} aria-label={t(lang, 'img_prompt')} />
-          <div className="flex flex-wrap items-center gap-3">
-            <label className="btn cursor-pointer">{ref ? t(lang, 'img_ref_change') : t(lang, 'img_ref_add')}<input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" onChange={chooseRef} /></label>
-            {ref && <><img src={ref.url} alt={ref.name} className="h-12 w-12 rounded-lg border border-line object-cover bg-white" /><span className="text-xs text-ink-600 max-w-48 truncate">{ref.name}</span><button type="button" className="btn px-2.5 py-1 text-xs" onClick={() => setRef(null)}>{t(lang, 'img_ref_remove')}</button></>}
-          </div>
-          <p className="text-xs text-ink-400">{t(lang, 'img_ref_hint')}</p>
-          <div className="flex flex-wrap items-center gap-3">
-            <select className="input w-auto" value={size} onChange={(e) => setSize(e.target.value)} aria-label={t(lang, 'img_size')}>{SIZES.map((s) => <option key={s} value={s}>{s === 'auto' ? t(lang, 'img_size_auto') : s}</option>)}</select>
-            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={keep} onChange={(e) => setKeep(e.target.checked)} />{t(lang, 'img_keep')}</label>
-            <button type="button" className="btn-brand" disabled={!cfg.key || making || prompt.trim().length < 3} onClick={make}>{making ? t(lang, 'img_making') : t(lang, 'img_make')}</button>
-          </div>
-          {pic && pic.made === false && <div className="text-xs space-y-0.5"><span className="chip bg-red-100 text-red-700"><span aria-hidden="true">●</span>&nbsp;{t(lang, 'ai_inactive')} · {pic.code || 'ERROR'}</span> <span className="text-red-700">{why(pic.why)}</span>{pic.error && <div className="font-mono text-[11px] text-ink-400 break-words">{pic.error}</div>}</div>}
-          {pic && pic.made !== false && (
-            <div className="space-y-2">
-              {pic.data ? <img src={pic.data} alt={prompt.slice(0, 80)} className="max-h-96 rounded-lg border border-line bg-white" /> : <p className="text-sm text-ink-600">{t(lang, 'img_too_big')}</p>}
-              <div className="flex flex-wrap items-center gap-3 text-sm">
-                <span className="text-ink-400">{pic.model} · {(pic.ms / 1000).toFixed(1)} s{pic.edited ? ` · ${t(lang, 'img_edited')}` : ''}</span>
-                {pic.data && <a className="btn px-2.5 py-1" href={pic.data} download={`halal-executive-${Date.now()}.${pic.mime === 'image/jpeg' ? 'jpg' : 'png'}`}>{t(lang, 'img_download')}</a>}
-                {pic.drive_url && <a className="btn px-2.5 py-1" href={pic.drive_url} target="_blank" rel="noreferrer">{t(lang, 'img_in_drive')} <ExternalLink {...ICON} size={14} /></a>}
-              </div>
-              {pic.revised && <p className="text-xs text-ink-400">{pic.revised}</p>}
-            </div>
-          )}
-        </div>
-
-        <div className="rounded-xl border border-line p-4 space-y-3">
           <div><h4 className="font-semibold">{t(lang, 'vid_studio')}</h4><p className="text-xs text-ink-400">{t(lang, 'vid_sub')}</p></div>
           <textarea className="input min-h-20" value={vprompt} maxLength={1500} onChange={(e) => setVprompt(e.target.value)} placeholder={t(lang, 'vid_prompt_ph')} aria-label={t(lang, 'vid_studio')} />
           <div className="flex flex-wrap items-center gap-3">
@@ -219,10 +171,11 @@ export default function ImageAiAdmin({ lang }) {
           {vid && vid.made !== false && !vid.failed && !vid.done && <p className="text-sm text-ink-600">{vid.waited ? t(lang, 'vid_gaveup') : t(lang, 'vid_working')}{vid.job ? <span className="text-ink-400"> · {t(lang, 'vid_job')} {vid.job}</span> : null}</p>}
           {vid && vid.done && (
             <div className="space-y-2">
-              {vid.drive_url && <video controls preload="metadata" className="max-h-96 w-full rounded-lg border border-line bg-black" src={vid.source_url || undefined} />}
+              {/* the gateway link plays while this session lasts; Drive is the durable copy */}
+              {vid.source_url && <video controls preload="metadata" className="max-h-96 w-full rounded-lg border border-line bg-black" src={vid.source_url} />}
               <div className="flex flex-wrap items-center gap-3 text-sm">
                 <span className="text-ink-400">{vid.model}{vid.bytes ? ` · ${Math.round(vid.bytes / 1048576 * 10) / 10} MB` : ''}</span>
-                {vid.drive_url && <a className="btn px-2.5 py-1" href={vid.drive_url} target="_blank" rel="noreferrer">{t(lang, 'img_in_drive')} <ExternalLink {...ICON} size={14} /></a>}
+                {vid.drive_url && <a className="btn px-2.5 py-1" href={vid.drive_url} target="_blank" rel="noreferrer">{t(lang, 'vid_in_drive')} <ExternalLink {...ICON} size={14} /></a>}
               </div>
             </div>
           )}

@@ -121,7 +121,7 @@ export default function Overview({ lang, data, setTab }) {
         </div>
       </section>
 
-      <AiTeam lang={lang} runs={data.runs} sample={data.ai_status} />
+      <AiTeam lang={lang} runs={data.runs} sample={data.ai_status} compact />
 
       <p className="text-xs text-ink-400">{t(lang, 'sources_note')}</p>
     </div>

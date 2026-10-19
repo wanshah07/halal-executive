@@ -7,6 +7,7 @@ import { filedDocs } from '../lib/certs'
 import Stamps from '../components/Stamps'
 import AiModelAdmin from '../components/AiModelAdmin'
 import ImageAiAdmin from '../components/ImageAiAdmin'
+import AiTeam from '../components/AiTeam'
 import { safeUrl, imageUrl } from '../lib/safe'
 import { RefAdmin, EventsAdmin, ContentManager, deleteForGood, CertAdmin } from '../components/AdminExtra'
 import { RowManager } from '../components/AdminRows'
@@ -15,7 +16,6 @@ import Notice, { NOTICE_COLORS, textOn, parsePosters, noticeDay } from '../compo
 import { EVENT_KINDS } from '../lib/config'
 import { POSTER_ACCEPT, POSTER_MAX } from '../components/Poster'
 import { ICON, Lock, RefreshCw, Upload, X, Play, Sparkles } from '../components/Icon'
-import PosterGen from '../components/PosterGen'
 import { subscribe, enqueue, retry, forget, update, forgetDone } from '../lib/uploadQueue'
 
 // Admin panel, locked. A registered email asks for a code, the code arrives
@@ -390,9 +390,6 @@ function DraftItem({ lang, tab, r, onSet, onDelete, onSaved }) {
                     catch (er) { setErr(er.message) } finally { setBusy(false) }
                   }} />
               </div>
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                <PosterGen lang={lang} disabled={busy} onDone={(up) => setEdit((x) => ({ ...x, poster_url: up.url, poster_file: up.file }))} />
-              </div>
             </div>
           )}
           <div className="sm:col-span-2 flex flex-wrap items-center gap-2">
@@ -512,7 +509,6 @@ function NoticeAdmin({ lang, s, set }) {
             <input className="input" placeholder="Image URL" value={p.url || ''} onChange={(e) => setP(posters.map((x, j) => (j === i ? { ...x, url: e.target.value, file: '' } : x)))} />
             <input className="input" placeholder="Click-through link" value={p.link || ''} onChange={(e) => setP(posters.map((x, j) => (j === i ? { ...x, link: e.target.value } : x)))} />
             <label className="btn cursor-pointer whitespace-nowrap" title={t(lang, 'poster_formats')}>{up === i ? '…' : <><Upload {...ICON} size={16} /> {t(lang, 'upload')}</>}<input type="file" accept={POSTER_ACCEPT} className="sr-only" disabled={up >= 0} onChange={(e) => { upload(i, e.target.files[0]); e.target.value = '' }} /></label>
-            <PosterGen lang={lang} size="1024x1024" disabled={up >= 0} onDone={(r) => setP(posters.map((x, j) => (j === i ? { ...x, url: r.url, file: r.file } : x)))} />
             <button type="button" className="btn" onClick={() => setP(posters.filter((_, j) => j !== i))} aria-label="remove"><X {...ICON} size={16} /></button>
           </div>
         ))}
@@ -587,6 +583,7 @@ export default function Admin({ lang, data, onSaved, onSession }) {
 
       <RunNow lang={lang} runs={data && data.runs} stats={data && data.raw_stats} />
       <ProgressBox lang={lang} />
+      <AiTeam lang={lang} runs={data && data.runs} sample={data && data.ai_status} />
       <AiModelAdmin lang={lang} />
       <ImageAiAdmin lang={lang} />
       <ReviewBox lang={lang} onChanged={onSaved} />
@@ -615,7 +612,6 @@ export default function Admin({ lang, data, onSaved, onSession }) {
             <input className="input" placeholder="Image URL" value={p.url} onChange={(e) => setPosters((ps) => ps.map((x, j) => j === i ? { ...x, url: e.target.value, file: '' } : x))} />
             <input className="input" placeholder="Click-through link" value={p.link} onChange={(e) => setPosters((ps) => ps.map((x, j) => j === i ? { ...x, link: e.target.value } : x))} />
             <label className="btn cursor-pointer whitespace-nowrap" title={t(lang, 'poster_formats')}>{upIdx === i ? '…' : <><Upload {...ICON} size={16} /> {t(lang, 'upload')}</>}<input type="file" accept={POSTER_ACCEPT} className="sr-only" disabled={upIdx >= 0} onChange={(e) => { uploadPoster(i, e.target.files[0]); e.target.value = '' }} /></label>
-            <PosterGen lang={lang} disabled={upIdx >= 0} onDone={(r) => { setPosters((ps) => ps.map((x, j) => j === i ? { ...x, url: r.url, file: r.file } : x)); setMsg(t(lang, 'poster_uploaded')) }} />
             <button className="btn" onClick={() => setPosters((ps) => ps.filter((_, j) => j !== i))} aria-label="remove"><X {...ICON} size={16} /></button>
           </div>
         ))}
