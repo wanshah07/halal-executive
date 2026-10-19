@@ -22,6 +22,34 @@ export const fhcbRows = (data) => {
 export const splitList = (s) => String(s || '').split(/;\s*/).map((x) => x.trim()).filter(Boolean)
 const siteHref = (w) => { const s = String(w || '').trim(); return safeUrl(/^https?:\/\//i.test(s) ? s : 'https://' + s) }
 
+// The country buttons, organised: All and the countries with the most bodies in
+// one row that scrolls sideways, the chosen country always in it, and "All
+// countries" opens the whole list A to Z in a box of its own, so 49 buttons
+// never become a wall (Wan, 19 Oct 2026).
+const TOP = 10
+function CountryChips({ lang, all, countries, byCountry, value, onAll, onPick }) {
+  const [open, setOpen] = useState(false)
+  const chip = (on) => `chip border shrink-0 py-1 ${on ? 'bg-brand-600 text-white border-brand-600' : 'bg-paper border-line'}`
+  const top = useMemo(() => {
+    const t = [...countries].sort((a, b) => byCountry[b] - byCountry[a] || a.localeCompare(b)).slice(0, TOP)
+    if (value !== 'all' && countries.includes(value) && !t.includes(value)) t.unshift(value)
+    return t
+  }, [countries.join('|'), JSON.stringify(byCountry), value]) // eslint-disable-line react-hooks/exhaustive-deps
+  const item = (c) => <button key={c} className={chip(value === c)} onClick={() => onPick(c)}>{c} <b className="ml-1">{byCountry[c]}</b></button>
+  return (
+    <div className="mt-3">
+      <div className="flex gap-1.5 overflow-x-auto snap-x pb-1 -mx-1 px-1">
+        <button className={chip(value === 'all')} onClick={onAll}>{t(lang, 'all')} <b className="ml-1">{all}</b></button>
+        {!open && top.map(item)}
+      </div>
+      <button className="btn mt-2 w-full sm:w-auto justify-center px-3 py-1 text-xs" onClick={() => setOpen(!open)} aria-expanded={open}>
+        {open ? t(lang, 'fhcb_less') : `${t(lang, 'fhcb_all_countries')} (${countries.length})`}
+      </button>
+      {open && <div className="mt-2 flex flex-wrap gap-1.5 max-h-56 overflow-y-auto rounded-lg border border-line bg-white p-2">{countries.map(item)}</div>}
+    </div>
+  )
+}
+
 export default function Fhcb({ lang, data, focusId, focusKey }) {
   const [country, setCountry] = useState('all')
   const [q, setQ] = useState('')
@@ -85,10 +113,7 @@ export default function Fhcb({ lang, data, focusId, focusKey }) {
         <Suspense fallback={<div className="h-72 sm:h-96 card animate-pulse bg-paper" />}>
           <MapView markers={markers} onPick={(m) => pickCountry(m.id)} maxZoom={5} />
         </Suspense>
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          <button className={`chip border ${country === 'all' ? 'bg-brand-600 text-white border-brand-600' : 'bg-paper border-line'}`} onClick={() => setCountry('all')}>{t(lang, 'all')} <b className="ml-1">{all.length}</b></button>
-          {countries.map((c) => <button key={c} className={`chip border ${country === c ? 'bg-brand-600 text-white border-brand-600' : 'bg-paper border-line'}`} onClick={() => pickCountry(c)}>{c} <b className="ml-1">{byCountry[c]}</b></button>)}
-        </div>
+        <CountryChips lang={lang} all={all.length} countries={countries} byCountry={byCountry} value={country} onAll={() => setCountry('all')} onPick={pickCountry} />
       </section>
 
       <Segment id="fhcb" focusId={focusId} focusKey={focusKey} lang={lang} title={country === 'all' ? t(lang, 'fhcb') : country} rows={rows} filters={filters}

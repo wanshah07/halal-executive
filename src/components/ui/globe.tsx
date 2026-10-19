@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils"
 export type GlobeMarker = { location: [number, number]; size: number } // [lat, lon] degrees
 
 const EARTH = "./brand/earth.jpg"
+const FACING: [number, number] = [3.14, 101.69] // Kuala Lumpur
 const MAX_MARKERS = 40
 const DEG = Math.PI / 180
 
@@ -64,7 +65,7 @@ function compile(gl: WebGLRenderingContext, type: number, src: string) {
 export function Globe({
   className,
   markers = [],
-  facing = [3.14, 101.69],
+  facing = FACING,
 }: {
   className?: string
   markers?: GlobeMarker[]
@@ -73,6 +74,16 @@ export function Globe({
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const drag = useRef<{ x: number; phi: number } | null>(null)
   const [flat, setFlat] = useState(false)
+  const [epoch, setEpoch] = useState(0) // bumped when the browser gives the GL context back after losing it
+  // The effect restarts only when the pins or the facing really change. It used
+  // to restart on every render (a new array each time), and its cleanup lost the
+  // GL context: after a language switch or a refresh the globe stood still, and
+  // on a phone, where the page re-renders more, it hardly ever turned (Wan,
+  // 19 Oct 2026).
+  const pinKey = JSON.stringify(markers.map((m) => [m.location[0], m.location[1], m.size]))
+  const markersRef = useRef(markers); markersRef.current = markers
+  const faceKey = facing.join(",")
+  const phiRef = useRef<number | null>(null)
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -101,16 +112,19 @@ export function Globe({
     g.vertexAttribPointer(a, 2, g.FLOAT, false, 0, 0)
     loc = Object.fromEntries(["uRes", "uPhi", "uTheta", "uTex", "uMarks", "uN"].map((k) => [k, g.getUniformLocation(prog, k)]))
 
-    const list = markers.slice(0, MAX_MARKERS)
+    const list = markersRef.current.slice(0, MAX_MARKERS)
     const flatMarks = new Float32Array(MAX_MARKERS * 4)
     list.forEach((m, i) => flatMarks.set([m.location[0] * DEG, m.location[1] * DEG, m.size * 0.55, 0], i * 4))
     g.uniform4fv(loc.uMarks, flatMarks)
     g.uniform1f(loc.uN, list.length)
     g.uniform1f(loc.uTheta, Math.max(0.12, Math.min(0.6, facing[0] * DEG + 0.28)))
 
-    let phi = -facing[1] * DEG // centre longitude = -phi
-    let live = false, visible = true, raf = 0, last = 0, ready = false
-    const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    let phi = phiRef.current ?? -facing[1] * DEG // centre longitude = -phi; kept when the pins change
+    let live = false, visible = true, raf = 0, last = 0, ready = false, lastFrame = performance.now()
+    // Reduced motion slows the turn to a drift (a quarter of the speed) rather
+    // than freezing it: a phone with that setting on showed a dead picture.
+    const calm = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    const still = false
 
     const size = () => {
       const dpr = Math.min(window.devicePixelRatio || 1, 2)
@@ -123,9 +137,10 @@ export function Globe({
       raf = 0
       if (!live) return
       const dt = last ? Math.min((now - last) / 1000, 0.1) : 0
-      last = now
-      if (!drag.current && !still) phi += dt * 0.2
+      last = now; lastFrame = performance.now()
+      if (!drag.current) phi += dt * (calm ? 0.05 : 0.2)
       size()
+      phiRef.current = phi
       g.uniform1f(loc.uPhi, phi)
       g.clearColor(0, 0, 0, 0)
       g.clear(g.COLOR_BUFFER_BIT)
@@ -155,6 +170,17 @@ export function Globe({
     io?.observe(canvas)
     const onResize = () => { if (live && (still || !raf)) { last = 0; requestAnimationFrame(draw) } }
     window.addEventListener("resize", onResize)
+    const onShow = () => { if (!document.hidden) kick() }
+    document.addEventListener("visibilitychange", onShow)
+    window.addEventListener("pageshow", onShow)
+    // A phone takes the GL context away when the tab is in the background; it
+    // is given back later and the whole scene is built again.
+    const onLost = (e: Event) => { e.preventDefault(); live = false; cancelAnimationFrame(raf); raf = 0 }
+    const onRestored = () => setEpoch((n) => n + 1)
+    canvas.addEventListener("webglcontextlost", onLost)
+    canvas.addEventListener("webglcontextrestored", onRestored)
+    // A frame has not been drawn for 2 s while the globe is on screen: start again.
+    const dog = window.setInterval(() => { if (live && visible && !document.hidden && performance.now() - lastFrame > 2000) { last = 0; if (raf) cancelAnimationFrame(raf); raf = 0; kick() } }, 1000)
 
     // Dragging turns the globe by the distance moved; it carries on from there.
     const onDown = (e: PointerEvent) => { drag.current = { x: e.clientX, phi }; canvas.setPointerCapture?.(e.pointerId); canvas.style.cursor = "grabbing" }
@@ -170,13 +196,20 @@ export function Globe({
       cancelAnimationFrame(raf)
       io?.disconnect()
       window.removeEventListener("resize", onResize)
+      document.removeEventListener("visibilitychange", onShow)
+      window.removeEventListener("pageshow", onShow)
+      canvas.removeEventListener("webglcontextlost", onLost)
+      canvas.removeEventListener("webglcontextrestored", onRestored)
+      window.clearInterval(dog)
       canvas.removeEventListener("pointerdown", onDown)
       canvas.removeEventListener("pointermove", onMove)
       canvas.removeEventListener("pointerup", onUp)
       canvas.removeEventListener("pointercancel", onUp)
-      g.getExtension("WEBGL_lose_context")?.loseContext()
+      // The context is kept (the next run reuses this canvas); only what this
+      // run made is released.
+      try { g.deleteProgram(prog); g.deleteBuffer(buf) } catch { /* context already gone */ }
     }
-  }, [markers, facing])
+  }, [pinKey, faceKey, epoch])
 
   return (
     <div className={cn("absolute inset-0 mx-auto aspect-[1/1] w-full max-w-[600px]", className)}>

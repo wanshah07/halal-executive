@@ -47,6 +47,8 @@ CERT = """Read this halal certificate (Sijil Pengesahan Halal Malaysia, or a for
 - scope: one sentence stating what the certificate certifies, as printed (e.g. production processes comply with Islamic law; use of the halal logo)
 Return JSON {"certificate": {"issuer":"","legal_authority":"","cert_no":"","reg_no":"","issue_date":"","valid_from":"","valid_to":"","company":"","office_address":"","factory_address":"","scheme":"","state":"","products":[""],"scope":""}}"""
 
+CERT_TITLE = re.compile(r"sijil|certificate|perakuan", re.I)  # what a certificate document's own title says before the first dash
+NOTICE_TITLE = re.compile(r"pengumuman|pekeliling|circular|notis|notice|announcement", re.I)
 CERT_TEXT = re.compile(r"sijil\s+pengesahan\s+halal|halal\s+certificat|certificate\s+of\s+halal|perakuan\s+halal|pengesahan\s+halal\s+malaysia", re.I)
 
 
@@ -189,6 +191,22 @@ def run():
     for d in he_api.read("Documents"):
         if d.get("status") == "draft" and d.get("kind") == "certificate" and str(d["id"]) not in lapsed:
             he_api.upsert("Documents", [{**d, "status": "current"}]); print(d["id"], "certificate document published (was draft)"); n += 1
+    # A document the model called a certificate whose title says otherwise (a
+    # JAKIM announcement, an info booklet) is filed under its real kind, and a
+    # title-only certificate row made for it earlier is hidden (the file stays).
+    certs = he_api.read("Certificates")
+    for d in he_api.read("Documents"):
+        if d.get("kind") != "certificate" or d.get("status") not in ("current", "draft"):
+            continue
+        head = str(d.get("title") or "").split("–")[0]
+        rows = [c for c in certs if str(c.get("doc_id")) == str(d["id"])]
+        if CERT_TITLE.search(head) or any("title-only" not in str(c.get("notes") or "") for c in rows):
+            continue
+        kind = "circular" if NOTICE_TITLE.search(head) else "other"
+        he_api.upsert("Documents", [{**d, "kind": kind}])
+        for c in rows:
+            he_api.upsert("Certificates", [{**c, "status": "hidden"}])
+        print(d["id"], "is not a certificate; filed as", kind); n += 1
     certs = he_api.read("Certificates")
     have = {str(c.get("doc_id")) for c in certs if c.get("issuer") or "full-read" in str(c.get("notes") or "") or "title-only" in str(c.get("notes") or "")}
     for d in [x for x in he_api.read("Documents") if certs_ready and x.get("status") in ("current", "draft") and x.get("kind") == "certificate" and str(x["id"]) not in have]:
@@ -199,7 +217,7 @@ def run():
                 # Unreadable scan: list it by the holder named in its title, so it
                 # shows on its card with the file; details can be re-read in Admin.
                 parts = [x.strip() for x in str(d.get("title") or "").split("–")]
-                holder = parts[1] if len(parts) > 1 and parts[1] else ""
+                holder = parts[1] if len(parts) > 1 and parts[1] and CERT_TITLE.search(parts[0]) else ""
                 if not holder:
                     print(d["id"], "certificate text could not be read and the title names no holder; left for the admin"); continue
                 prev = next((c for c in certs if str(c.get("doc_id")) == str(d["id"])), None)

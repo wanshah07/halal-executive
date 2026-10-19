@@ -21,7 +21,7 @@ export default function Documents({ lang, data }) {
   const filters = (
     <>
       <CategoryFilter lang={lang} value={cat} onChange={setCat} />
-      <div className="inline-flex rounded-lg border border-line overflow-hidden text-sm">
+      <div className="seg">
         {['current', 'archived', 'all'].map((s) => <button key={s} onClick={() => setShow(s)} className={`px-3 py-1.5 ${show === s ? 'bg-ink-900 text-white' : 'bg-white text-ink-600 hover:bg-paper'}`}>{t(lang, s)}</button>)}
       </div>
     </>

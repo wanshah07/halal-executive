@@ -30,7 +30,7 @@ export default function Segment({ lang, title, rows, columns, renderCard, filter
     <section id={id} className="mb-8 scroll-mt-32">
       <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
         <h2 className="text-xl font-bold">{title} <span className="text-ink-400 font-normal text-base">({rows.length})</span></h2>
-        <div className="flex flex-wrap items-center gap-2">{filters}<ViewToggle lang={lang} view={view} setView={pick} /></div>
+        <div className="toolbar">{filters}<ViewToggle lang={lang} view={view} setView={pick} /></div>
       </div>
       {!rows.length && <div className="card p-6 text-sm text-ink-400">{empty || t(lang, 'no_data')}</div>}
       {!!rows.length && view === 'cards' && <div className={cardGrid}>{shown.map(renderCard)}</div>}

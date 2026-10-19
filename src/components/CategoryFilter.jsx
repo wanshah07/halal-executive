@@ -3,7 +3,7 @@ import { t } from '../lib/i18n'
 export default function CategoryFilter({ lang, value, onChange }) {
   const opts = [{ id: 'all', en: t('en', 'all'), bm: t('bm', 'all') }, ...CATEGORIES]
   return (
-    <div className="inline-flex rounded-lg border border-line overflow-hidden text-sm">
+    <div className="seg">
       {opts.map((c) => <button key={c.id} onClick={() => onChange(c.id)} className={`px-3 py-1.5 ${value === c.id ? 'bg-brand-600 text-white' : 'bg-white text-ink-600 hover:bg-paper'}`}>{c[lang] || c.en}</button>)}
     </div>
   )

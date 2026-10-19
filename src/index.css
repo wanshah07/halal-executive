@@ -77,3 +77,18 @@ body { @apply bg-paper text-ink-900 antialiased; font-family: ui-sans-serif, sys
 .earth-flat { background-size: 200% 100%; background-repeat: repeat-x; animation: earth-spin 60s linear infinite; }
 @keyframes earth-spin { from { background-position: 0 0; } to { background-position: 200% 0; } }
 @media (prefers-reduced-motion: reduce) { .earth-flat { animation: none; } }
+
+/* Segmented control (Halal | Food | ...): full width with equal segments on
+   phones, natural width from 640 px. Filter rows sit in .toolbar, which stacks
+   its controls to the full width on phones so rows line up (Wan, 19 Oct 2026). */
+.seg { display: flex; width: 100%; border-radius: 0.5rem; overflow: hidden; border: 1px solid var(--color-line); font-size: 0.875rem; }
+.seg > button { flex: 1 1 auto; min-width: 0; white-space: nowrap; padding: 0.5rem 0.6rem; }
+.toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; width: 100%; }
+.toolbar > select, .toolbar > input, .toolbar > .btn, .toolbar > .seg { width: 100%; }
+.toolbar > .btn { justify-content: center; }
+@media (min-width: 640px) {
+  .seg { display: inline-flex; width: auto; }
+  .seg > button { flex: none; padding: 0.375rem 0.75rem; }
+  .toolbar { width: auto; }
+  .toolbar > select, .toolbar > input, .toolbar > .btn, .toolbar > .seg { width: auto; }
+}

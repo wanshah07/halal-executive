@@ -247,6 +247,18 @@
     the bar. Long unbroken text (file names, references) wraps with
     `[overflow-wrap:anywhere]` on cards; a Playwright sweep at 360/390/430 px
     with long tokens injected into every title must report no horizontal overflow.
+36. **The globe never stops, and the filter buttons are organised** (Wan, 19 Oct 2026).
+    `Globe` restarts only when the pins or the facing really change (keyed by
+    content; a new array each render used to restart it, and the cleanup lost the
+    GL context, so after a language switch or refresh, and on phones, it stood
+    still), keeps its turn angle across restarts, rebuilds after
+    `webglcontextrestored`, restarts a stalled frame loop and turns at a quarter
+    speed (not frozen) under reduced motion. Filter rows use `.toolbar` and
+    `.seg` (index.css): full-width, equal rows on phones. FHCB countries are one
+    sideways-scrolling row (All plus the ten largest and the chosen one) with
+    "All countries (n)" opening the full A to Z list. The organiser also files a
+    document called a certificate whose title says otherwise (announcement,
+    booklet) under its real kind and hides any title-only row made for it.
 33. **Google being busy must never reach the reader as an error** (Wan, 18 Oct
     2026: "Sheet feed 404", AI model "HTTP 404", Progress and Drafts stuck on
     Loading). Apps Script answers with Google's HTML "Page Not Found" (HTTP 404,

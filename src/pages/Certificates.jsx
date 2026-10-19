@@ -36,7 +36,7 @@ export default function Certificates({ lang, data }) {
   const filters = (
     <>
       <CategoryFilter lang={lang} value={cat} onChange={setCat} />
-      <div className="inline-flex rounded-lg border border-line overflow-hidden text-sm">
+      <div className="seg">
         {['all', 'valid', 'expiring', 'expired'].map((s) => <button key={s} onClick={() => setSt(s)} className={`px-3 py-1.5 ${st === s ? 'bg-ink-900 text-white' : 'bg-white text-ink-600 hover:bg-paper'}`}>{t(lang, s)}</button>)}
       </div>
       <button className="btn" onClick={() => { setAllOpen(!allOpen); setOpen({}) }}>{t(lang, allOpen ? 'fold' : 'unfold')}</button>

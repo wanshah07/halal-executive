@@ -29,7 +29,7 @@ export default function FAQ({ lang, data, focusId, focusKey }) {
   const filters = (
     <>
       <CategoryFilter lang={lang} value={cat} onChange={setCat} />
-      <div className="inline-flex rounded-lg border border-line overflow-hidden text-sm">
+      <div className="seg">
         {['formal', 'layman'].map((m) => <button key={m} onClick={() => setMode(m)} className={`px-3 py-1.5 ${mode === m ? 'bg-ink-900 text-white' : 'bg-white text-ink-600 hover:bg-paper'}`}>{t(lang, m)}</button>)}
       </div>
     </>
