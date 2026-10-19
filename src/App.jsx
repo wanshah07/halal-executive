@@ -1,6 +1,7 @@
 import { Component, Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react'
 import Header from './components/Header'
 import Sidebar, { NAV } from './components/Sidebar'
+import BottomNav from './components/BottomNav'
 import Notice from './components/Notice'
 import SearchBar from './components/SearchBar'
 import Chatbot from './components/Chatbot'
@@ -140,6 +141,7 @@ export default function App() {
     <div className="min-h-screen">
       <Header lang={lang} setLang={setLang} tab={tab} sub={sub} setTab={setTab} onRefresh={() => refresh(true)} onExport={doExport} counts={counts} loading={loading} onMenu={() => setMenu(true)} />
       <Sidebar lang={lang} tab={tab} sub={sub} setTab={setTab} counts={counts} mobileOpen={menu} setMobileOpen={setMenu} />
+      <BottomNav lang={lang} tab={tab} setTab={setTab} onMore={() => setMenu(true)} />
       <div className="min-h-[calc(100vh-118px)] flex flex-col xl:pl-[232px]">
         <main className="w-full flex-1 max-w-7xl mx-auto px-4 sm:px-6 py-6">
           {err && <div className="card p-3 mb-4 text-sm bg-red-50 border-red-200">{err}</div>}

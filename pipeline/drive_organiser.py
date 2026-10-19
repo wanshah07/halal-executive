@@ -71,9 +71,13 @@ def expired(v):
         return False
 
 
-def live_status(d):
+def live_status(d, cert=None):
     """Admin uploads are published at once; a file from the WhatsApp group
-    waits in Admin → Drafts until an admin publishes it (Wan, 15 Oct 2026)."""
+    waits in Admin → Drafts until an admin publishes it (Wan, 15 Oct 2026).
+    A halal certificate is the exception: it is published at once from the
+    group too, or it never reaches Halal Certificates (Wan, 19 Oct 2026)."""
+    if d.get("kind") == "certificate" or (cert and cert.get("company")):
+        return "current"
     return "draft" if "from:group" in str(d.get("notes") or "") else "current"
 
 
@@ -141,7 +145,7 @@ def run():
                 by_hash[h] = d
                 print(d["id"], "expired, archived:", title); n += 1
                 continue
-            status = live_status(d)
+            status = live_status(d, cert)
             old = next((c for c in cands if c["id"] == j.get("of_id")), None) if j.get("relation") == "version_of" and j.get("confidence") in ("high", "medium") else None
             version = int(old.get("version") or 1) + 1 if old else 1
             moved = he_api.drive_file(d["drive_file_id"], name=f"{date} v{version} {title}{ext}", path=f"10 Documents/{d.get('category', 'halal')}", description=f"{d['id']} · {j.get('reason', '')}")
@@ -176,13 +180,35 @@ def run():
         certs_ready = False
     else:
         certs_ready = True
-    have = {str(c.get("doc_id")) for c in certs if c.get("issuer") or "full-read" in str(c.get("notes") or "")}
+    # Certificate drafts left from before the rule above are published now
+    # (an expired one stays out).
+    for c in he_api.read("Certificates"):
+        if c.get("status") == "draft" and not expired(c.get("valid_to")):
+            he_api.upsert("Certificates", [{**c, "status": "current"}]); print("certificate", c["id"], "published (was draft)"); n += 1
+    lapsed = {str(c.get("doc_id")) for c in he_api.read("Certificates") if expired(c.get("valid_to"))}
+    for d in he_api.read("Documents"):
+        if d.get("status") == "draft" and d.get("kind") == "certificate" and str(d["id"]) not in lapsed:
+            he_api.upsert("Documents", [{**d, "status": "current"}]); print(d["id"], "certificate document published (was draft)"); n += 1
+    certs = he_api.read("Certificates")
+    have = {str(c.get("doc_id")) for c in certs if c.get("issuer") or "full-read" in str(c.get("notes") or "") or "title-only" in str(c.get("notes") or "")}
     for d in [x for x in he_api.read("Documents") if certs_ready and x.get("status") in ("current", "draft") and x.get("kind") == "certificate" and str(x["id"]) not in have]:
         try:
             f = he_api.drive_get(d["drive_file_id"], text=True)
             cert, p2, m2 = read_cert(f["text"])
             if not (cert and cert.get("company")):
-                print(d["id"], "certificate text could not be read; left for the admin"); continue
+                # Unreadable scan: list it by the holder named in its title, so it
+                # shows on its card with the file; details can be re-read in Admin.
+                parts = [x.strip() for x in str(d.get("title") or "").split("–")]
+                holder = parts[1] if len(parts) > 1 and parts[1] else ""
+                if not holder:
+                    print(d["id"], "certificate text could not be read and the title names no holder; left for the admin"); continue
+                prev = next((c for c in certs if str(c.get("doc_id")) == str(d["id"])), None)
+                cid = prev["id"] if prev else ids_cert()
+                he_api.upsert("Certificates", [cert_row(cid, {"company": holder}, d, d.get("drive_url", ""), f.get("modified", ""), "title-only: the file could not be read; re-read it in Admin",
+                                                        status="current")])
+                if not prev:
+                    certs.append({"id": cid, "cert_no": "", "doc_id": d["id"], "notes": "title-only"})
+                print("  certificate (title only)", cid, holder); n += 1; continue
             if expired(cert.get("valid_to")):
                 he_api.upsert("Documents", [{**d, "status": "expired", "notes": f"expired {cert.get('valid_to')}"}])
                 print(d["id"], "expired certificate; not listed"); continue

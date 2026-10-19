@@ -98,8 +98,24 @@ export async function snapshotData() {
 
 // A [SAHKAN: …] marker is a note for the pipeline, not for readers: the
 // pipeline fills it from the references library or takes it out (Code.gs does
-// the same before sending). This catches any that slip through.
-const MARK = /\s*\[SAHKAN[^\]]*\]/gi
+// the same before sending: a long text gets a plain request to find the
+// guideline and page instead, Wan 19 Oct 2026). This catches any that slip
+// through, with the same wording.
+const MARK = /\s*\[SAHKAN\s*:?([^\]]*)\]/gi
+const VERIFY_LONG = /(answer|summary|description|details|scope|body|note)/i
+const VERIFY_EMPTY = /^(what to verify|apa yang perlu disahkan|\.\.\.|…|sahkan|verify|tbc)?$/i
+export function verifyAsk(body, bm) {
+  let what = String(body || '').replace(/^[\s:-]+/, '').replace(/[[\]]/g, '').replace(/\s+/g, ' ').trim()
+  if (what.length > 100 || what.length < 4 || VERIFY_EMPTY.test(what)) what = ''
+  if (bm) return what ? `Perlu disahkan: ${what}. Cari garis panduan dan muka surat khusus yang menyatakannya, kemudian semak dengan Pembantu.` : 'Cari garis panduan dan muka surat khusus yang menyatakannya, kemudian semak dengan Pembantu.'
+  return what ? `To confirm: ${what}. Find the specific guideline and page that state it, then check it with the Assistant.` : 'Find the specific guideline and page that state this, then check it with the Assistant.'
+}
+export function markText(text, key) {
+  const long = VERIFY_LONG.test(key), bm = /(^|_)bm($|_)/.test(key), asks = []
+  const clean = String(text).replace(MARK, (m, body) => { if (long) { const line = verifyAsk(body, bm); if (!asks.includes(line)) asks.push(line) } return '' })
+    .replace(/\s+([.,;:!?])/g, '$1').replace(/\s{2,}/g, ' ').trim()
+  return asks.length ? (clean + ' ' + asks.join(' ')).trim() : clean
+}
 export function stripMarks(data) {
   for (const k of ['faq', 'guidelines', 'events', 'documents', 'certificates', 'news']) {
     if (!Array.isArray(data[k])) continue
@@ -109,7 +125,7 @@ export function stripMarks(data) {
       delete o.source_refs; delete o.source_msg_id; delete o.sender_hash
       for (const f in o) {
         if (typeof o[f] !== 'string') continue
-        if (o[f].includes('[')) o[f] = o[f].replace(MARK, '').trim()
+        if (o[f].includes('[')) o[f] = markText(o[f], f)
         if (/@(g|c)\.us|@lid\b/.test(o[f])) o[f] = ''
       }
       return o

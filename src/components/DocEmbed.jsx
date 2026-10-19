@@ -15,7 +15,7 @@ export default function DocEmbed({ lang, doc, open: start = false }) {
     <div className="border border-line rounded-lg overflow-hidden">
       <div className="flex flex-wrap items-center gap-2 px-3 py-2 text-sm bg-paper">
         <FileText {...ICON} size={16} className="text-brand-600 shrink-0" />
-        <span className="font-medium min-w-0 flex-1 break-words">{doc.title}</span>
+        <span className="font-medium min-w-0 basis-[calc(100%-2rem)] sm:basis-0 sm:flex-1 [overflow-wrap:anywhere]">{doc.title}</span>
         {doc.received_at && <span className="text-xs text-ink-400">{String(doc.received_at).slice(0, 10)}</span>}
         {id && <button type="button" className="btn px-2.5 py-1" onClick={() => setOpen(!open)} aria-expanded={open}>{open ? <ChevronDown {...ICON} size={15} /> : <ChevronRight {...ICON} size={15} />}{t(lang, open ? 'doc_close' : 'doc_view')}</button>}
         {href && <a className="btn px-2.5 py-1" href={href} target="_blank" rel="noreferrer">{t(lang, 'open')} <ExternalLink {...ICON} size={14} /></a>}

@@ -4,7 +4,6 @@ import Segment from '../components/Segment'
 import CategoryFilter, { catChip } from '../components/CategoryFilter'
 import { t } from '../lib/i18n'
 import { fmtDate, fmtDateTime } from '../lib/util'
-import Stamps, { stampCols } from '../components/Stamps'
 import { certStatus, splitProducts } from '../lib/certs'
 import { ICON, ChevronDown, ChevronRight, ExternalLink } from '../components/Icon'
 import FileThumb from '../components/FileThumb'
@@ -53,7 +52,7 @@ export default function Certificates({ lang, data }) {
     const addr = [[L('cd_office'), c.office_address], [L('cd_factory'), c.factory_address]].filter((x) => x[1])
     const top = (label, v) => v ? <li><b>{label}:</b> {v}</li> : null
     return (
-      <ul className="mt-2 text-sm list-disc pl-5 space-y-1 break-words">
+      <ul className="mt-2 text-sm list-disc pl-5 space-y-1 [overflow-wrap:anywhere]">
         {top(L('cd_issuer'), c.issuer)}
         {top(L('cd_authority'), c.legal_authority)}
         {!!certLines.length && <li><b>{L('cd_details')}:</b><ul className="list-[circle] pl-5">{certLines.map(([k, v]) => <li key={k}>{k}: {v}</li>)}</ul></li>}
@@ -80,16 +79,15 @@ export default function Certificates({ lang, data }) {
           <details open={isOpen(c.id)} onToggle={(e) => setOpen((o) => ({ ...o, [c.id]: e.currentTarget.open }))}>
             <summary className="cursor-pointer text-brand-600 text-sm">{t(lang, 'cd_show')}</summary>{products(c)}
           </details>) },
-        ...stampCols(lang),
         { key: 'updated_at', label: t(lang, 'updated'), render: (c) => fmtDate(c.updated_at, lang) },
       ]}
       renderCard={(c) => (
-        <article key={c.id} className="card p-4">
+        <article key={c.id} className="card p-4 min-w-0">
           <div className="mb-3"><CertThumb c={c} lang={lang} /></div>
           <div className="flex items-center justify-between gap-2 mb-2">{badge(c)}{catChip(c.category, lang)}</div>
           <button className="text-left w-full" onClick={() => toggle(c.id)}>
-            <div className="font-semibold leading-snug">{c.company || <span className="italic text-ink-400 font-normal">{t(lang, 'untitled_cert')}</span>}</div>
-            <div className="text-xs text-ink-600 mt-0.5">{c.scheme}{c.state && ` · ${c.state}`} · {c.cert_no}</div>
+            <div className="font-semibold leading-snug [overflow-wrap:anywhere]">{c.company || <span className="italic text-ink-400 font-normal">{t(lang, 'untitled_cert')}</span>}</div>
+            <div className="text-xs text-ink-600 mt-0.5 [overflow-wrap:anywhere]">{c.scheme}{c.state && ` · ${c.state}`} · {c.cert_no}</div>
             <div className="text-xs text-ink-400 mt-1">{t(lang, 'validity')}: {fmtDate(c.valid_from, lang)} → {fmtDate(c.valid_to, lang)}</div>
           </button>
           <button className="mt-2 text-sm text-brand-600 hover:underline" onClick={() => toggle(c.id)}>{isOpen(c.id) ? <span className="inline-flex items-center gap-1"><ChevronDown {...ICON} size={16} />{t(lang, 'cd_hide')}</span> : <span className="inline-flex items-center gap-1"><ChevronRight {...ICON} size={16} />{t(lang, 'cd_show')}</span>}</button>
@@ -98,7 +96,6 @@ export default function Certificates({ lang, data }) {
             <span>{safeUrl(c.drive_url) ? <a className="hover:underline" href={safeUrl(c.drive_url)} target="_blank" rel="noreferrer">Drive <ExternalLink {...ICON} size={12} className="inline -mt-0.5" /></a> : c.doc_id || ''}</span>
             <span>{t(lang, 'updated')} {fmtDateTime(c.updated_at, lang)}</span>
           </div>
-          <Stamps r={c} lang={lang} className="mt-1 text-xs text-ink-400" />
         </article>
       )} />
   )

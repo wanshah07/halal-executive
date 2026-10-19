@@ -26,10 +26,10 @@ export default function FileThumb({ id, thumb, href, name, sub, altPrefix, logo 
   )
   const row = size !== 'card'
   const tile = (
-    <div className={`${box} rounded-lg border border-line bg-gradient-to-br from-brand-50 to-white flex flex-col items-center justify-center text-center gap-1.5 ${row ? 'p-1' : 'p-4'}`}>
+    <div className={`${box} rounded-lg border border-line bg-gradient-to-br from-brand-50 to-white flex flex-col items-center justify-center text-center gap-1.5 min-w-0 overflow-hidden ${row ? 'p-1' : 'p-4'}`}>
       {logo ? <img src="./brand/jakim-halal-logo.png" alt="" className={row ? 'h-6 w-6 opacity-40' : 'h-14 w-14 opacity-40'} /> : <FileText {...ICON} size={row ? 22 : 40} className="text-brand-600/60" />}
-      {!row && name && <div className="text-sm font-semibold leading-snug text-ink-900 line-clamp-4 break-words">{name}</div>}
-      {!row && sub && <div className="text-xs text-ink-600 line-clamp-2 break-words">{sub}</div>}
+      {!row && name && <div className="text-sm font-semibold leading-snug text-ink-900 line-clamp-4 max-w-full [overflow-wrap:anywhere]">{name}</div>}
+      {!row && sub && <div className="text-xs text-ink-600 line-clamp-2 max-w-full [overflow-wrap:anywhere]">{sub}</div>}
       {!row && <span className="text-[11px] text-ink-400">{t(lang, 'no_preview')}</span>}
     </div>
   )

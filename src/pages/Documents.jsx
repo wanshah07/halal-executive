@@ -3,8 +3,7 @@ import { useState } from 'react'
 import Segment from '../components/Segment'
 import CategoryFilter, { catChip } from '../components/CategoryFilter'
 import { t } from '../lib/i18n'
-import { fmtDateTime, publishedAt } from '../lib/util'
-import Stamps from '../components/Stamps'
+import { fmtDateTime } from '../lib/util'
 import FileThumb from '../components/FileThumb'
 import { filedDocs } from '../lib/certs'
 
@@ -36,18 +35,15 @@ export default function Documents({ lang, data }) {
         { key: 'kind', label: t(lang, 'kind'), render: (d) => kindName(d.kind, lang) },
         { key: 'category', label: t(lang, 'category'), render: (d) => catChip(d.category, lang) },
         { key: 'version', label: t(lang, 'version'), render: (d) => `v${d.version || 1}` },
-        { key: 'received_at', label: t(lang, 'uploaded_on'), render: (d) => fmtDateTime(d.received_at, lang) },
-        { key: 'published', label: t(lang, 'published_on'), render: (d) => fmtDateTime(publishedAt(d), lang) },
         { key: 'updated_at', label: t(lang, 'updated'), render: (d) => fmtDateTime(d.updated_at, lang) },
         { key: 'supersedes_id', label: t(lang, 'supersedes') },
       ]}
       renderCard={(d) => (
-        <article key={d.id} className="card p-4">
+        <article key={d.id} className="card p-4 min-w-0">
           <div className="mb-3"><FileThumb id={d.id} href={d.drive_url} name={d.title} sub={kindName(d.kind, lang)} altPrefix={t(lang, 'documents')} lang={lang} /></div>
           <div className="flex items-center justify-between mb-2">{status(d)}<span className="text-xs text-ink-400">v{d.version || 1} · {kindName(d.kind, lang)}</span></div>
-          {safeUrl(d.drive_url) ? <a href={safeUrl(d.drive_url)} target="_blank" rel="noreferrer" className="font-semibold hover:underline">{d.title}</a> : <div className="font-semibold">{d.title}</div>}
-          <div className="mt-2 flex items-center gap-2">{catChip(d.category, lang)}{d.supersedes_id && <span className="text-xs text-ink-400">{t(lang, 'supersedes')} {d.supersedes_id}</span>}</div>
-          <Stamps r={d} lang={lang} />
+          {safeUrl(d.drive_url) ? <a href={safeUrl(d.drive_url)} target="_blank" rel="noreferrer" className="font-semibold hover:underline block [overflow-wrap:anywhere]">{d.title}</a> : <div className="font-semibold [overflow-wrap:anywhere]">{d.title}</div>}
+          <div className="mt-2 flex flex-wrap items-center gap-2">{catChip(d.category, lang)}{d.supersedes_id && <span className="text-xs text-ink-400 [overflow-wrap:anywhere]">{t(lang, 'supersedes')} {d.supersedes_id}</span>}</div>
           <div className="mt-1 text-xs text-ink-400">{t(lang, 'updated')} {fmtDateTime(d.updated_at, lang)}</div>
         </article>
       )} />

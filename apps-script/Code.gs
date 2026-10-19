@@ -179,14 +179,34 @@ function doGet(e) {
 }
 
 // [SAHKAN: …] is a working note for the pipeline (pipeline/resolve_sahkan.py
-// fills it from the references library or takes it out); readers never see it.
+// fills it from the references library or takes it out); readers never see the
+// marker. Where one is still open in a long text, the reader gets a plain
+// request instead (Wan, 19 Oct 2026): find the specific guideline and page that
+// state it and check it with the Assistant, which reads that page and says
+// whether it does. Elsewhere (titles, names, links) it is simply removed.
+var VERIFY_LONG = /(answer|summary|description|details|scope|body|note)/i;
+var VERIFY_EMPTY = /^(what to verify|apa yang perlu disahkan|\.\.\.|…|sahkan|verify|tbc)?$/i;
+function verifyAsk(body, bm) {
+  var what = String(body || '').replace(/^[\s:\-]+/, '').replace(/[\[\]]/g, '').replace(/\s+/g, ' ').trim();
+  if (what.length > 100 || VERIFY_EMPTY.test(what) || what.length < 4) what = '';
+  if (bm) return what ? 'Perlu disahkan: ' + what + '. Cari garis panduan dan muka surat khusus yang menyatakannya, kemudian semak dengan Pembantu.' : 'Cari garis panduan dan muka surat khusus yang menyatakannya, kemudian semak dengan Pembantu.';
+  return what ? 'To confirm: ' + what + '. Find the specific guideline and page that state it, then check it with the Assistant.' : 'Find the specific guideline and page that state this, then check it with the Assistant.';
+}
+function markText(text, key) {
+  var long = VERIFY_LONG.test(key), bm = /(^|_)bm($|_)/.test(key), asks = [];
+  var clean = String(text).replace(/\s*\[SAHKAN\s*:?([^\]]*)\]/gi, function (m, body) {
+    if (long) { var line = verifyAsk(body, bm); if (asks.indexOf(line) < 0) asks.push(line); }
+    return '';
+  }).replace(/\s+([.,;:!?])/g, '$1').replace(/\s{2,}/g, ' ').trim();
+  return asks.length ? (clean + ' ' + asks.join(' ')).trim() : clean;
+}
 function noMarks(rows) {
   return rows.map(function (r) {
     // WhatsApp message ids carry the group id (a phone number): never public.
     delete r.source_refs; delete r.source_msg_id; delete r.sender_hash;
     Object.keys(r).forEach(function (k) {
       if (typeof r[k] !== 'string') return;
-      if (r[k].indexOf('[') >= 0) r[k] = r[k].replace(/\s*\[SAHKAN[^\]]*\]/gi, '').trim();
+      if (r[k].indexOf('[') >= 0) r[k] = markText(r[k], k);
       if (/@(g|c)\.us|@lid\b/.test(r[k])) r[k] = '';
     });
     return r;
@@ -1461,9 +1481,10 @@ function chat(b) {
   // Assistant covers everything on the site and in the references library.
   var refPass = [];
   try { refPass = retrievePassages(b.question, 5).passages; } catch (e) { refPass = []; }
-  var all = (b.context || []).concat(refPass.map(function (p) { return { type: 'reference', id: p.title + ', page ' + p.page, title: p.title + ', page ' + p.page, body: p.text.slice(0, 1400) }; }));
+  var vp = { page: '', passages: [] }; try { vp = pagePassages(b.question); } catch (e) { vp = { page: '', passages: [] }; }
+  var all = vp.passages.map(function (p) { return { type: 'reference', id: p.title + ', page ' + p.page, title: p.title + ', page ' + p.page, body: p.text }; }).concat(b.context || []).concat(refPass.map(function (p) { return { type: 'reference', id: p.title + ', page ' + p.page, title: p.title + ', page ' + p.page, body: p.text.slice(0, 1400) }; }));
   var ctx = all.map(function (c, i) { return '[' + (i + 1) + '] (' + c.type + ' ' + c.id + ') ' + c.title + '\n' + c.body; }).join('\n\n');
-  var sys = 'You are the Halal Executive assistant for halal executives in Malaysia. Answer ONLY from the numbered context entries (FAQ, guidelines, documents, events, certificates, news and passages from the official references). Cite entries like [1]; for a reference passage also name the document and page. A one-word question (e.g. "warna") means: what do the sources say about it? If the context does not answer, say so in one sentence and suggest the References tab. Keep regulatory terms original (Notifikasi Kosmetik, Garis Panduan, Borang). Never invent a limit, entry number or date; if a number is not in the context, say it is not in the site sources yet. Reply in ' + lang + ', the language of the question. Be brief but always finish the answer.';
+  var sys = 'You are the Halal Executive assistant for halal executives in Malaysia. Answer ONLY from the numbered context entries (FAQ, guidelines, documents, events, certificates, news and passages from the official references). Cite entries like [1]; for a reference passage also name the document and page. A one-word question (e.g. "warna") means: what do the sources say about it? If the context does not answer, say so in one sentence and suggest the References tab.' + VERIFY_RULE + (vp.page ? PAGE_RULE : '') + ' Keep regulatory terms original (Notifikasi Kosmetik, Garis Panduan, Borang). Never invent a limit, entry number or date; if a number is not in the context, say it is not in the site sources yet and ask the user to find the guideline and page that state it. Reply in ' + lang + ', the language of the question. Be brief but always finish the answer.';
   try {
     var r = complete([{ role: 'system', content: sys }, { role: 'user', content: 'Context:\n' + (ctx || '(none)') + '\n\nQuestion: ' + b.question }], { max_tokens: 1500, fast: true, whole: true });
     return { ok: true, answer: String(r.text).replace(/<think>[\s\S]*?<\/think>/g, '').trim(), provider: r.provider, model: r.model };
@@ -1626,6 +1647,30 @@ function retrievePassages(q, k) {
   return { indexed: true, passages: top.map(function (d, i) { var ref = refs[d.r[1]]; return { n: i + 1, ref_id: d.r[1], page: String(d.r[2]), title: ref.title + (ref.edition ? ' (' + ref.edition + ')' : ''), text: String(d.r[3]).slice(0, 1200) }; }) };
 }
 
+// The user names a guideline and a page ("MPPHM 2020 page 14", "MS 1500 muka
+// surat 9"): the AI checks their statement against that page only (Wan,
+// 19 Oct 2026). Returns the page's passages from the references whose title
+// shares a distinctive word with the question, or says the guideline is not in
+// the library so the user can upload it.
+function pageNamed(q) {
+  var m = String(q || '').match(/\b(?:page|pg|p|muka\s*surat|halaman|hlm)\.?\s*(\d{1,4})\b/i);
+  return m ? m[1] : '';
+}
+function pagePassages(q) {
+  var pg = pageNamed(q); if (!pg) return { page: '', passages: [], found: false };
+  var qt = {}; toks(q).forEach(function (w) { if (w.length >= 3 && !/^\d+$/.test(w) || /^(1500|2634|2200|2020|2019)$/.test(w)) qt[w] = 1; });
+  var refs = readTab('References').filter(function (r) { return r.status === 'indexed'; }).map(function (r) {
+    var hit = toks(r.title + ' ' + (r.edition || '')).filter(function (w) { return qt[w] && w !== 'page' && w !== 'halaman'; });
+    return { ref: r, score: hit.length };
+  }).filter(function (x) { return x.score > 0; }).sort(function (a, b) { return b.score - a.score; });
+  if (!refs.length) return { page: pg, passages: [], found: false };
+  var best = refs[0].score, ids = {}; refs.filter(function (x) { return x.score === best; }).slice(0, 2).forEach(function (x) { ids[x.ref.id] = x.ref; });
+  var rows = sheet('RefChunks').getDataRange().getValues().slice(1).filter(function (r) { return ids[r[1]] && String(r[2]) === String(pg); }).slice(0, 4);
+  return { page: pg, found: rows.length > 0, passages: rows.map(function (r, i) { var ref = ids[r[1]]; return { n: i + 1, ref_id: r[1], page: String(r[2]), title: ref.title + (ref.edition ? ' (' + ref.edition + ')' : ''), text: String(r[3]).slice(0, 1400) }; }) };
+}
+var VERIFY_RULE = ' If the passages do not state what is asked, or state only part of it, say exactly what is missing and ask the user to find the specific guideline and page that state it (the document name, clause and page, for example "MPPHM 2020, page 14") and send it back in their next question so you can check it against that page.';
+var PAGE_RULE = ' The user named a guideline and a page. Check their statement against THAT page only: say whether the page states it, contradicts it or does not mention it, and quote at most 25 words from it. If no passage for that page is supplied, say the page is not in the library and ask them to upload that guideline in References.';
+
 function askReferences(b) {
   var t0 = Date.now();
   var q = String(b.question || '').trim().slice(0, 600);
@@ -1638,9 +1683,11 @@ function askReferences(b) {
   if (hit) { var h = JSON.parse(hit); h.cached = true; h.ms = Date.now() - t0; return h; }
 
   var found = retrievePassages(q, 7);
+  var vp = { page: '', passages: [] }; try { vp = pagePassages(q); } catch (e) { vp = { page: '', passages: [] }; }
+  if (vp.page && vp.found) { found.passages = vp.passages.concat(found.passages).slice(0, 8).map(function (p, i) { p.n = i + 1; return p; }); found.indexed = true; }
   if (!found.indexed) return { ok: true, layman: '', details: '', citations: [], none: true, message: 'No references have been indexed yet.', ms: Date.now() - t0 };
   if (!found.passages.length) {
-    var none = { ok: true, none: true, layman: '', details: '', citations: [], message: lang === 'bm' ? 'Tiada petikan dalam rujukan yang sepadan dengan soalan ini.' : 'Nothing in the references matches this question.', ms: Date.now() - t0 };
+    var none = { ok: true, none: true, layman: '', details: '', citations: [], message: lang === 'bm' ? 'Tiada petikan dalam rujukan yang sepadan dengan soalan ini. Cari garis panduan dan muka surat khusus yang menyatakannya, kemudian tanya semula dengan nama dan muka surat itu.' : 'Nothing in the references matches this question. Find the specific guideline and page that state it, then ask again with its name and page.', ms: Date.now() - t0 };
     return none;
   }
   var passages = found.passages;
@@ -1648,7 +1695,7 @@ function askReferences(b) {
   var sys = 'You answer questions from halal executives in Malaysia using ONLY the numbered passages from official references. ' +
     'Return JSON: {"layman":"2-4 short sentences anyone can follow","details":"precise answer naming the requirement, conditions and exceptions, 3-8 sentences","citations":[{"n":<passage number>,"quote":"exact words from that passage, max 25 words"}],"confidence":"high|medium|low"}. ' +
     'Write both answers in ' + langRule + '. Keep regulatory terms original (Sijil Pengesahan Halal Malaysia, MPPHM, MHMS). Cite every fact with the passage number it came from. ' +
-    'If the passages do not answer the question, say so plainly in "layman", leave "details" empty and cite nothing. If they answer only part of it, answer that part and say which part the references do not cover. Never use outside knowledge, never invent a number, clause or page. Always finish every sentence.';
+    'If the passages do not answer the question, say so plainly in "layman", leave "details" empty and cite nothing. If they answer only part of it, answer that part and say which part the references do not cover.' + VERIFY_RULE + (vp.page ? PAGE_RULE : '') + ' Never use outside knowledge, never invent a number, clause or page. Always finish every sentence.';
   var user = 'Passages:\n' + passages.map(function (p) { return '[' + p.n + '] ' + p.title + ', page ' + p.page + '\n' + p.text; }).join('\n\n') + '\n\nQuestion: ' + q;
   var r;
   try { r = complete([{ role: 'system', content: sys }, { role: 'user', content: user }], { max_tokens: 1800, json: true, fast: true, temperature: 0.1, whole: true }); }

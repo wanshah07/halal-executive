@@ -3,7 +3,6 @@ import { askRefs } from '../lib/api'
 import { API_URL } from '../lib/config'
 import { t } from '../lib/i18n'
 import { fmtDate } from '../lib/util'
-import Stamps, { stampCols } from '../components/Stamps'
 import { catChip } from '../components/CategoryFilter'
 import { ICON, ChevronDown, ChevronRight } from '../components/Icon'
 
@@ -60,7 +59,7 @@ export default function References({ lang, data }) {
                 {!ans.citations?.length && <div className="text-sm text-ink-400">{t(lang, 'no_citation')}</div>}
                 <ol className="space-y-2">{(ans.citations || []).map((c, k) => (
                   <li key={k} className="rounded-lg border border-line bg-paper p-3 text-sm">
-                    <div className="font-medium">{c.title} · <span className="text-brand-700">{/^\d+$/.test(c.page) ? `${t(lang, 'page')} ${c.page}` : c.page}</span></div>
+                    <div className="font-medium [overflow-wrap:anywhere]">{c.title} · <span className="text-brand-700">{/^\d+$/.test(c.page) ? `${t(lang, 'page')} ${c.page}` : c.page}</span></div>
                     {c.quote && <blockquote className="text-ink-600 mt-1 italic">“{c.quote}”</blockquote>}
                   </li>
                 ))}</ol>
@@ -76,11 +75,10 @@ export default function References({ lang, data }) {
         <ul className="space-y-3">{refs.map((r) => {
           let kp = []; try { kp = JSON.parse(r.key_points || '[]') } catch { /* plain */ }
           return (
-            <li key={r.id} className="card p-4">
+            <li key={r.id} className="card p-4 min-w-0">
               <div className="flex items-center justify-between gap-2 mb-1">{catChip(r.category, lang)}<span className="text-xs text-ink-400">{r.pages ? `${r.pages} ${t(lang, 'pages')}` : ''}</span></div>
-              <div className="font-semibold leading-snug">{r.title}</div>
-              <div className="text-xs text-ink-400">{[r.issuer, r.edition].filter(Boolean).join(' · ')}</div>
-              <Stamps up={r.added_at} pub={r.indexed_at} lang={lang} className="mt-1 text-xs text-ink-400" />
+              <div className="font-semibold leading-snug [overflow-wrap:anywhere]">{r.title}</div>
+              <div className="text-xs text-ink-400 [overflow-wrap:anywhere]">{[r.issuer, r.edition].filter(Boolean).join(' · ')}</div>
               {(lang === 'bm' ? r.summary_bm || r.summary_en : r.summary_en) && <p className="text-sm text-ink-600 mt-2 line-clamp-4">{lang === 'bm' ? r.summary_bm || r.summary_en : r.summary_en}</p>}
               {!!kp.length && <details className="mt-2 text-sm"><summary className="cursor-pointer text-brand-600">{t(lang, 'key_points')}</summary><ul className="list-disc pl-5 mt-1 space-y-0.5">{kp.map((p, k) => <li key={k}>{p}</li>)}</ul></details>}
             </li>

@@ -3,7 +3,6 @@ import { SITE_NAME, SHEET_URL, DRIVE_FOLDER_URL, DIRECTORY_SECTIONS } from '../l
 import NavHeader from '@/components/ui/nav-header'
 import { t } from '../lib/i18n'
 import { MENU } from './Sidebar'
-import { IconBar, IconBarItem } from '@/components/ui/icon-bar'
 import { ICON, Menu, ExternalLink, ChevronDown, RefreshCw, Lock } from './Icon'
 
 export const dirSection = (s) => (s === 'sertu' || s === 'lab' ? s : 'training')
@@ -26,7 +25,7 @@ export default function Header({ lang, setLang, tab, sub, setTab, onRefresh, onE
       <div className="xl:pl-[232px]"><div className="max-w-7xl mx-auto px-4 sm:px-6">
         <div className="flex items-center justify-between gap-2 sm:gap-4 py-3">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-            <button className="xl:hidden btn px-2.5 shrink-0" onClick={onMenu} aria-label={t(lang, 'menu')}><Menu {...ICON} size={20} /></button>
+            <button className="hidden md:inline-flex xl:hidden btn px-2.5 shrink-0" onClick={onMenu} aria-label={t(lang, 'menu')}><Menu {...ICON} size={20} /></button>
             <a href="#overview" onClick={() => setTab('overview')} className="flex items-center gap-2 sm:gap-3 min-w-0">
               <img
                 src="./brand/he-logo.png"
@@ -64,16 +63,7 @@ export default function Header({ lang, setLang, tab, sub, setTab, onRefresh, onE
         <nav aria-label={t(lang, 'menu')} className="hidden md:block pb-3 -mx-1 px-1 overflow-x-auto">
           <NavHeader items={MENU.map(([k]) => ({ value: k, label: t(lang, k) }))} value={tab} onChange={(k) => setTab(k)} />
         </nav>
-        {/* Phones: IconBar (src/components/ui/icon-bar.tsx); the open tab shows its name. */}
-        <nav aria-label={t(lang, 'menu')} className="md:hidden pb-3 -mx-1 px-1 overflow-x-auto">
-          <IconBar value={tab} onValueChange={(v) => v && setTab(v)}
-            className="flex-nowrap [--ic-accent:#d2efdf] [--ic-accent-foreground:#08542e] [--ic-muted:#f8fafc] [--ic-muted-foreground:#475569]">
-            {MENU.map(([k, Icon]) => (
-              <IconBarItem key={k} value={k} icon={Icon}
-                label={t(lang, k) + (counts && counts[k] != null ? ` (${counts[k]})` : '')} />
-            ))}
-          </IconBar>
-        </nav>
+        {/* Phones: the tabs are the bottom bar (BottomNav). */}
         {tab === 'directory' && (
           <nav aria-label={t(lang, 'directory')} className="flex gap-1.5 pb-3 -mt-1 overflow-x-auto">
             {DIRECTORY_SECTIONS.map((d) => {

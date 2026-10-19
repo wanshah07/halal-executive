@@ -26,6 +26,17 @@
    the page cited (quote checked word for word, no new numbers) or takes it
    out and keeps it in `FAQ.verify_notes` for the admin. The page and
    `publicData()` never show a marker.
+   **An open marker reaches the reader as a request, never as the marker**
+   (Wan, 19 Oct 2026): in a long text field (answer, summary, description,
+   details, scope, note) `noMarks` in Code.gs and `markText` in api.js take the
+   marker out and add one sentence at the end, "Find the specific guideline and
+   page that state this, then check it with the Assistant" (BM: "Cari garis
+   panduan dan muka surat khusus ..."), with the marker's own words when they
+   name the fact; in any other field the marker is just removed. The Assistant
+   and References Q&A say what is missing and ask for the guideline and page;
+   when the question names one ("MPPHM 2020 page 14", `pagePassages`) they check
+   the statement against that page only, quoting at most 25 words, or say the
+   guideline is not in the library.
 4. **Language.** Bahasa Malaysia, never Bahasa Indonesia: boleh not bisa,
    ubat not obat, syarikat not perusahaan, kualiti not kualitas,
    pembungkusan not kemasan. Regulatory terms stay original.
@@ -166,8 +177,11 @@
     and dropped: it is a monochrome dot map and its shader rendered black on
     software GL. The picture is NASA imagery (generally free to use with
     credit); Wan to confirm the credit line he wants.
-29. **Every item shows when it was uploaded and when it was published**
-    (Wan, 18 Oct 2026), Malaysia time. Code.gs stamps `created_at` once, when a
+29. **Uploaded and published are NOT shown on public pages any more** (Wan,
+    19 Oct 2026: "remove published & uploaded"); Updated stays, News keeps
+    Fetched, Admin lists keep the stamps. The stamping below still runs.
+    Original rule (18 Oct 2026): every item shows when it was uploaded and when it was published,
+    Malaysia time. Code.gs stamps `created_at` once, when a
     row first appears, and `published_at` once, the first time its status is
     published, current or indexed (`stampLine` in `upsert`, and `updateByIds`
     for a status change); a whole-row upsert keeps both, and hiding then
@@ -219,6 +233,20 @@
     still the only way to read the group live. Reading the group from a user
     account (MTProto) is not built: members would not see a bot, which is a
     consent question for Wan first.
+34. **Halal certificates publish at once, from the group too** (Wan, 19 Oct 2026:
+    certificates uploaded the day before did not show in Halal Certificates).
+    `live_status` in `drive_organiser.py` returns `current` for any certificate
+    (other group files still wait in Drafts); the sweep publishes certificate
+    drafts left from before (an expired one stays out), and a certificate whose
+    scan cannot be read gets a title-only row (holder from the title, notes
+    "title-only") so it shows on its card instead of nowhere.
+35. **Phones get a bottom tab bar** (Wan, 19 Oct 2026, like KKM Complaints):
+    `BottomNav.jsx`, Overview, FAQ, Certificates, Events and More (the menu
+    drawer), under 768 px only; the top icon bar and the hamburger are gone on
+    phones (the hamburger stays for tablets). The Assistant button sits above
+    the bar. Long unbroken text (file names, references) wraps with
+    `[overflow-wrap:anywhere]` on cards; a Playwright sweep at 360/390/430 px
+    with long tokens injected into every title must report no horizontal overflow.
 33. **Google being busy must never reach the reader as an error** (Wan, 18 Oct
     2026: "Sheet feed 404", AI model "HTTP 404", Progress and Drafts stuck on
     Loading). Apps Script answers with Google's HTML "Page Not Found" (HTTP 404,
