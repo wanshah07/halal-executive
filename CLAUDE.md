@@ -306,6 +306,18 @@
     that reads pictures exists on some gateway. A reference picture (png, jpg, webp,
     up to 4 MB) goes to `/images/edits` as multipart: "change this picture as I
     describe". Do not assume a gateway has chat models: read `/models` first.
+    **Live evidence (19 Oct 2026, 15:48 UTC): Wanshah 3 read a picture.** The TIPAROS
+    certificate row became `KIOS:gpt-5.6-sol full-read` (holder, number, issuer, validity
+    filled), so its gateway does list a reading model now: do not treat the earlier
+    "image models only" answer as permanent (`kiosModel` reads `/models` each time).
+    **A text AI is only asked to read a picture after it passed the picture test**
+    (`canSee`, verdict in Script Property `vision_ok_<NAME>`, 7 days; only "answered
+    without seeing it" is remembered as a no, an outage is not). A model that cannot
+    see invents an answer, and an invented certificate must never reach the page. The
+    status carries `sees` (true / false / null = not tested) per AI and Admin's full
+    card shows it as "Reads pictures". Wanshah 2 could not be reached from a session
+    (`api.mireld.my/v1/models` answers 401 without a key); its verdict comes from the
+    first picture the pipeline reads or the Admin button.
     **Wanshah 1 and 2 read pictures** (tested 19 Oct 2026 through the rootsys.cloud
     connection: all 22 Wanshah 1 models read a fresh picture's words, number and
     shape back correctly; a control without a picture made `glm-5.3` say no image
