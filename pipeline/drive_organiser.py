@@ -233,7 +233,8 @@ def run():
             he_api.upsert("Documents", [{**d, "status": "current"}]); print(d["id"], "certificate document published (was draft)"); n += 1
     # A document the model called a certificate whose title says otherwise (a
     # JAKIM announcement, an info booklet) is filed under its real kind, and a
-    # title-only certificate row made for it earlier is hidden (the file stays).
+    # title-only certificate row made for it earlier is deleted (the file stays as
+    # the document). Certificates are never hidden (Wan, 20 Oct 2026).
     certs = he_api.read("Certificates")
     for d in he_api.read("Documents"):
         if d.get("kind") != "certificate" or d.get("status") not in ("current", "draft"):
@@ -244,8 +245,8 @@ def run():
             continue
         kind = "circular" if NOTICE_TITLE.search(head) else "other"
         he_api.upsert("Documents", [{**d, "kind": kind}])
-        for c in rows:
-            he_api.upsert("Certificates", [{**c, "status": "hidden"}])
+        if rows:
+            he_api.delete("Certificates", [c["id"] for c in rows])
         print(d["id"], "is not a certificate; filed as", kind); n += 1
     certs = he_api.read("Certificates")
     kios = vision_ready()  # title-only rows are tried again with Wanshah 3 once it has a key, once each

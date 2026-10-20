@@ -348,7 +348,7 @@ function DraftItem({ lang, tab, r, onSet, onDelete, onSaved }) {
           {!edit && <button className="btn" onClick={startEdit}>{t(lang, 'edit')}</button>}
           {!edit && tab === 'FAQ' && <button className="btn" onClick={() => { startEdit(); setTimeout(rephrase, 0) }}><Sparkles {...ICON} size={15} />{t(lang, 'rephrase')}</button>}
           <button className="btn-brand" onClick={() => onSet('published')}>{t(lang, 'publish')}</button>
-          <button className="btn" onClick={() => onSet('hidden')}>{t(lang, 'hide')}</button>
+          {tab !== 'Certificates' && <button className="btn" onClick={() => onSet('hidden')}>{t(lang, 'hide')}</button>}
           <button className="btn text-red-700" onClick={onDelete}>{t(lang, 'delete')}</button>
         </div>
       </div>

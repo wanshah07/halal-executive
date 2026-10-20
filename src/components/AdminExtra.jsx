@@ -304,7 +304,7 @@ export function CertAdmin({ lang, data, onChanged }) {
                 </div>
                 <div className="flex flex-wrap gap-2 shrink-0">
                   {safeUrl(r.drive_url) && <a className="btn px-2.5" href={safeUrl(r.drive_url)} target="_blank" rel="noreferrer">{t(lang, 'ca_open')}</a>}
-                  <button type="button" className="btn px-2.5" onClick={() => toggleHide(r)}>{r.status === 'hidden' ? t(lang, 'publish') : t(lang, 'hide')}</button>
+                  {r.status === 'hidden' && <button type="button" className="btn px-2.5" onClick={() => toggleHide(r)}>{t(lang, 'publish')}</button>}
                   <button type="button" className="btn px-2.5 text-red-700" onClick={() => remove(r)}>{t(lang, 'delete')}</button>
                 </div>
               </div>

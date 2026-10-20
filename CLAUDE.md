@@ -238,7 +238,14 @@
     still the only way to read the group live. Reading the group from a user
     account (MTProto) is not built: members would not see a bot, which is a
     consent question for Wan first.
-34. **Halal certificates publish at once, from the group too** (Wan, 19 Oct 2026:
+34. **A halal certificate is never hidden** (Wan, 20 Oct 2026: "do not make halal
+    cert hidden make sure all see on the site, unless it expired then delete it
+    permanently"). `publicData` shows every certificate whose `valid_to` has not
+    passed, whatever its status; `purgeExpiredCerts` puts any hidden or draft row
+    back to `current` and deletes expired ones for good; `reviewSet` refuses to hide
+    one; Admin has no Hide for certificates. A title-only row made for a document
+    that is not a certificate is deleted, not hidden.
+    **Halal certificates publish at once, from the group too** (Wan, 19 Oct 2026:
     certificates uploaded the day before did not show in Halal Certificates).
     `live_status` in `drive_organiser.py` returns `current` for any certificate
     (other group files still wait in Drafts); the sweep publishes certificate
@@ -417,8 +424,9 @@
     way to apply is still empty, the picture itself through `visionRead`, which fills
     only the empty fields. A group ad is caught when the batch reply lists it OR its
     words match `VAC_TEXT` (vacancy, jawatan kosong, hiring, send CV ...), so a
-    missed batch entry does not lose it. Group ads wait in Drafts; Admin rows publish
-    at once. **Rule 3 has one exception here, and only here:** the employer and the
+    missed batch entry does not lose it. Group ads (WhatsApp, Telegram) publish at
+    once like Admin rows (Wan, 20 Oct 2026: "make sure telegram can read and
+    appear"); Admin can hide one. **Rule 3 has one exception here, and only here:** the employer and the
     apply link, email or phone ARE kept when the ad itself prints them as the way to
     apply; the number or name of whoever forwarded the ad never is.
     Same job at the same employer is skipped (`seen_vacancies`). An ad already past

@@ -297,7 +297,9 @@ function publicData() {
     // Only what an admin published (or uploaded): group files wait as drafts,
     // expired certificates and unread inbox files never show.
     documents: noMarks(readTab('Documents').filter(function (r) { return ['hidden', 'duplicate', 'draft', 'expired', 'inbox'].indexOf(String(r.status)) < 0; })),
-    certificates: noMarks(readTab('Certificates').filter(function (r) { return r.status !== 'hidden' && r.status !== 'draft' && r.status !== 'expired'; })),
+    // Every halal certificate is on the site (Wan, 20 Oct 2026: "do not make halal cert hidden"), until
+    // it expires; then purgeExpiredCerts deletes it for good.
+    certificates: noMarks(readTab('Certificates').filter(function (r) { return r.status !== 'expired' && !(r.valid_to && eventOver({ date_start: r.valid_to }, now)); })),
     events: noMarks(readTab('Events').filter(function (r) { return r.status !== 'hidden' && r.status !== 'draft' && !eventOver(r, now); })),
     news: readTab('News').filter(function (r) { return !r.expires_at || Date.parse(r.expires_at) > now; }),
     fhcb: readTab('FHCB').filter(function (r) { return r.status !== 'hidden' && r.status !== 'draft'; }),
@@ -689,6 +691,11 @@ function tickWatch() {
 // An expired halal certificate is deleted for good one day after valid_to,
 // with its document row and file, like a finished event (Wan, 15 Oct 2026).
 function purgeExpiredCerts() {
+  // A certificate is never hidden or left as a draft (Wan, 20 Oct 2026): any such row still valid is put back on the site.
+  try {
+    var back = readTab('Certificates').filter(function (c) { return (c.status === 'hidden' || c.status === 'draft') && !(c.valid_to && eventOver({ date_start: c.valid_to }, Date.now())); }).map(function (c) { return c.id; });
+    if (back.length) updateByIds('Certificates', back, { status: 'current' });
+  } catch (e) { console.error('cert unhide: ' + e); }
   var now = Date.now(), gone = readTab('Certificates').filter(function (c) { return c.valid_to && eventOver({ date_start: c.valid_to }, now); });
   gone.forEach(function (c) { try { adminDelete('Certificates', String(c.id)); } catch (e) { console.error('cert purge ' + c.id + ': ' + e); } });
   // Certificate files the organiser marked expired, with no certificate row
@@ -850,6 +857,7 @@ function reviewList() {
 }
 function reviewSet(tab, id, status) {
   if (REVIEW_TABS.indexOf(tab) < 0) throw new Error('unknown tab');
+  if (tab === 'Certificates' && status !== 'published' && status !== 'current') throw new Error('A halal certificate is never hidden: it shows until it expires, then it is deleted. Delete it instead.');
   if (['published', 'hidden', 'draft', 'current'].indexOf(status) < 0) throw new Error('unknown status');
   if ((tab === 'Certificates' || tab === 'Documents') && status === 'published') status = 'current';
   var patch = { status: status };

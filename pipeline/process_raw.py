@@ -474,8 +474,9 @@ def run(sources, max_batches, dry, minutes=20, attachments=None):
                         row.update({"id": ids["VAC"](), "closing_date": cd if _day(cd) else "", "apply_link": safe_url(v.get("apply_link")),
                                     "category": v.get("category") if v.get("category") in ("halal", "food", "cosmetic") else "halal",
                                     "poster_url": poster, "poster_file": poster_file,
-                                    # Admin uploads publish at once; group ads wait in Drafts.
-                                    "status": "published" if manual else "draft", "source": str(m["id"]), "updated_at": ts})
+                                    # Vacancies from the groups publish at once too (Wan, 20 Oct 2026:
+                                    # "make sure telegram can read and appear"); Admin can hide one.
+                                    "status": "published", "source": str(m["id"]), "updated_at": ts})
                         vac_rows.append(row)
                         j["vacancies"].append({"source_msg_id": m["id"]})
             for g in j["guidelines"]:
