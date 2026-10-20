@@ -31,6 +31,7 @@ const Events = lazyPage(() => import('./pages/Events'))
 const Fhcb = lazyPage(() => import('./pages/Fhcb'))
 const Directory = lazyPage(() => import('./pages/Directory'))
 const News = lazyPage(() => import('./pages/News'))
+const Vacancies = lazyPage(() => import('./pages/Vacancies'))
 const Admin = lazyPage(() => import('./pages/Admin'))
 
 // Any error inside a page shows a message and a Reload button instead of
@@ -64,6 +65,7 @@ const EXPORT = (lang, data) => ({
   events: { title: t(lang, 'events'), rows: data.events || [], cols: ['id', 'kind', 'title', 'title_bm', 'date_start', 'date_end', 'venue', 'link', 'description', 'created_at', 'published_at'] },
   fhcb: { title: t(lang, 'fhcb'), rows: data.fhcb || [], cols: ['id', 'no', 'country', 'name', 'kind', 'address', 'persons', 'tel', 'fax', 'email', 'website', 'source_ref', 'effective_date', 'updated_at'] },
   directory: { title: t(lang, 'directory'), rows: data.directory || [], cols: ['id', 'type', 'subtype', 'name', 'state', 'country', 'coverage', 'address', 'pic', 'phone', 'email', 'website', 'website2', 'accreditation', 'description', 'source_ref', 'updated_at'] },
+  vacancies: { title: t(lang, 'vacancies'), rows: data.vacancies || [], cols: ['id', 'category', 'title', 'title_bm', 'employer', 'location', 'state', 'job_type', 'salary', 'requirements', 'description', 'apply_link', 'apply_email', 'apply_phone', 'closing_date', 'updated_at'] },
   news: { title: t(lang, 'news'), rows: data.news || [], cols: ['id', 'category', 'title', 'source', 'url', 'published_at', 'expires_at', 'summary_en', 'summary_bm'] },
 })
 
@@ -135,7 +137,7 @@ export default function App() {
 
   if (!data) return <div className="p-8 text-ink-600">{err || t(lang, 'loading')}</div>
   const live = (n) => !n.expires_at || Date.parse(n.expires_at) > Date.now()
-  const counts = { references: (data.references || []).length, faq: (data.faq || []).length, certificates: (data.certificates || []).length, guidelines: (data.guidelines || []).length, documents: filedDocs(data.documents).filter((d) => d.status === 'current').length, events: (data.events || []).length, fhcb: (data.fhcb || []).length || undefined, directory: (data.directory || []).length || undefined, news: (data.news || []).filter(live).length }
+  const counts = { references: (data.references || []).length, faq: (data.faq || []).length, certificates: (data.certificates || []).length, guidelines: (data.guidelines || []).length, documents: filedDocs(data.documents).filter((d) => d.status === 'current').length, events: (data.events || []).length, fhcb: (data.fhcb || []).length || undefined, directory: (data.directory || []).length || undefined, vacancies: (data.vacancies || []).filter((v) => !v.closing_date || Date.parse(v.closing_date) + 864e5 > Date.now()).length, news: (data.news || []).filter(live).length }
 
   return (
     <div className="min-h-screen">
@@ -149,15 +151,16 @@ export default function App() {
           <PageGuard lang={lang} tab={tab}>
           <Suspense fallback={<div className="text-sm text-ink-400 p-4">{t(lang, 'loading')}</div>}>
           {tab === 'overview' && <Overview lang={lang} data={data} setTab={setTab} />}
-          {tab === 'faq' && <FAQ lang={lang} data={data} focusId={focus && focus.id} focusKey={focus && focus.n} />}
-          {tab === 'certificates' && <Certificates lang={lang} data={data} />}
+          {tab === 'faq' && <FAQ lang={lang} data={data} sub={sub} focusId={focus && focus.id} focusKey={focus && focus.n} />}
+          {tab === 'certificates' && <Certificates lang={lang} data={data} sub={sub} />}
           {tab === 'references' && <References lang={lang} data={data} />}
-          {tab === 'guidelines' && <Guidelines lang={lang} data={data} />}
-          {tab === 'documents' && <Documents lang={lang} data={data} />}
-          {tab === 'events' && <Events lang={lang} data={data} />}
+          {tab === 'guidelines' && <Guidelines lang={lang} data={data} sub={sub} />}
+          {tab === 'documents' && <Documents lang={lang} data={data} sub={sub} />}
+          {tab === 'events' && <Events lang={lang} data={data} sub={sub} />}
           {tab === 'fhcb' && <Fhcb lang={lang} data={data} focusId={focus && focus.id} focusKey={focus && focus.n} />}
           {tab === 'directory' && <Directory lang={lang} data={data} sub={sub} setTab={setTab} />}
-          {tab === 'news' && <News lang={lang} data={data} />}
+          {tab === 'news' && <News lang={lang} data={data} sub={sub} />}
+          {tab === 'vacancies' && <Vacancies lang={lang} data={data} sub={sub} />}
           {tab === 'admin' && <Admin lang={lang} data={data} onSaved={() => refresh(true)} />}
           </Suspense>
           </PageGuard>

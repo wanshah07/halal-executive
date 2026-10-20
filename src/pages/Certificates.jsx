@@ -22,8 +22,9 @@ export function CertThumb({ c, lang, size = 'card' }) {
 
 const tone = { valid: 'bg-brand-100 text-brand-700', expiring: 'bg-amber-100 text-amber-800', expired: 'bg-red-100 text-red-700' }
 
-export default function Certificates({ lang, data }) {
-  const [cat, setCat] = useState('all')
+export default function Certificates({ lang, data, sub }) {
+  const [cat, setCat] = useState(sub || 'all')
+  useEffect(() => { setCat(sub || 'all') }, [sub])
   const [st, setSt] = useState('all')
   const [open, setOpen] = useState({})
   const [allOpen, setAllOpen] = useState(false)

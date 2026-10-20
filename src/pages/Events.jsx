@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { safeUrl, imageUrl } from '../lib/safe'
 import { EVENT_KINDS } from '../lib/config'
 import Segment from '../components/Segment'
@@ -9,8 +9,9 @@ import { ICON, ArrowUpRight } from '../components/Icon'
 
 export const kindName = (id, lang) => { const k = EVENT_KINDS.find((x) => x.id === id) || EVENT_KINDS[EVENT_KINDS.length - 1]; return k[lang] || k.en }
 export const kindChip = (id, lang) => <span className={`chip ${id && id !== 'other' ? 'bg-brand-100 text-brand-700' : 'bg-paper border border-line text-ink-600'}`}>{kindName(id, lang)}</span>
-export default function Events({ lang, data }) {
-  const [kind, setKind] = useState('all')
+export default function Events({ lang, data, sub }) {
+  const [kind, setKind] = useState(sub || 'all')
+  useEffect(() => { setKind(sub || 'all') }, [sub])
   const all = (data.events || []).filter((e) => e.status !== 'hidden')
   const rows = all.filter((e) => kind === 'all' || (e.kind || 'other') === kind).sort((a, b) => Date.parse(a.date_start) - Date.parse(b.date_start))
   const filters = (

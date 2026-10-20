@@ -9,7 +9,7 @@ import AiModelAdmin from '../components/AiModelAdmin'
 import ImageAiAdmin from '../components/ImageAiAdmin'
 import AiTeam from '../components/AiTeam'
 import { safeUrl, imageUrl } from '../lib/safe'
-import { RefAdmin, EventsAdmin, ContentManager, deleteForGood, CertAdmin } from '../components/AdminExtra'
+import { RefAdmin, EventsAdmin, ContentManager, deleteForGood, CertAdmin, VacanciesAdmin } from '../components/AdminExtra'
 import { RowManager } from '../components/AdminRows'
 import Pager from '../components/Pager'
 import Notice, { NOTICE_COLORS, textOn, parsePosters, noticeDay } from '../components/Notice'
@@ -94,7 +94,7 @@ function UploadBox({ lang }) {
   const line = (x) => {
     if (x.state === 'sent') {
       const r = x.result || {}
-      return [r.chat ? t(lang, 'chat_imported').replace('{n}', r.messages).replace('{a}', r.added).replace('{s}', r.skipped) : t(lang, 'q_sent'), r.run === 'started' ? t(lang, 'ai_started_' + (['certificate', 'event', 'guideline'].includes(x.kind) ? x.kind : 'faq')) : t(lang, 'q_next_run')].join(' · ')
+      return [r.chat ? t(lang, 'chat_imported').replace('{n}', r.messages).replace('{a}', r.added).replace('{s}', r.skipped) : t(lang, 'q_sent'), r.run === 'started' ? t(lang, 'ai_started_' + (['certificate', 'event', 'guideline', 'vacancy'].includes(x.kind) ? x.kind : 'faq')) : t(lang, 'q_next_run')].join(' · ')
     }
     return x.state === 'failed' ? x.msg : x.state === 'sending' ? t(lang, 'q_sending') : t(lang, 'q_waiting') + (x.msg ? ` (${x.msg})` : '')
   }
@@ -109,6 +109,7 @@ function UploadBox({ lang }) {
             <option value="certificate">{t(lang, 'kind_cert')}</option>
             <option value="guideline">{t(lang, 'kind_guideline')}</option>
             <option value="event">{t(lang, 'kind_event')}</option>
+            <option value="vacancy">{t(lang, 'kind_vacancy')}</option>
           </select></div>
         <div><label className="label" htmlFor="up-files">{t(lang, 'upload_files')}</label>
           <input id="up-files" type="file" multiple accept={ACCEPT} className="input" onChange={(e) => setFiles(Array.from(e.target.files || []))} /></div>
@@ -136,7 +137,7 @@ function UploadBox({ lang }) {
                   </span>
                   {editing === x.id
                     ? <span className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-                        <select className="input w-auto py-1" value={x.kind} onChange={(e) => update(x.id, { kind: e.target.value })} aria-label={t(lang, 'upload_kind')}>{['faq', 'certificate', 'guideline', 'event'].map((k) => <option key={k} value={k}>{t(lang, 'kind_' + (k === 'certificate' ? 'cert' : k))}</option>)}</select>
+                        <select className="input w-auto py-1" value={x.kind} onChange={(e) => update(x.id, { kind: e.target.value })} aria-label={t(lang, 'upload_kind')}>{['faq', 'certificate', 'guideline', 'event', 'vacancy'].map((k) => <option key={k} value={k}>{t(lang, 'kind_' + (k === 'certificate' ? 'cert' : k))}</option>)}</select>
                         <input className="input w-auto py-1 min-w-40" value={x.note || ''} onChange={(e) => update(x.id, { note: e.target.value })} placeholder={t(lang, 'upload_note')} aria-label={t(lang, 'upload_note')} />
                         <button type="button" className="btn px-2.5 py-1" onClick={() => setEditing(null)}>{t(lang, 'done')}</button>
                       </span>
@@ -301,7 +302,7 @@ function ProgressBox({ lang }) {
 
 // Drafts to review, one tab per kind. Each draft can be read in full,
 // edited, then published, hidden or deleted.
-const REVIEW_KINDS = ['FAQ', 'Events', 'Documents', 'Certificates', 'Guidelines']
+const REVIEW_KINDS = ['FAQ', 'Events', 'Vacancies', 'Documents', 'Certificates', 'Guidelines']
 // [field, label, long?, editable?]
 const FULL = {
   FAQ: [['category', 'Category'], ['subcategory', 'Subcategory'], ['question_en', 'Question (EN)'], ['question_bm', 'Soalan (BM)'], ['answer_formal_en', 'Answer, formal (EN)', 1], ['answer_layman_en', 'Answer, simple (EN)', 1], ['answer_formal_bm', 'Jawapan, rasmi (BM)', 1], ['answer_layman_bm', 'Jawapan, mudah (BM)', 1]],
@@ -309,6 +310,7 @@ const FULL = {
   Documents: [['title', 'Title'], ['kind', 'Kind'], ['category', 'Category'], ['drive_url', 'File', 0, 0], ['notes', 'Notes', 0, 0]],
   Certificates: [['issuer', 'Issuing Body', 1], ['legal_authority', 'Legal Authority', 1], ['cert_no', 'Certificate Number'], ['reg_no', 'Registration No.'], ['issue_date', 'Issue Date (YYYY-MM-DD)'], ['valid_from', 'Valid from (YYYY-MM-DD)'], ['valid_to', 'Valid until (YYYY-MM-DD)'], ['company', 'Entrepreneur / Company Certified'], ['office_address', 'Office Address', 1], ['factory_address', 'Factory Address', 1], ['scheme', 'Scheme'], ['state', 'State'], ['category', 'Category'], ['products', 'Approved Product Types (separate with ;)', 1], ['scope', 'Certification Scope', 1], ['drive_url', 'File', 0, 0]],
   Guidelines: [['category', 'Category'], ['title', 'Title'], ['title_bm', 'Tajuk (BM)'], ['issuer', 'Issuer'], ['summary_en', 'Summary (EN)', 1], ['summary_bm', 'Ringkasan (BM)', 1], ['link', 'Link']],
+  Vacancies: [['category', 'Category'], ['title', 'Job title'], ['title_bm', 'Jawatan (BM)'], ['employer', 'Employer'], ['location', 'Location'], ['state', 'State'], ['job_type', 'Job type'], ['salary', 'Salary'], ['closing_date', 'Closing date (YYYY-MM-DD)'], ['apply_link', 'Apply link'], ['apply_email', 'Apply email'], ['apply_phone', 'Apply phone'], ['requirements', 'Requirements', 1], ['description', 'Description', 1], ['poster_url', 'Poster link']],
 }
 const notesOf = (r) => { try { const n = JSON.parse(r.verify_notes || '[]'); return Array.isArray(n) ? n.filter(Boolean) : [String(n)] } catch { return r.verify_notes ? [String(r.verify_notes)] : [] } }
 const isoDay = (v) => { const d = new Date(v); return v && !isNaN(d) ? new Date(d.getTime() + 8 * 3600e3).toISOString().slice(0, 10) : (v || '') }
@@ -319,7 +321,7 @@ function DraftItem({ lang, tab, r, onSet, onDelete, onSaved }) {
   const [err, setErr] = useState('')
   const fields = FULL[tab] || []
   const title = tab === 'FAQ' ? (r.question_en || r.question_bm) : tab === 'Certificates' ? r.company : r.title
-  const body = tab === 'FAQ' ? (r.answer_formal_en || r.answer_layman_en) : tab === 'Events' ? `${isoDay(r.date_start)} ${r.venue || ''} ${r.description || ''}` : tab === 'Certificates' ? `${r.cert_no || ''} · ${r.scheme || ''} · ${isoDay(r.valid_from)} → ${isoDay(r.valid_to)}` : tab === 'Documents' ? `${r.kind || ''} · ${r.category || ''}` : (r.summary_en || '')
+  const body = tab === 'FAQ' ? (r.answer_formal_en || r.answer_layman_en) : tab === 'Events' ? `${isoDay(r.date_start)} ${r.venue || ''} ${r.description || ''}` : tab === 'Vacancies' ? `${r.employer || ''} · ${[r.location, r.state].filter(Boolean).join(', ')} · ${r.closing_date ? isoDay(r.closing_date) : ''} ${r.description || ''}` : tab === 'Certificates' ? `${r.cert_no || ''} · ${r.scheme || ''} · ${isoDay(r.valid_from)} → ${isoDay(r.valid_to)}` : tab === 'Documents' ? `${r.kind || ''} · ${r.category || ''}` : (r.summary_en || '')
   const startEdit = () => { const e = {}; fields.forEach(([k, , , ed]) => { if (ed !== 0) e[k] = /date|valid_/.test(k) ? isoDay(r[k]) : (r[k] ?? '') }); setEdit(e); setOpenFull(true) }
   async function save(publish) {
     setBusy(true); setErr('')
@@ -331,7 +333,7 @@ function DraftItem({ lang, tab, r, onSet, onDelete, onSaved }) {
     setBusy(true); setErr('')
     try { const x = await adminPost('faq_rephrase', { id: r.id }); setEdit((e) => ({ ...e, ...x.fields })); setErr(t(lang, 'rephrased')) } catch (e) { setErr(e.message) } finally { setBusy(false) }
   }
-  const poster = tab === 'Events' && imageUrl(r.poster_url)
+  const poster = (tab === 'Events' || tab === 'Vacancies') && imageUrl(r.poster_url)
   return (
     <li className="py-3 flex flex-col gap-3">
       <div className="flex flex-col sm:flex-row sm:items-start gap-3">
@@ -583,15 +585,19 @@ export default function Admin({ lang, data, onSaved, onSession }) {
 
       <RunNow lang={lang} runs={data && data.runs} stats={data && data.raw_stats} />
       <ProgressBox lang={lang} />
-      <AiTeam lang={lang} runs={data && data.runs} sample={data && data.ai_status} />
-      <AiModelAdmin lang={lang} />
-      <ImageAiAdmin lang={lang} />
+      {/* One box for the three robots: who they are, what each reads and writes, and their settings (Wan, 20 Oct 2026). */}
+      <div className="card p-5 mb-4 space-y-5">
+        <AiTeam lang={lang} runs={data && data.runs} sample={data && data.ai_status} embedded />
+        <AiModelAdmin lang={lang} embedded />
+        <ImageAiAdmin lang={lang} embedded />
+      </div>
       <ReviewBox lang={lang} onChanged={onSaved} />
       <ContentManager lang={lang} data={data} onChanged={onSaved} />
       <CertAdmin lang={lang} data={data} onChanged={onSaved} />
       <UploadBox lang={lang} />
       <RefAdmin lang={lang} />
       <EventsAdmin lang={lang} onChanged={onSaved} />
+      <VacanciesAdmin lang={lang} onChanged={onSaved} />
       <RowManager lang={lang} tab="FHCB" data={data} onChanged={onSaved} />
       <RowManager lang={lang} tab="Directory" data={data} onChanged={onSaved} />
 

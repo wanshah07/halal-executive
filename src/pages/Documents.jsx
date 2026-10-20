@@ -1,5 +1,5 @@
 import { safeUrl } from '../lib/safe'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Segment from '../components/Segment'
 import CategoryFilter, { catChip } from '../components/CategoryFilter'
 import { t } from '../lib/i18n'
@@ -12,8 +12,9 @@ import { filedDocs } from '../lib/certs'
 // title with new content = new version, old one archived. updated_at is the
 // Drive modifiedTime so the "last updated" is always visible here.
 const kindName = (k, lang) => { const key = 'dk_' + String(k || '').toLowerCase(); const v = t(lang, key); return v && v !== key ? v : String(k || '').replace(/_/g, ' ') }
-export default function Documents({ lang, data }) {
-  const [cat, setCat] = useState('all')
+export default function Documents({ lang, data, sub }) {
+  const [cat, setCat] = useState(sub || 'all')
+  useEffect(() => { setCat(sub || 'all') }, [sub])
   const [show, setShow] = useState('current')
   const rows = filedDocs(data.documents).filter((d) => (cat === 'all' || d.category === cat) && (show === 'all' || d.status === show))
     .sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at))

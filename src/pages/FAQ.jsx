@@ -3,9 +3,12 @@ import Segment from '../components/Segment'
 import CategoryFilter, { catChip } from '../components/CategoryFilter'
 import { t } from '../lib/i18n'
 import { fmtDate } from '../lib/util'
+import Cover from '../components/Cover'
+import { MessagesSquare } from '../components/Icon'
 
-export default function FAQ({ lang, data, focusId, focusKey }) {
-  const [cat, setCat] = useState('all')
+export default function FAQ({ lang, data, focusId, focusKey, sub }) {
+  const [cat, setCat] = useState(sub || 'all')
+  useEffect(() => { if (!focusId) setCat(sub || 'all') }, [sub])
   const [mode, setMode] = useState('formal')
   const [open, setOpen] = useState(focusId || null)
   // A question clicked on the Overview: open it and bring it to the middle of
@@ -46,12 +49,15 @@ export default function FAQ({ lang, data, focusId, focusKey }) {
         { key: 'updated_at', label: t(lang, 'updated'), render: (f) => fmtDate(f.updated_at, lang) },
       ]}
       renderCard={(f) => (
-        <article key={f.id} id={`faq-${f.id}`} className={`card p-4 ${open === f.id ? 'ring-2 ring-brand-300' : ''}`}>
+        <article key={f.id} id={`faq-${f.id}`} className={`card overflow-hidden ${open === f.id ? 'ring-2 ring-brand-300' : ''}`}>
+          <Cover icon={MessagesSquare} category={f.category} label={f.subcategory || t(lang, 'faq')} lang={lang} />
+          <div className="p-4">
           <div className="flex items-center justify-between gap-2 mb-2">{catChip(f.category, lang)}<span className="text-xs text-ink-400">{f.subcategory}</span></div>
           <button className="text-left font-semibold leading-snug" onClick={() => setOpen(open === f.id ? null : f.id)}>{q(f)}</button>
           {(open === f.id) && <p className="mt-2 text-sm whitespace-pre-wrap text-ink-900">{a(f)}</p>}
           {open !== f.id && <p className="mt-2 text-sm text-ink-600 line-clamp-3">{a(f)}</p>}
           <div className="mt-1 text-xs text-ink-400 text-right">{t(lang, 'updated')} {fmtDate(f.updated_at, lang)}</div>
+          </div>
         </article>
       )} />
     </div>

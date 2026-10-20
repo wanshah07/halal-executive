@@ -1,39 +1,57 @@
 import { useEffect } from 'react'
 import { t } from '../lib/i18n'
-import { DIRECTORY_SECTIONS } from '../lib/config'
-import { ICON, LayoutDashboard, MessagesSquare, Library, BadgeCheck, ScrollText, FolderOpen, CalendarDays, Newspaper, Settings, Globe, MapPinned } from './Icon'
+import { DIRECTORY_SECTIONS, CATEGORIES, EVENT_KINDS } from '../lib/config'
+import { ICON, LayoutDashboard, MessagesSquare, Library, BadgeCheck, ScrollText, FolderOpen, CalendarDays, Newspaper, Settings, Globe, MapPinned, Briefcase, ChevronDown } from './Icon'
 
 // Left rail. On tablets and desktops it is always open with its labels (Wan,
 // 15 Oct 2026: no hiding and unhiding there). On phones it is a drawer opened
 // from the header's menu button.
 export const NAV = [
   ['overview', LayoutDashboard], ['faq', MessagesSquare], ['references', Library], ['certificates', BadgeCheck], ['guidelines', ScrollText],
-  ['fhcb', Globe], ['directory', MapPinned], ['documents', FolderOpen], ['events', CalendarDays], ['news', Newspaper], ['admin', Settings],
+  ['fhcb', Globe], ['directory', MapPinned], ['vacancies', Briefcase], ['documents', FolderOpen], ['events', CalendarDays], ['news', Newspaper], ['admin', Settings],
 ]
 // Header and sidebar list every page but Admin; Admin is the black button
 // at the top right (Wan, 15 Oct 2026).
 export const MENU = NAV.filter(([k]) => k !== 'admin')
 
+// Sub-menus (Wan, 20 Oct 2026: "sidebar got subsidebar which autodrop"). Each
+// opens #page/<sub>, which the page reads as its first filter. A sub-menu
+// drops open by itself on the page you are on, and on hover or keyboard focus.
+const byCat = CATEGORIES.map((c) => ({ sub: c.id, en: c.en, bm: c.bm }))
+export const SUBNAV = {
+  faq: byCat, certificates: byCat, guidelines: byCat, vacancies: byCat, documents: byCat, news: byCat,
+  events: EVENT_KINDS.map((k) => ({ sub: k.id, en: k.en, bm: k.bm })),
+  directory: DIRECTORY_SECTIONS,
+}
+// The sub a page shows when its hash has none: Directory always opens on a section.
+const current = (k, sub) => (k === 'directory' ? (sub === 'sertu' || sub === 'lab' ? sub : 'training') : sub || '')
+
 export default function Sidebar({ lang, tab, sub, setTab, counts, mobileOpen, setMobileOpen }) {
-  const open = true
   useEffect(() => { setMobileOpen(false) }, [tab, sub, setMobileOpen])
-  const items = MENU.flatMap(([k, Icon]) => [(
-    <a key={k} href={`#${k}`} onClick={(e) => { e.preventDefault(); setTab(k) }} title={t(lang, k)}
-      className={`flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm font-medium transition ${tab === k ? 'bg-brand-600 text-white' : 'text-ink-600 hover:bg-paper hover:text-ink-900'}`}>
-      <span className="w-6 flex justify-center shrink-0"><Icon {...ICON} size={19} /></span>
-      <span className={`whitespace-nowrap overflow-hidden transition-all ${open || mobileOpen ? 'opacity-100 w-auto' : 'opacity-0 w-0'}`}>{t(lang, k)}{counts && counts[k] != null && <span className="ml-1 text-xs opacity-70">({counts[k]})</span>}</span>
-    </a>),
-    // Directory's sub-sections sit under it, always listed.
-    ...(k === 'directory' ? DIRECTORY_SECTIONS.map((d) => {
-      const on = tab === 'directory' && (sub === 'sertu' || sub === 'lab' ? sub : 'training') === d.sub
-      return (
-        <a key={'dir-' + d.sub} href={`#directory/${d.sub}`} onClick={(e) => { e.preventDefault(); setTab(`directory/${d.sub}`) }}
-          className={`ml-9 flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-[13px] transition ${on ? 'bg-brand-50 text-brand-700 font-semibold' : 'text-ink-600 hover:bg-paper'}`}>
-          <span className="truncate">{d[lang] || d.en}</span>{d.soon && <span className="shrink-0 rounded bg-gold-500 px-1.5 text-[9px] font-semibold uppercase text-white">{t(lang, 'soon')}</span>}
+  const items = MENU.map(([k, Icon]) => {
+    const subs = SUBNAV[k], here = tab === k
+    return (
+      <div key={k} className="group">
+        <a href={`#${k}`} onClick={(e) => { e.preventDefault(); setTab(k) }} title={t(lang, k)} aria-current={here ? 'page' : undefined}
+          className={`flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm font-medium transition ${here ? 'bg-brand-600 text-white' : 'text-ink-600 hover:bg-paper hover:text-ink-900'}`}>
+          <span className="w-6 flex justify-center shrink-0"><Icon {...ICON} size={19} /></span>
+          <span className="flex-1 min-w-0 whitespace-nowrap overflow-hidden text-ellipsis">{t(lang, k === 'certificates' ? 'nav_certs' : k)}{counts && counts[k] != null && <span className="ml-1 text-xs opacity-70">({counts[k]})</span>}</span>
+          {subs && <ChevronDown {...ICON} size={15} className={`shrink-0 transition-transform duration-200 ${here ? 'rotate-180' : 'group-hover:rotate-180 group-focus-within:rotate-180'}`} />}
         </a>
-      )
-    }) : []),
-  ])
+        {subs && (
+          // grid-rows 0fr → 1fr animates to the list's own height, whatever it is.
+          <div className={`grid transition-[grid-template-rows] duration-300 ease-out ${here ? 'grid-rows-[1fr]' : 'grid-rows-[0fr] group-hover:grid-rows-[1fr] group-focus-within:grid-rows-[1fr]'}`}>
+            <div className="overflow-hidden">
+              <div className="ml-6 mt-0.5 mb-1 border-l border-line pl-2 flex flex-col gap-0.5">
+                {k !== 'directory' && <SubLink lang={lang} href={`#${k}`} on={here && !current(k, sub)} onGo={() => setTab(k)} label={t(lang, 'sub_all')} />}
+                {subs.map((d) => <SubLink key={d.sub} lang={lang} href={`#${k}/${d.sub}`} on={here && current(k, sub) === d.sub} onGo={() => setTab(`${k}/${d.sub}`)} label={d[lang] || d.en} soon={d.soon} />)}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  })
   return (
     <>
       <aside className="hidden xl:flex fixed left-0 top-[var(--hh,117px)] bottom-0 z-20 w-[232px] flex-col gap-1 border-r border-line bg-white p-2 overflow-y-auto">
@@ -41,11 +59,20 @@ export default function Sidebar({ lang, tab, sub, setTab, counts, mobileOpen, se
       </aside>
       {mobileOpen && (
         <div className="xl:hidden fixed inset-0 z-40 bg-black/40" onClick={() => setMobileOpen(false)}>
-          <nav className="absolute left-0 top-0 bottom-0 w-64 bg-white p-3 flex flex-col gap-1 shadow-xl" onClick={(e) => e.stopPropagation()}>
+          <nav className="absolute left-0 top-0 bottom-0 w-64 bg-white p-3 flex flex-col gap-1 shadow-xl overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="font-bold px-2 py-2">{t(lang, 'menu')}</div>{items}
           </nav>
         </div>
       )}
     </>
+  )
+}
+
+function SubLink({ lang, href, on, onGo, label, soon }) {
+  return (
+    <a href={href} onClick={(e) => { e.preventDefault(); onGo() }} tabIndex={0}
+      className={`flex items-center gap-2 rounded-md px-2 py-1.5 text-[13px] transition ${on ? 'bg-brand-50 text-brand-700 font-semibold' : 'text-ink-600 hover:bg-paper hover:text-ink-900'}`}>
+      <span className="truncate">{label}</span>{soon && <span className="shrink-0 rounded bg-gold-500 px-1.5 text-[9px] font-semibold uppercase text-white">{t(lang, 'soon')}</span>}
+    </a>
   )
 }

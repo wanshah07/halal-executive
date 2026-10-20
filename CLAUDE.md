@@ -51,13 +51,17 @@
    Events form is read by the AI to fill the form (`eventFromPoster`). An
    expired certificate or document goes to `90 Archive` with status `expired`
    and is never a draft; nor is a finished event (Wan, 15 Oct 2026).
-   **Nothing is deleted automatically except finished events.** Superseded
+   **Nothing is deleted automatically except finished events, expired
+   certificates (rule 18) and closed vacancies (rule 38).** Superseded
    document versions move to `90 Archive`; duplicates are marked, not removed.
    Deleting for good (row + its Drive file) happens only through Admin's
    Delete button, which asks first (`adminDelete` in Code.gs). Finished
    events (a day after they end) and their uploaded posters are removed by
    `purgePastEvents` on the 30-minute timer (Wan, 14 Oct 2026), and so are AI
    draft events taken from a message more than 120 days old (Wan, 15 Oct 2026).
+   "Removed" means deleted for good (Wan, 20 Oct 2026: "permanently deleted"):
+   an uploaded poster goes through `removeDriveFile` (`Drive.Files.remove`,
+   past the Drive bin), never `setTrashed`.
 7. **One repository publishes this site**, this one, to
    `halalexecutive.kkmhalalconsultant.com`. Never connect it to a host that
    serves the repo root (the 05 Sep 2026 Cloudflare Pages exposure in
@@ -277,14 +281,19 @@
     **Image studio removed** (Wan, 19 Oct 2026): no prompt box, no reference picture, no
     `image_generate` route, nothing saved to Drive `60 Generated`. What stays is the
     Admin card (models, tests) and `kiosGenerate`, used only by the image test.
-    The **Video studio** is therefore the only generator left in Admin, and it
-    survives the removal because it shares nothing with the image path: its own
-    routes (`video_generate` / `video_status`), its own model setting, and a clip
-    parked in Drive whatever the (now deleted) "Keep in Drive" box used to say.
+    **Video studio removed too** (Wan, 20 Oct 2026: "remove video studio in
+    admin"): no `video_generate` / `video_status` routes, no `kiosVideo*`, no
+    panel. Admin makes nothing any more; Wanshah 3 reads pictures and makes one
+    test picture.
     **The AI team card is split** (Wan, 19 Oct 2026): the public Overview shows each
     robot with its name and status only (`AiTeam compact`); Admin shows the full card
     (models, last work, response, average, answer rate, base URL) above the AI model
-    pickers.
+    pickers. **In Admin the three robots and both settings panels are ONE box**
+    (Wan, 20 Oct 2026: "put 3 robot into 1 box, read, write, read image"): `AiTeam`,
+    `AiModelAdmin` and `ImageAiAdmin` take `embedded` and sit in one card. Every robot
+    card, Overview included, carries its jobs as chips (`Caps`): Wanshah 1 and 2
+    Read · Write · Read image (the last from the picture test: ✓, ✗ or ?), Wanshah 3
+    Read image · Make image.
     **Every Wanshah is a CSS 3D robot** (`Robot3D.jsx`, `.r3-*` in index.css: boxes
     in `preserve-3d`, no library; see "All three Wanshah are 3D robots" below —
     Wanshah 3 was the only box until 19 Oct 2026). **Response rate
@@ -336,26 +345,6 @@
     Untested against the real gateway until the key is in: the code follows the
     OpenAI image and vision shapes and was run against a fake one (retries
     without `response_format`, follows a returned link).
-    **Wanshah 3 makes VIDEO as well, and the gateway's routes were measured before
-    a line was written** (Wan, 19 Oct 2026: "add this baseline url for image and
-    video generation"). From the Claude session, `POST /v1/videos` and
-    `POST /v1/video/generations` both answered **401 Invalid token** while an
-    invented path answered **404** — so on this gateway a 401 really does mean the
-    route exists, and video is there. What could NOT be seen without the key is
-    which of the two dialects this account speaks and whether the first reply is a
-    job or a finished link, so `kiosVideoStart` tries `/videos` first, falls back
-    to `/video/generations` on 404/405 only, and accepts either answer.
-    **A video cannot be made inside one call and nothing may pretend otherwise:**
-    Apps Script stops a run at six minutes and a render takes longer, so
-    `video_generate` returns a job id at once and `video_status` is asked again
-    until the clip is there (Admin polls every 6 s for 10 minutes, then offers a
-    manual Check rather than polling for ever). **A finished clip is ALWAYS parked
-    in Drive `60 Generated`, even when "Keep in Drive" is off** — unlike a picture,
-    the gateway's own link expires, so handing it back unsaved would return
-    something that stops working. A clip that finishes inside the first call is
-    saved on the spot for the same reason. Over 45 MB it is refused with a message
-    rather than killing the run. Model: Settings `llm_video_KIOS`, else Script
-    Property `KIOS_VIDEO_MODEL`, else the automatic pick from `VID_ID` ids.
     **Poster generation was built and is HELD, because two sessions were given
     opposite instructions inside ten minutes** (19 Oct 2026). Wan asked this
     session to "connect it to all relevant segments such as kanvas", and named
@@ -397,15 +386,6 @@
     `.r3-badge` still carry purple in index.css: that is a default only, the
     component sets the tone's own glass inline. `Robot.jsx` (the flat SVG) is kept
     and still reads the same palette, but `AiTeam` no longer uses it.
-    **Whether Wanshah 3 can make VIDEO at all depends on the same model list, and
-    the measurement above says be careful.** The routes are there (both answered
-    401 to an unauthenticated probe while an invented path answered 404), but a
-    route existing is the gateway's software, not this account's entitlement: the
-    same `/models` that lists no chat or vision model may list no video model
-    either. `kiosVideoModel` therefore refuses with "lists no video model on this
-    gateway" rather than guessing an id, and the studio shows that as the reason.
-    Press Make once: a clear refusal means the account has no video model, not that
-    the wiring is wrong.
 33. **Google being busy must never reach the reader as an error** (Wan, 18 Oct
     2026: "Sheet feed 404", AI model "HTTP 404", Progress and Drafts stuck on
     Loading). Apps Script answers with Google's HTML "Page Not Found" (HTTP 404,
@@ -420,3 +400,53 @@
     `cert_files` and `llm_models` are cached 5 minutes (`fresh` bypasses it;
     saving the AI choice or any Sheet write drops them). Do not add a box to
     Admin that loads something heavy without going through `post()`.
+38. **Halal Vacancies** (Wan, 20 Oct 2026: "add halal vacancy segment, can be
+    uploaded manually in admin or read via whatsapp and telegram, AI can read all
+    details without fail, add disclaimer that we not belong to the job ads").
+    Sheet tab `Vacancies` (columns in `TABS`), page `pages/Vacancies.jsx`,
+    `#vacancies`. **The page always opens with the notice that the Hub is not the
+    employer, not an agent and not connected to any listed company, and that no
+    one should pay to apply.** Keep it.
+    Three ways in: Admin → Halal vacancies (`VacanciesAdmin`; choosing the ad runs
+    `vacancy_from_poster`, which fills the form; several jobs in one ad are added
+    one at a time with Next job), Admin upload kind "Job vacancy", and the group
+    messages (WhatsApp, Telegram). **Every ad is read twice if needed, never once**
+    (`read_vacancy` in process_raw.py, `vacancyFromPoster` in Code.gs, one prompt,
+    `VACANCY_READ` in prompts.py and Code.gs, keep them the same): the words first
+    (message text plus the OCR of its attachments), then, when the job title or every
+    way to apply is still empty, the picture itself through `visionRead`, which fills
+    only the empty fields. A group ad is caught when the batch reply lists it OR its
+    words match `VAC_TEXT` (vacancy, jawatan kosong, hiring, send CV ...), so a
+    missed batch entry does not lose it. Group ads wait in Drafts; Admin rows publish
+    at once. **Rule 3 has one exception here, and only here:** the employer and the
+    apply link, email or phone ARE kept when the ad itself prints them as the way to
+    apply; the number or name of whoever forwarded the ad never is.
+    Same job at the same employer is skipped (`seen_vacancies`). An ad already past
+    its closing date is never listed. **A vacancy is deleted for good a day after
+    `closing_date`, or 60 days after it was added when it has none**
+    (`vacancyOver`, `purgeClosedVacancies` on the 30-minute timer, through
+    `adminDelete`, so its poster goes too). An older Code.gs (no `Vacancies` tab)
+    makes the pipeline skip vacancies rather than fail.
+39. **Sub-menus and boxes** (Wan, 20 Oct 2026). The sidebar's `SUBNAV`
+    (Sidebar.jsx) gives FAQ, Certificates, Guidelines, Vacancies, Documents and
+    News a sub-menu by category, Events one by training type and Directory its
+    three sections. A sub-menu drops open by itself on the page you are on, and
+    on hover or keyboard focus (CSS grid-rows 0fr → 1fr, no JS). Each opens
+    `#page/<sub>`, which the page reads as its first filter (`sub` prop). The
+    sidebar says "Certificates" (`nav_certs`) so the label fits beside its arrow.
+    **Every card has a top box like an event's poster** ("all segments got their
+    own box same like event"): pages with no picture of their own (FAQ,
+    Guidelines, News, a vacancy without a poster) draw `Cover.jsx`, the
+    segment's icon on the category colour with a short label.
+40. **The thinking orb on References** (`components/ui/ai-thiking-orb-and-input.tsx`,
+    Wan, 20 Oct 2026, a pasted shadcn component). The project already had the
+    shadcn layout (`components.json`, `@/` alias, `src/components/ui`), Tailwind 4
+    and TypeScript, so it went in as supplied with four marked changes: a `copy`
+    prop (labels in the page language), the stage measures its own box instead of
+    the window (it sits in a page, not full screen), a larger answer card, and
+    `autoFocus={false}` so a phone does not open its keyboard on arrival. **Only its
+    keyframes came with it**: the `.mo-*` styles at the end of `index.css` were
+    written to the contract its runtime drives (CSS variables on `.mo-actor`,
+    `.mo-status`, `.mo-root`; transforms set by the JS). `tw-animate-css` is not
+    needed and not installed. The orb's card shows a short answer (38 words); the
+    full answer, details and cited pages render in the card below it as before.

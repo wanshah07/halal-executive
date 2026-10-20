@@ -5,6 +5,15 @@ import { t } from '../lib/i18n'
 import { fmtDate } from '../lib/util'
 import { catChip } from '../components/CategoryFilter'
 import { ICON, ChevronDown, ChevronRight } from '../components/Icon'
+import MorphOrb from '@/components/ui/ai-thiking-orb-and-input'
+
+// The orb's words, in the page language (Wan, 20 Oct 2026: the thinking orb on References).
+const ORB_COPY = {
+  en: { placeholder: 'Ask the references…', labels: ['Thinking', 'Searching the references', 'Reading the pages', 'Writing'], done: 'Done', answerTitle: 'In simple words', reset: 'New question', send: 'Ask' },
+  bm: { placeholder: 'Tanya rujukan…', labels: ['Berfikir', 'Mencari dalam rujukan', 'Membaca halaman', 'Menulis'], done: 'Siap', answerTitle: 'Secara ringkas', reset: 'Soalan baharu', send: 'Tanya' },
+}
+// The orb's card holds a short answer; the whole answer, details and pages are below it.
+const short = (s, n = 38) => { const w = String(s || '').split(/\s+/).filter(Boolean); return w.length > n ? w.slice(0, n).join(' ') + '…' : w.join(' ') }
 
 // Ask the references library. The answer comes in plain words first, then
 // the detail, then the exact pages it rests on. Nothing outside the uploaded
@@ -22,6 +31,15 @@ export default function References({ lang, data }) {
   const [err, setErr] = useState('')
   const [open, setOpen] = useState(false)
   const refs = data.references || []
+  // The orb asks and shows the short answer; the full answer fills the card below.
+  async function orbAsk(text) {
+    if (!API_URL) return t(lang, 'not_connected')
+    setQ(text); setErr(''); setAns(null); setOpen(false)
+    try {
+      const a = await askRefs(text, guessLang(text)); setAns(a)
+      return a.none ? (a.message || t(lang, 'refs_none')) : short(a.layman)
+    } catch (e) { setErr(e.message); return e.message }
+  }
   async function ask(question) {
     const text = (question ?? q).trim()
     if (text.length < 3) return
@@ -33,10 +51,7 @@ export default function References({ lang, data }) {
       <div className="min-w-0">
         <h2 className="text-xl font-bold mb-1">{t(lang, 'references')}</h2>
         <p className="text-sm text-ink-600 mb-4">{t(lang, 'refs_sub')}</p>
-        <form onSubmit={(e) => { e.preventDefault(); ask() }} className="flex gap-2 mb-3">
-          <input id="ref-q" className="input" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t(lang, 'refs_ph')} maxLength={600} />
-          <button className="btn-brand shrink-0" disabled={busy || !API_URL}>{busy ? '…' : t(lang, 'ask')}</button>
-        </form>
+        <div className="mb-3"><MorphOrb key={lang} copy={ORB_COPY[lang] || ORB_COPY.en} onSubmit={orbAsk} autoFocus={false} maxLength={600} minThinkMs={2500} /></div>
         <div className="flex flex-wrap gap-2 mb-5">{[...EXAMPLES.bm, ...EXAMPLES.en].map((x) => <button key={x} type="button" className="chip bg-paper border border-line hover:bg-brand-50" onClick={() => ask(x)}>{x}</button>)}</div>
         {!API_URL && <div className="card p-4 text-sm text-ink-600">{t(lang, 'not_connected')}</div>}
         {busy && <div className="card p-5 animate-pulse text-sm text-ink-400">{t(lang, 'refs_thinking')}</div>}

@@ -276,7 +276,9 @@ export function CertAdmin({ lang, data, onChanged }) {
   return (
     <div className="card p-5 mb-4 space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div><h3 className="font-semibold">{t(lang, 'ca_title')} {rows && <span className="text-ink-400 font-normal">({all.length})</span>}</h3><p className="text-xs text-ink-600">{t(lang, 'ca_sub')}</p></div>
+        <div><h3 className="font-semibold">{t(lang, 'ca_title')} {rows && <span className="text-ink-400 font-normal">({all.length})</span>}</h3>
+          {/* The Hub shows the certificates that are not hidden, so the sidebar count is smaller than this one when some are hidden. */}
+          {rows && <p className="text-xs text-ink-600">{t(lang, 'certs_on_site').replace('{p}', all.filter((r) => r.status !== 'hidden' && r.status !== 'draft' && r.status !== 'expired').length).replace('{h}', all.length - all.filter((r) => r.status !== 'hidden' && r.status !== 'draft' && r.status !== 'expired').length)}</p>}<p className="text-xs text-ink-600">{t(lang, 'ca_sub')}</p></div>
         <button type="button" className="btn" disabled={busy} onClick={() => run(true)}>{busy ? t(lang, 'cf_checking') : t(lang, 'cf_check')}</button>
       </div>
       {old && <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3">{t(lang, 'ca_old')}</p>}
@@ -309,6 +311,81 @@ export function CertAdmin({ lang, data, onChanged }) {
             </li>)
         })}
         {rows && !list.length && <li className="py-3 text-sm text-ink-400">{t(lang, 'no_data')}</li>}
+      </ul>
+    </div>
+  )
+}
+
+
+// Halal vacancies (Wan, 20 Oct 2026). Choosing the ad stores it as the poster
+// and the AI reads every detail into the form (vacancy_from_poster: the words,
+// then the picture for anything the words missed). An ad with several jobs
+// fills the form one job at a time. Admin rows publish at once.
+const VAC_EMPTY = { id: '', title: '', title_bm: '', employer: '', location: '', state: '', job_type: '', salary: '', requirements: '', description: '', apply_link: '', apply_email: '', apply_phone: '', closing_date: '', category: 'halal', poster_url: '', poster_file: '' }
+const VAC_FORM = [['title', 'title', 1], ['title_bm', 'title'], ['employer', 'vac_employer'], ['location', 'vac_location'], ['state', 'state'], ['job_type', 'vac_type'], ['salary', 'vac_salary'], ['closing_date', 'vac_closing', 0, 'date'], ['apply_link', 'vac_apply', 0, 'url'], ['apply_email', 'email', 0, 'email'], ['apply_phone', 'vac_apply']]
+export function VacanciesAdmin({ lang, onChanged }) {
+  const [rows, setRows] = useState(null)
+  const [v, setV] = useState(VAC_EMPTY)
+  const [more, setMore] = useState([]) // further jobs read from the same ad
+  const [msg, setMsg] = useState('')
+  const [busy, setBusy] = useState(false)
+  const load = () => adminPost('vacancy_list').then((r) => setRows(r.rows.sort((a, b) => Date.parse(b.created_at || b.updated_at || 0) - Date.parse(a.created_at || a.updated_at || 0))))
+    .catch((er) => setMsg(/unknown action/i.test(er.message) ? t(lang, 'ca_old') : er.message))
+  useEffect(() => { load() }, [])
+  const field = (k, label, req, type) => (
+    <div key={k}><label className="label" htmlFor={'vac-' + k}>{t(lang, label)}{k === 'title' ? ' (EN)' : k === 'title_bm' ? ' (BM)' : k === 'apply_phone' ? ` (${t(lang, 'phone')})` : ''}</label>
+      <input id={'vac-' + k} className="input" required={!!req} type={type || 'text'} value={v[k] || ''} onChange={(x) => setV({ ...v, [k]: x.target.value })} /></div>
+  )
+  async function readAd(f) {
+    if (!f) return
+    if (f.size > POSTER_MAX) { setMsg(t(lang, 'too_big_10')); return }
+    setBusy(true); setMsg(t(lang, 'vac_reading'))
+    try {
+      const r = await adminPost('vacancy_from_poster', { b64: await toB64(f), name: f.name, mime: f.type || '' })
+      const jobs = (r.jobs || []).map((j) => ({ ...VAC_EMPTY, ...j, poster_url: r.poster_url, poster_file: r.poster_file }))
+      // Fields already typed are kept; the AI fills the rest.
+      setV((cur) => { const next = { ...cur, poster_url: r.poster_url, poster_file: r.poster_file }; Object.entries(jobs[0] || {}).forEach(([k, x]) => { if (!cur[k] || cur[k] === VAC_EMPTY[k]) next[k] = x }); return next })
+      setMore(jobs.slice(1))
+      setMsg(r.note || (jobs.length > 1 ? t(lang, 'vac_read_more').replace('{n}', jobs.length) : t(lang, 'vac_read_ok').replace('{n}', jobs.length)))
+    } catch (er) { setMsg(er.message) } finally { setBusy(false); const i = document.getElementById('vac-poster'); if (i) i.value = '' }
+  }
+  async function save(ev) {
+    ev.preventDefault(); setBusy(true); setMsg('')
+    try { await adminPost('vacancy_save', { vacancy: v }); setMsg(t(lang, 'saved')); setV(more[0] || VAC_EMPTY); setMore(more.slice(1)); load(); onChanged && onChanged() }
+    catch (er) { setMsg(er.message) } finally { setBusy(false) }
+  }
+  async function remove(r) { try { if (await deleteForGood(lang, 'Vacancies', r.id, r.title, () => setRows((rs) => (rs || []).filter((x) => x.id !== r.id)))) onChanged && onChanged() } catch (er) { setMsg(er.message); load() } }
+  async function hide(r) {
+    setRows((rs) => (rs || []).map((x) => (x.id === r.id ? { ...x, status: 'hidden' } : x))); dropLocal('Vacancies', r.id)
+    try { await adminPost('review_set', { tab: 'Vacancies', id: r.id, status: 'hidden' }); onChanged && onChanged() } catch (er) { setMsg(er.message); load(); refreshAll() }
+  }
+  return (
+    <div className="card p-5 mb-4 space-y-3">
+      <div><h3 className="font-semibold">{t(lang, 'vac_admin')} {rows && <span className="text-ink-400 font-normal">({rows.length})</span>}</h3><p className="text-xs text-ink-600">{t(lang, 'vac_admin_sub')}</p></div>
+      <form id="vac-form" onSubmit={save} className="grid sm:grid-cols-2 gap-3 scroll-mt-32">
+        <div className="sm:col-span-2"><label className="label" htmlFor="vac-poster">{t(lang, 'vac_read')} ({t(lang, 'poster_formats')})</label><input id="vac-poster" type="file" accept={POSTER_ACCEPT} className="input" disabled={busy} onChange={(x) => readAd(x.target.files[0] || null)} /></div>
+        {VAC_FORM.map(([k, l, req, type]) => field(k, l, req, type))}
+        <div><label className="label" htmlFor="vac-cat">{t(lang, 'category')}</label><select id="vac-cat" className="input" value={v.category || 'halal'} onChange={(x) => setV({ ...v, category: x.target.value })}>{CATEGORIES.map((c) => <option key={c.id} value={c.id}>{c[lang] || c.en}</option>)}</select></div>
+        <div className="sm:col-span-2"><label className="label" htmlFor="vac-req">{t(lang, 'vac_requirements')}</label><textarea id="vac-req" rows={3} className="input" value={v.requirements} onChange={(x) => setV({ ...v, requirements: x.target.value })} /></div>
+        <div className="sm:col-span-2"><label className="label" htmlFor="vac-d">{t(lang, 'description')}</label><textarea id="vac-d" rows={3} className="input" value={v.description} onChange={(x) => setV({ ...v, description: x.target.value })} /></div>
+        {imageUrl(v.poster_url) && <div className="sm:col-span-2 flex items-center gap-3"><img src={imageUrl(v.poster_url)} alt="" className="w-20 h-28 object-cover rounded-lg border border-line" /><span className="text-xs text-ink-400">{t(lang, 'poster')}</span></div>}
+        <div className="sm:col-span-2 flex flex-wrap items-center gap-3">
+          <button className="btn-brand" disabled={busy}>{busy ? '…' : v.id ? t(lang, 'save_changes') : t(lang, 'vac_add')}</button>
+          {!!more.length && <button type="button" className="btn" onClick={() => { setV(more[0]); setMore(more.slice(1)) }}>{t(lang, 'vac_next')} ({more.length})</button>}
+          {(v.id || v.title) && <button type="button" className="btn" onClick={() => { setV(VAC_EMPTY); setMore([]) }}>{t(lang, 'cancel')}</button>}
+          {msg && <span className="text-sm text-ink-600">{msg}</span>}
+        </div>
+      </form>
+      <ul className="divide-y divide-line max-h-[28rem] overflow-auto">
+        {(rows || []).filter((r) => r.status !== 'hidden').map((r) => (
+          <li key={r.id} className="py-2.5 flex flex-col sm:flex-row sm:items-center gap-2 text-sm">
+            <div className="min-w-0 flex-1"><b>{r.title}</b> <span className="text-ink-400">· {r.employer || '—'}{r.closing_date ? ` · ${t(lang, 'vac_closing')} ${fmtDate(r.closing_date, lang)}` : ''} · {r.status || 'published'}{r.source === 'admin' ? '' : ' · AI'}</span></div>
+            <div className="flex gap-2 shrink-0"><button className="btn" onClick={() => {
+              setV({ ...VAC_EMPTY, ...r, closing_date: String(r.closing_date || '').slice(0, 10) }); setMore([])
+              requestAnimationFrame(() => { const f = document.getElementById('vac-form'); if (f) f.scrollIntoView({ behavior: 'smooth', block: 'start' }) })
+            }}>{t(lang, 'edit')}</button>{r.status === 'draft' && <button className="btn-brand" onClick={async () => { try { await adminPost('review_set', { tab: 'Vacancies', id: r.id, status: 'published' }); load(); onChanged && onChanged() } catch (er) { setMsg(er.message) } }}>{t(lang, 'publish')}</button>}<button className="btn" onClick={() => hide(r)}>{t(lang, 'hide')}</button><button className="btn text-red-700" onClick={() => remove(r)}>{t(lang, 'delete')}</button></div>
+          </li>
+        ))}
       </ul>
     </div>
   )

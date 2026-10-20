@@ -48,12 +48,19 @@ var TABS = {
   // the directory of training and service providers (Admin → Directory).
   FHCB:       ['id','no','country','name','kind','address','persons','tel','fax','email','website','logo_url','logo_file','note','source_ref','source_page','effective_date','status','updated_at','created_at','published_at'],
   Directory:  ['id','type','subtype','name','coverage','state','country','address','pic','phone','email','website','website2','accreditation','description','trainers','logo_url','logo_file','source_ref','status','updated_at','created_at','published_at'],
+  // Halal job vacancies (Wan, 20 Oct 2026): from the WhatsApp and Telegram
+  // groups or typed in Admin. Deleted for good a day after closing_date (or 60
+  // days after they were added when the ad gives no closing date).
+  Vacancies:  ['id','title','title_bm','employer','location','state','job_type','salary','requirements','description','apply_link','apply_email','apply_phone','closing_date','category','poster_url','poster_file','status','source','created_at','published_at','updated_at'],
 };
+
+// Fields of a vacancy Admin may type or correct (vacancySave, reviewSave).
+var VACANCY_FIELDS = ['title', 'title_bm', 'employer', 'location', 'state', 'job_type', 'salary', 'requirements', 'description', 'apply_link', 'apply_email', 'apply_phone', 'closing_date', 'category', 'poster_url', 'poster_file'];
 
 // Tabs the pipeline may write with upsert/delete. Settings, Raw and Runs have
 // their own narrow actions, so an ingest token can never rewrite the hero,
 // the notice or the admin list.
-var WRITABLE = ['FAQ', 'Guidelines', 'Documents', 'Certificates', 'Events', 'News', 'References', 'RefChunks', 'FHCB', 'Directory'];
+var WRITABLE = ['FAQ', 'Guidelines', 'Documents', 'Certificates', 'Events', 'News', 'References', 'RefChunks', 'FHCB', 'Directory', 'Vacancies'];
 
 var AI_STATUS_KEY = 'ai_status_v3'; // bump when the status shape changes, so a new deploy never serves the old one
 var PROVIDERS = {
@@ -294,6 +301,7 @@ function publicData() {
     events: noMarks(readTab('Events').filter(function (r) { return r.status !== 'hidden' && r.status !== 'draft' && !eventOver(r, now); })),
     news: readTab('News').filter(function (r) { return !r.expires_at || Date.parse(r.expires_at) > now; }),
     fhcb: readTab('FHCB').filter(function (r) { return r.status !== 'hidden' && r.status !== 'draft'; }),
+    vacancies: noMarks(readTab('Vacancies').filter(function (r) { return r.status !== 'hidden' && r.status !== 'draft' && !vacancyOver(r, now); })),
     directory: readTab('Directory').filter(function (r) { return r.status !== 'hidden' && r.status !== 'draft'; }),
     references: readTab('References').filter(function (r) { return r.status === 'indexed'; }).map(function (r) {
       return { id: r.id, title: r.title, issuer: r.issuer, edition: r.edition, category: r.category, pages: r.pages, summary_en: r.summary_en, summary_bm: r.summary_bm, key_points: r.key_points, indexed_at: r.indexed_at };
@@ -329,6 +337,7 @@ function doPost(e) {
     if (a === 'review_list')  { needAdmin(); return json(reviewList()); }
     if (a === 'ref_list')     { needAdmin(); return json({ ok: true, rows: readTab('References') }); }
     if (a === 'event_list')   { needAdmin(); return json({ ok: true, rows: readTab('Events') }); }
+    if (a === 'vacancy_list') { needAdmin(); return json({ ok: true, rows: readTab('Vacancies') }); }
     if (a === 'raw_list')     return json({ ok: true, rows: rawList(body.status, body.source, Math.min(body.limit || 50, 500), body.attachments) });
     if (a === 'read')         { if (WRITABLE.indexOf(body.tab) < 0 && body.tab !== 'Raw') throw new Error('tab not readable'); return json({ ok: true, rows: readTab(body.tab) }); }
     if (a === 'drive_get')    return json(driveGet(body));
@@ -342,8 +351,6 @@ function doPost(e) {
     if (a === 'img_config')   { needAdmin(); return json(kiosConfig(!!body.fresh)); }
     if (a === 'img_config_save') { needAdmin(); return json(kiosConfigSave(body)); }
     if (a === 'img_test')     { needAdmin(); return json(kiosTest(body)); }
-    if (a === 'video_generate') { needAdmin(); return json(videoGenerate(body)); }    // starts a video job; it is too slow to finish inside one call
-    if (a === 'video_status')   { needAdmin(); return json(videoStatus(body)); }      // asks after that job and parks the clip in Drive when it is ready
     if (a === 'heartbeat')    return json(heartbeat(body));
     if (a === 'progress')     return json(saveProgress(body));
     if (a === 'poster_from_drive') return json(posterFromDrive(body.id));
@@ -372,6 +379,7 @@ function doPost(e) {
       if (a === 'ref_upload')    { needAdmin(); var ru = refUpload(body, sessEmail || 'token'); ru.run = autoRun('references'); return json(ru); }
       if (a === 'ref_set')       { needAdmin(); var rs = refSet(body.id, body.status); if (body.status === 'pending') rs.run = autoRun('references'); return json(rs); }
       if (a === 'event_save')    { needAdmin(); return json(eventSave(body)); }
+      if (a === 'vacancy_save')  { needAdmin(); return json(vacancySave(body)); }
       if (a === 'run_now')       { needAdmin(); return json(runNow(body)); }
       if (a === 'admin_delete')  { needAdmin(); return json(adminDelete(String(body.tab || ''), String(body.id || ''))); }
       if (a === 'poster_upload') { needAdmin(); return json(posterUpload(body)); }
@@ -533,7 +541,8 @@ function purgePastEvents() {
   gone.forEach(function (e) {
     var m = String(e.poster_file || e.poster_url || '').match(/(?:\/d\/|[?&]id=)([\w-]{20,})/);
     if (!m) return;
-    try { var f = DriveApp.getFileById(m[1]); if (f.getParents().hasNext() && f.getParents().next().getId() === posters.getId()) f.setTrashed(true); } catch (er) { /* not ours or already gone */ }
+    // Deleted for good, not put in the Drive bin (Wan, 20 Oct 2026: "permanently deleted").
+    try { var f = DriveApp.getFileById(m[1]); if (f.getParents().hasNext() && f.getParents().next().getId() === posters.getId()) removeDriveFile(m[1]); } catch (er) { /* not ours or already gone */ }
   });
   deleteByIds('Events', gone.map(function (e) { return e.id; }));
   return gone.length;
@@ -545,7 +554,7 @@ function purgePastEvents() {
 // deletes that file permanently too (skips the Drive bin when the Drive
 // service allows it). A reference also loses its passages, so the Q&A forgets
 // it. Asked for by Wan, 14 Oct 2026; the page confirms before calling this.
-var DELETABLE = ['FAQ', 'Guidelines', 'Events', 'Certificates', 'Documents', 'References', 'News', 'FHCB', 'Directory'];
+var DELETABLE = ['FAQ', 'Guidelines', 'Events', 'Certificates', 'Documents', 'References', 'News', 'FHCB', 'Directory', 'Vacancies'];
 function removeDriveFile(id) {
   if (!id) return false;
   try { Drive.Files.remove(id); return true; } catch (e) {
@@ -569,7 +578,7 @@ function adminDelete(tab, id) {
     var owner = readTab('Certificates').filter(function (c) { return String(c.doc_id) === String(row.id); })[0];
     if (owner) throw new Error('This file belongs to the halal certificate ' + (owner.company || owner.id) + '. Delete the certificate instead: that removes its file too.');
     file = row.drive_file_id;
-  } else if (tab === 'Events') {
+  } else if (tab === 'Events' || tab === 'Vacancies') {
     var m = String(row.poster_file || row.poster_url || '').match(/(?:\/d\/|[?&]id=)([\w-]{20,})/);
     if (m) { try { var f = DriveApp.getFileById(m[1]), par = f.getParents(); if (par.hasNext() && par.next().getId() === folder('30 Posters').getId()) file = m[1]; } catch (e) { /* not ours */ } }
   } else if (tab === 'FHCB' || tab === 'Directory') {
@@ -690,6 +699,19 @@ function purgeExpiredCerts() {
   docs.forEach(function (d) { try { adminDelete('Documents', String(d.id)); } catch (e) { console.error('doc purge ' + d.id + ': ' + e); } });
   return gone.length + docs.length;
 }
+// A vacancy is over a day after its closing date, or 60 days after it was
+// added when the ad gives none. It is then deleted for good with its poster,
+// like a finished event (Wan, 20 Oct 2026).
+function vacancyOver(v, now) {
+  if (v.closing_date) return eventOver({ date_start: v.closing_date }, now);
+  var t = Date.parse(v.created_at || v.updated_at || '');
+  return !isNaN(t) && now - t > 60 * 864e5;
+}
+function purgeClosedVacancies() {
+  var now = Date.now(), gone = readTab('Vacancies').filter(function (v) { return vacancyOver(v, now); });
+  gone.forEach(function (v) { try { adminDelete('Vacancies', String(v.id)); } catch (e) { console.error('vacancy purge ' + v.id + ': ' + e); } });
+  return gone.length;
+}
 function tickPipeline() {
   // Deleting rows shifts the rows below, so the purges hold the same lock as
   // every other write.
@@ -698,6 +720,7 @@ function tickPipeline() {
     try {
       try { purgePastEvents(); } catch (e) { console.error('purge: ' + e); }
       try { purgeExpiredCerts(); } catch (e) { console.error('cert purge: ' + e); }
+      try { purgeClosedVacancies(); } catch (e) { console.error('vacancy purge: ' + e); }
     } finally { lock.releaseLock(); }
   }
   try { rawTriage(); } catch (e) { console.error('triage: ' + e); }
@@ -807,7 +830,7 @@ function certFilesCheck(fresh) {
 }
 
 // Drafts written by the pipeline wait here for an admin to publish or hide.
-var REVIEW_TABS = ['FAQ', 'Events', 'Documents', 'Certificates', 'Guidelines'];
+var REVIEW_TABS = ['FAQ', 'Events', 'Documents', 'Certificates', 'Guidelines', 'Vacancies'];
 function reviewList() {
   var out = {};
   // A published answer with points the references do not state yet goes back
@@ -815,7 +838,7 @@ function reviewList() {
   var unconfirmed = readTab('FAQ').filter(function (r) { return r.status === 'published' && String(r.verify_notes || '').length > 2 && String(r.verify_notes) !== '[]'; }).map(function (r) { return r.id; });
   if (unconfirmed.length) updateByIds('FAQ', unconfirmed, { status: 'draft', updated_at: new Date().toISOString() });
   var now = Date.now();
-  REVIEW_TABS.forEach(function (t) { out[t] = readTab(t).filter(function (r) { return r.status === 'draft' && !(t === 'Documents' && String(r.kind).toLowerCase() === 'certificate') && !(t === 'Events' && eventOver(r, now)) && !(t === 'Certificates' && r.valid_to && eventOver({ date_start: r.valid_to }, now)); }); });
+  REVIEW_TABS.forEach(function (t) { out[t] = readTab(t).filter(function (r) { return r.status === 'draft' && !(t === 'Documents' && String(r.kind).toLowerCase() === 'certificate') && !(t === 'Events' && eventOver(r, now)) && !(t === 'Vacancies' && vacancyOver(r, now)) && !(t === 'Certificates' && r.valid_to && eventOver({ date_start: r.valid_to }, now)); }); });
   // Points the pipeline could not confirm from the references library: they
   // were left out of the published answer and wait here until a reference
   // that states them is uploaded.
@@ -851,6 +874,7 @@ var EDITABLE = {
   Documents: ['title', 'kind', 'category'],
   Certificates: ['company', 'cert_no', 'scheme', 'state', 'category', 'valid_from', 'valid_to', 'products', 'issuer', 'legal_authority', 'reg_no', 'issue_date', 'office_address', 'factory_address', 'scope'],
   Guidelines: ['category', 'title', 'title_bm', 'issuer', 'summary_en', 'summary_bm', 'link'],
+  Vacancies: VACANCY_FIELDS,
 };
 function reviewSave(tab, id, fields) {
   var allowed = EDITABLE[tab]; if (!allowed) throw new Error('unknown tab');
@@ -858,7 +882,7 @@ function reviewSave(tab, id, fields) {
   allowed.forEach(function (k) {
     if (fields[k] === undefined) return;
     var v = String(fields[k] == null ? '' : fields[k]).slice(0, k.indexOf('answer') === 0 || k === 'description' || k.indexOf('summary') === 0 || k === 'products' || k === 'scope' ? 6000 : 500);
-    if ((k === 'link' || k === 'poster_url' || k === 'poster_file') && v && !/^https?:\/\//i.test(v)) throw new Error(k + ' must start with https://');
+    if ((k === 'link' || k === 'poster_url' || k === 'poster_file' || k === 'apply_link') && v && !/^https?:\/\//i.test(v)) throw new Error(k + ' must start with https://');
     patch[k] = v;
   });
   if (tab === 'Events' && patch.poster_url) { var pl = posterFromLink(patch.poster_url); if (pl) { patch.poster_url = pl.url; patch.poster_file = pl.file; } }
@@ -1142,7 +1166,7 @@ function manualUpload(b, email) {
       return importChat(txt, b.name || 'chat.txt');
     }
   }
-  var hint = { faq: 'Admin upload: material for the FAQ.', certificate: 'Admin upload: this is a halal certificate. File it as a document of kind certificate.', guideline: 'Admin upload: this is a guideline, circular or standard. Add it to guidelines.', event: 'Admin upload: this is an event or course announcement.' }[b.kind] || 'Admin upload.';
+  var hint = { faq: 'Admin upload: material for the FAQ.', certificate: 'Admin upload: this is a halal certificate. File it as a document of kind certificate.', guideline: 'Admin upload: this is a guideline, circular or standard. Add it to guidelines.', event: 'Admin upload: this is an event or course announcement.', vacancy: 'Admin upload: this is a job vacancy.' }[b.kind] || 'Admin upload.';
   var text = hint + (b.note ? '\n' + String(b.note).slice(0, 4000) : '');
   var row = { source: 'manual', group: 'Admin upload', msg_id: 'up-' + Date.now() + '-' + Math.floor(Math.random() * 1e6), sender_hash: sha256(Utilities.newBlob(email).getBytes()).slice(0, 16), ts: new Date().toISOString(), text: text, attachments: [] };
   if (b.b64) {
@@ -1957,138 +1981,6 @@ function kiosGenerate(b) {
   return { model: model, mime: mime, bytes: bytes.length };
 }
 // =====================================================================
-// Wanshah 3 makes VIDEO too (Wan, 19 Oct 2026: "image and video generation").
-//
-// Two things make this unlike the picture route, and both are structural.
-//
-// 1. A VIDEO CANNOT BE MADE INSIDE ONE CALL. Apps Script stops a run at six
-//    minutes and a gateway takes longer than that to render even a short clip,
-//    so a blocking call would time out every time and leave the credits spent
-//    with nothing to show. The job is therefore STARTED by one action and
-//    COLLECTED by another: videoGenerate returns a job id straight away and
-//    videoStatus is asked again until the file is there. Admin polls; nothing
-//    waits.
-// 2. THE GATEWAY'S EXACT SHAPE IS UNKNOWN UNTIL THE KEY IS IN. Probing
-//    kiosapi.com on 19 Oct 2026 from the Claude session showed BOTH routes
-//    exist (POST /v1/videos and POST /v1/video/generations each answered 401
-//    "Invalid token", while an invented path answered 404, so 401 really does
-//    mean the route is there). Which one this account speaks, and whether it
-//    answers with a job or with a finished link, could not be seen without a
-//    key. So the code tries the newer /videos first, falls back to the older
-//    /video/generations on 404/405, and accepts EITHER a job id or a finished
-//    url in the first reply. That is the same tolerance kiosGenerate already
-//    has for response_format: assume nothing the probe did not prove.
-// =====================================================================
-var VID_ID = /(sora|veo|kling|runway|luma|pika|hailuo|minimax|seedance|wan-?2|cogvideo|ltx|mochi|video)/i;
-var VID_ROUTES = ['/videos', '/video/generations'];
-var VID_JOB = 'kiosvid_';          // Script Property prefix, one per job
-var VID_MAX_BYTES = 45 * 1024 * 1024;  // UrlFetchApp gives up above ~50 MB
-
-// Video models the gateway lists. Kept separate from kiosSplit's image list so
-// a video id never gets offered as the thing that draws a still.
-function kiosVideoModels(ids) { return ids.filter(function (i) { return VID_ID.test(i); }); }
-var VID_PREFER = ['sora', 'veo', 'kling', 'seedance', 'hailuo', 'runway', 'wan2'];
-
-function kiosVideoModel(fresh) {
-  var want = cleanModel((function () { var st = {}; try { st = readSettings(); } catch (e) { /* Sheet busy */ } return st.llm_video_KIOS; })())
-    || String(props().getProperty('KIOS_VIDEO_MODEL') || '').trim();
-  var cache = CacheService.getScriptCache(), ck = 'kios_video|' + want;
-  if (!fresh) { var hit = cache.get(ck); if (hit) return hit; }
-  var ids = kiosIds(), list = kiosVideoModels(ids);
-  var pick = want && ids.indexOf(want) >= 0 ? want : pickBy(list, VID_PREFER);
-  if (!pick) throw new Error('Wanshah 3 lists no video model on this gateway.');
-  cache.put(ck, pick, 21600);
-  return pick;
-}
-
-// Start a job. Returns { job, model, route } and, when the gateway answered
-// with a finished clip in one go, the url as well.
-function kiosVideoStart(b) {
-  var prompt = String(b.prompt || '').trim().slice(0, 1500);
-  if (prompt.length < 3) throw new Error('Describe the video first.');
-  var model = cleanModel(b.model) || kiosVideoModel(false);
-  var payload = { model: model, prompt: prompt };
-  if (b.seconds) payload.seconds = String(b.seconds);
-  if (b.size && b.size !== 'auto') payload.size = b.size;
-  var r = null, used = '';
-  for (var i = 0; i < VID_ROUTES.length; i++) {
-    r = kiosFetch(VID_ROUTES[i], { method: 'post', contentType: 'application/json', payload: JSON.stringify(payload) });
-    used = VID_ROUTES[i];
-    // 404/405 means this account speaks the other dialect; anything else is a
-    // real answer and must not be retried on a second route.
-    if (r.getResponseCode() !== 404 && r.getResponseCode() !== 405) break;
-  }
-  if (r.getResponseCode() >= 300) throw new Error('KIOS video HTTP ' + r.getResponseCode() + ': ' + r.getContentText().slice(0, 200));
-  var j = {}; try { j = JSON.parse(r.getContentText()); } catch (e) { throw new Error('Wanshah 3 sent a reply that is not JSON.'); }
-  var first = (j.data || [])[0] || {};
-  var done = j.url || first.url || (j.output && j.output.url) || '';
-  var id = j.id || j.task_id || j.request_id || first.id || '';
-  if (!id && !done) throw new Error('Wanshah 3 started no job and sent no video.');
-  markProvider('KIOS', model);
-  var job = { id: id, model: model, route: used, started: new Date().toISOString(), prompt: prompt.slice(0, 200) };
-  // Finished inside the first call (a short clip on a fast gateway): park it
-  // NOW. The gateway's own link expires, so returning it unsaved would hand
-  // back something that stops working, which is worse than a slow answer.
-  if (done) { var o = kiosVideoSave(id || '', done, job, b.keep); o.model = model; o.route = used; o.job = id; return o; }
-  if (id) props().setProperty(VID_JOB + id, JSON.stringify(job));
-  return { job: id, model: model, route: used, url: '', status: j.status || 'queued' };
-}
-
-// Ask after a job. While it is still rendering this returns status only; once
-// it is done the clip is pulled once and parked in Drive, because a video is
-// far too big to hand back through the page the way a picture is.
-function kiosVideoPoll(id, keep) {
-  var saved = {}; try { saved = JSON.parse(props().getProperty(VID_JOB + id) || '{}'); } catch (e) { /* unknown job */ }
-  var r = kiosFetch('/videos/' + encodeURIComponent(id), {});
-  if (r.getResponseCode() === 404) r = kiosFetch('/video/generations/' + encodeURIComponent(id), {});
-  if (r.getResponseCode() >= 300) throw new Error('KIOS video HTTP ' + r.getResponseCode() + ': ' + r.getContentText().slice(0, 200));
-  var j = {}; try { j = JSON.parse(r.getContentText()); } catch (e) { throw new Error('Wanshah 3 sent a reply that is not JSON.'); }
-  var status = String(j.status || j.state || '').toLowerCase();
-  var first = (j.data || [])[0] || {};
-  var url = j.url || first.url || (j.output && j.output.url) || (j.result && j.result.url) || '';
-  if (/fail|error|cancel/.test(status)) throw new Error('Wanshah 3 could not make it: ' + String(j.error && j.error.message || j.failure_reason || status).slice(0, 200));
-  if (!url && !/complete|succe|done|finish/.test(status)) return { ok: true, done: false, status: status || 'queued', model: saved.model || '' };
-  return kiosVideoSave(id, url, saved, keep);
-}
-
-// Fetch the finished clip and keep it. Content comes either from a url the job
-// handed back or, in the Sora shape, from the job's own /content route.
-function kiosVideoSave(id, url, saved, keep) {
-  var g = url ? UrlFetchApp.fetch(url, { muteHttpExceptions: true, followRedirects: true })
-               : kiosFetch('/videos/' + encodeURIComponent(id) + '/content', {});
-  if (g.getResponseCode() >= 300) throw new Error('Could not download the video: HTTP ' + g.getResponseCode());
-  var blob = g.getBlob();
-  var bytes = blob.getBytes().length;
-  if (!bytes) throw new Error('The video came back empty.');
-  if (bytes > VID_MAX_BYTES) throw new Error('The video is ' + Math.round(bytes / 1048576) + ' MB, too big for Apps Script to carry. Ask for a shorter clip.');
-  var mime = blob.getContentType() || 'video/mp4';
-  var ext = mime.indexOf('webm') >= 0 ? '.webm' : '.mp4';
-  blob.setName('video-' + Utilities.formatDate(new Date(), 'Asia/Kuala_Lumpur', 'yyyyMMdd-HHmmss') + ext);
-  var out = { ok: true, done: true, status: 'completed', model: saved.model || '', mime: mime, bytes: bytes, source_url: url || '' };
-  // Unlike a picture, a video is ALWAYS parked in Drive even when "keep" is
-  // off: the gateway's own link expires and the page cannot hold the bytes.
-  var f = folder('60 Generated').createFile(blob);
-  out.drive_url = f.getUrl(); out.id = f.getId(); out.kept = !!keep;
-  try { props().deleteProperty(VID_JOB + id); } catch (e) { /* already gone */ }
-  return out;
-}
-
-function videoGenerate(b) {
-  var t0 = Date.now();
-  if (!kiosKey()) return { ok: true, made: false, code: 'NO KEY', why: 'key', error: 'No KIOS_API_KEY in Script Properties.', ms: 0 };
-  try { var v = kiosVideoStart(b); v.ok = true; v.made = true; v.ms = Date.now() - t0; return v; }
-  catch (e) { var f = llmFail(e); return { ok: true, made: false, code: f.code, why: f.why, error: String(e.message || e).slice(0, 240), ms: Date.now() - t0 }; }
-}
-function videoStatus(b) {
-  var t0 = Date.now();
-  if (!kiosKey()) return { ok: true, done: false, code: 'NO KEY', why: 'key', error: 'No KIOS_API_KEY in Script Properties.', ms: 0 };
-  var id = String(b.job || '').trim();
-  if (!id) return { ok: true, done: false, code: 'NO JOB', why: 'other', error: 'No job id.', ms: 0 };
-  try { var v = kiosVideoPoll(id, !!b.keep); v.ms = Date.now() - t0; return v; }
-  catch (e) { var f = llmFail(e); return { ok: true, done: false, failed: true, code: f.code, why: f.why, error: String(e.message || e).slice(0, 240), ms: Date.now() - t0 }; }
-}
-
-// =====================================================================
 // Status for the robot cards and the collectors' live indicator.
 // =====================================================================
 function heartbeat(b) {
@@ -2227,6 +2119,51 @@ function posterPreview(fileId) {
   } catch (e) { return ''; }
 }
 
+// One vacancy ad read for the Admin form (Wan, 20 Oct 2026: "AI can read all
+// details without fail"). The same prompt as pipeline/prompts.py VACANCY_READ.
+// The words first (OCR or the file's text); when they leave the job title or
+// every way to apply empty, the picture itself goes to a picture-reading AI
+// (visionRead), which fills only the fields still empty.
+var VACANCY_READ = "You read one job vacancy advert from Malaysia (a poster, a screenshot or a message) for the halal, food, cosmetic or pharmaceutical industry. Return JSON {\"is_vacancy\":true|false,\"jobs\":[{\"title\":\"\",\"title_bm\":\"\",\"employer\":\"\",\"location\":\"\",\"state\":\"\",\"job_type\":\"\",\"salary\":\"\",\"requirements\":\"\",\"description\":\"\",\"apply_link\":\"\",\"apply_email\":\"\",\"apply_phone\":\"\",\"closing_date\":\"YYYY-MM-DD\",\"category\":\"halal|food|cosmetic\"}]}. One entry per job title in the ad. Copy every detail exactly as printed: employer, location, state (a Malaysian state name), job type (full-time, contract, internship, part-time), salary as printed, requirements as short lines separated by newlines, description (duties and benefits, 2-5 short sentences), how to apply (link, email, phone exactly as printed in the ad), closing date. title in English as printed, title_bm in Bahasa Malaysia (Malaysian, never Indonesian: syarikat not perusahaan, kualiti not kualitas). If the year of the closing date is not printed use the next such date on or after TODAY. Never invent a salary, date, employer or contact: leave the field empty when the ad does not print it.";
+function vacJobs(j) {
+  j = j || {};
+  if (j.is_vacancy === false) return [];
+  var jobs = Object.prototype.toString.call(j.jobs) === '[object Array]' ? j.jobs : (j.title ? [j] : []);
+  return jobs.filter(function (x) { return x && String(x.title || '').trim(); });
+}
+function vacThin(v) { return !v || !String(v.title || '').trim() || !(v.apply_link || v.apply_email || v.apply_phone); }
+function vacancyFromPoster(b) {
+  var p = posterStore(b.b64, b.name, b.mime), f = DriveApp.getFileById(p.id), text = '';
+  try { text = extractText(f, f.getBlob()); } catch (e) { text = ''; }
+  var sys = VACANCY_READ.replace('TODAY', Utilities.formatDate(new Date(), 'Asia/Kuala_Lumpur', 'yyyy-MM-dd'));
+  var out = { ok: true, poster_url: p.url, poster_file: p.file, jobs: [], via: [] };
+  if (String(text).trim()) {
+    try { var r = complete([{ role: 'system', content: sys }, { role: 'user', content: String(text).slice(0, 9000) }], { json: true, max_tokens: 1800, temperature: 0 }); out.jobs = vacJobs(r.json); out.via.push('text:' + r.provider); }
+    catch (e) { out.text_error = String(e.message || e).slice(0, 200); }
+  }
+  if (!out.jobs.length || out.jobs.some(vacThin)) {
+    try {
+      var v = visionRead({ id: p.id, system: sys, prompt: 'Read every job in this vacancy advert.', json: true });
+      var seen = v.read ? vacJobs(v.json) : [];
+      if (seen.length) {
+        out.via.push('picture:' + v.provider);
+        if (!out.jobs.length) out.jobs = seen;
+        else out.jobs.forEach(function (job, i) { var q = seen[i] || seen[0]; VACANCY_FIELDS.forEach(function (k) { if (!String(job[k] || '').trim() && q[k]) job[k] = q[k]; }); });
+      }
+    } catch (e) { out.picture_error = String(e.message || e).slice(0, 200); }
+  }
+  out.jobs = out.jobs.map(function (job) {
+    var o = {};
+    VACANCY_FIELDS.forEach(function (k) { if (job[k] != null && job[k] !== '' && k !== 'poster_url' && k !== 'poster_file') o[k] = String(job[k]).slice(0, k === 'description' || k === 'requirements' ? 4000 : 300); });
+    if (o.apply_link && !/^https?:\/\//i.test(o.apply_link)) delete o.apply_link;
+    if (['halal', 'food', 'cosmetic'].indexOf(o.category) < 0) o.category = 'halal';
+    return o;
+  });
+  out.read = out.jobs.length > 0;
+  if (!out.read) out.note = 'No job could be read from this file; fill the fields by hand.';
+  return out;
+}
+
 function eventFromPoster(b) {
   var p = posterStore(b.b64, b.name, b.mime), f = DriveApp.getFileById(p.id), text = '';
   try { text = extractText(f, f.getBlob()); } catch (e) { text = ''; }
@@ -2256,6 +2193,25 @@ function eventSave(b) {
   upsert('Events', [{ id: id, title: String(e.title).slice(0, 200), title_bm: String(e.title_bm || '').slice(0, 200), date_start: e.date_start || '', date_end: e.date_end || '',
     venue: String(e.venue || '').slice(0, 200), poster_url: clean(poster), link: clean(e.link), description: String(e.description || '').slice(0, 2000),
     status: e.status === 'hidden' ? 'hidden' : 'published', source: 'admin', poster_file: clean(file), kind: ['competency', 'awareness', 'executive', 'auditor', 'other'].indexOf(e.kind) >= 0 ? e.kind : 'other' }]);
+  return { ok: true, id: id };
+}
+
+// ---------- Vacancies (Admin) ----------
+// Typed or corrected in Admin; a row with no id is new. Admin rows publish at
+// once, like an Admin event.
+function vacancySave(b) {
+  var v = b.vacancy || {};
+  if (!String(v.title || '').trim()) throw new Error('Give the vacancy a job title.');
+  var id = v.id || ('VAC-M' + Utilities.formatDate(new Date(), 'Asia/Kuala_Lumpur', 'yyMMddHHmmss'));
+  var poster = v.poster_url || '', file = v.poster_file || '';
+  var fromLink = posterFromLink(poster); if (fromLink) { poster = fromLink.url; file = fromLink.file; }
+  if (b.poster_b64) { var p = posterStore(b.poster_b64, b.poster_name, b.poster_mime); poster = p.url; file = p.file; }
+  var clean = function (u) { u = String(u || '').trim(); return /^https?:\/\//i.test(u) ? u.slice(0, 500) : ''; };
+  var row = { id: id, status: v.status === 'hidden' ? 'hidden' : 'published', source: v.source || 'admin', updated_at: new Date().toISOString() };
+  VACANCY_FIELDS.forEach(function (k) { row[k] = String(v[k] == null ? '' : v[k]).slice(0, k === 'description' || k === 'requirements' ? 4000 : 300); });
+  row.apply_link = clean(row.apply_link); row.poster_url = clean(poster); row.poster_file = clean(file);
+  if (['halal', 'food', 'cosmetic'].indexOf(row.category) < 0) row.category = 'halal';
+  upsert('Vacancies', [row]);
   return { ok: true, id: id };
 }
 

@@ -23,7 +23,7 @@ import time
 import he_api
 import llm_router
 import qr_links
-from prompts import SYSTEM
+from prompts import SYSTEM, VACANCY_READ
 
 # An answer that carries a link or a phone number is never published without
 # review: group messages can be wrong or planted.
@@ -48,11 +48,70 @@ def shape(j):
         j = {"items": j}
     if not isinstance(j, dict):
         j = {}
-    return {k: dicts(j.get(k)) for k in ("items", "documents", "events", "guidelines")}
+    return {k: dicts(j.get(k)) for k in ("items", "documents", "events", "guidelines", "vacancies")}
 
 
 ADMIN_CERT = "Admin upload: this is a halal certificate"
 ADMIN_EVENT = "Admin upload: this is an event"
+ADMIN_VACANCY = "Admin upload: this is a job vacancy"
+VAC_TEXT = re.compile(r"\b(vacanc(y|ies)|jawatan kosong|kekosongan jawatan|we.?re hiring|hiring|now hiring|job opening|career opportunit|apply now|mohon segera|send (your )?(cv|resume)|hantar (cv|resume)|position available)\b", re.I)
+VAC_KEYS = ("title", "title_bm", "employer", "location", "state", "job_type", "salary", "requirements", "description", "apply_link", "apply_email", "apply_phone", "closing_date", "category")
+VISION_FILE = re.compile(r"^image/|application/pdf", re.I)
+
+
+def _jobs(j):
+    j = j if isinstance(j, dict) else {}
+    if j.get("is_vacancy") is False:
+        return []
+    jobs = j.get("jobs") if isinstance(j.get("jobs"), list) else ([j] if j.get("title") else [])
+    return [x for x in jobs if isinstance(x, dict) and str(x.get("title") or "").strip()]
+
+
+def _thin(v):
+    """A reading that missed the job title or every way to apply."""
+    return not v or not str(v.get("title") or "").strip() or not any(str(v.get(k) or "").strip() for k in ("apply_link", "apply_email", "apply_phone"))
+
+
+def read_vacancy(m, rows):
+    """Every job in one vacancy ad, read on its own so no detail is lost (Wan,
+    20 Oct 2026: "AI can read all details without fail"). Two passes: the words
+    (message text plus the OCR of its attachments) through the text AI, then,
+    when that left the job title or the way to apply empty, the poster itself
+    through a picture-reading AI (vision_read). The second pass fills only the
+    fields the first left empty, so a detail read from the words is never
+    overwritten by a guess from the picture."""
+    sys_p = VACANCY_READ.replace("TODAY", dt.date.today().isoformat())
+    text = "\n\n".join([m.get("text") or ""] + [a.get("content") or "" for a in m.get("attachments", [])]).strip()
+    jobs = []
+    if text:
+        try:
+            out = llm_router.complete_json([{"role": "system", "content": sys_p}, {"role": "user", "content": text[:9000]}], max_tokens=1800, temperature=0)
+            jobs = _jobs(out["json"])
+        except llm_router.LLMError as e:
+            print("vacancy not read from text:", e, file=sys.stderr)
+    if jobs and not any(_thin(v) for v in jobs):
+        return jobs
+    r = next((x for x in rows if str(x["id"]) == str(m["id"])), None)
+    for a in json.loads((r or {}).get("attachments") or "[]"):
+        if not a.get("drive_file_id") or not VISION_FILE.search(str(a.get("mime") or "")):
+            continue
+        try:
+            got = he_api.post("vision_read", id=a["drive_file_id"], system=sys_p, prompt="Read every job in this vacancy advert.", json=True)
+        except he_api.ApiError as e:
+            print("vacancy picture not read:", str(e)[:120], file=sys.stderr)
+            continue
+        seen = _jobs(got.get("json")) if got.get("ok") and got.get("read") else []
+        if not seen:
+            continue
+        if not jobs:
+            return seen
+        for i, v in enumerate(jobs):  # fill only what the words left empty
+            p = seen[i] if i < len(seen) else seen[0]
+            for k in VAC_KEYS:
+                if not str(v.get(k) or "").strip() and str(p.get(k) or "").strip():
+                    v[k] = p[k]
+        return jobs
+    return jobs
 
 EVENT_READ = """You read a poster or announcement for an event in Malaysia (seminar, course, training, talk, expo) for halal executives. Return JSON {"is_event":true|false,"title":"","title_bm":"","date_start":"YYYY-MM-DDTHH:MM","date_end":"","venue":"","link":"","description":""}. Dates in Malaysia time as printed; if the year is not printed use the next date on or after TODAY. Time 09:00 if none is printed. title in English, title_bm in Bahasa Malaysia (Malaysian, never Indonesian). description: 2-4 short sentences (organiser, audience, fee and contact as printed). Never invent a date, fee or link."""
 
@@ -251,11 +310,16 @@ def run(sources, max_batches, dry, minutes=20, attachments=None):
     docs = he_api.read("Documents")
     events = he_api.read("Events")
     gls = he_api.read("Guidelines")
-    ids = {"FAQ": Ids("FAQ", faq), "DOC": Ids("DOC", docs), "EV": Ids("EV", events), "GL": Ids("GL", gls)}
+    try:
+        vacs = he_api.read("Vacancies")
+    except he_api.ApiError:  # Code.gs older than the Vacancies tab
+        vacs = None
+    ids = {"FAQ": Ids("FAQ", faq), "DOC": Ids("DOC", docs), "EV": Ids("EV", events), "GL": Ids("GL", gls), "VAC": Ids("VAC", vacs or [])}
     seen_files = {str(d.get("drive_file_id")) for d in docs if d.get("drive_file_id")}
     seen_hashes = {str(d.get("content_hash")) for d in docs if d.get("content_hash")}
     seen_events = {(norm_title(e.get("title")), str(e.get("date_start", ""))[:10]) for e in events}
     seen_guidelines = {norm_title(g.get("title")) for g in gls}
+    seen_vacancies = {(norm_title(v.get("title")), norm_title(v.get("employer"))) for v in (vacs or [])}
     total, batches, provider, model, err = 0, 0, "", "", ""
     stopped = ""
     note(f"started: {left0} messages waiting")
@@ -296,7 +360,7 @@ def run(sources, max_batches, dry, minutes=20, attachments=None):
         def handle():
             nonlocal faq, total
             ts = now()
-            faq_rows, doc_rows, ev_rows, gl_rows = [], [], [], []
+            faq_rows, doc_rows, ev_rows, gl_rows, vac_rows = [], [], [], [], []
             by_id = {f["id"]: f for f in faq}
             for it in j["items"]:
                 if not it.get("relevant") or it.get("category") not in ("halal", "food", "cosmetic") or not it.get("question_en"):
@@ -382,6 +446,38 @@ def run(sources, max_batches, dry, minutes=20, attachments=None):
                                     "status": "published" if src_of.get(str(e.get("source_msg_id"))) == "manual" else "draft",
                                     "source": e.get("source_msg_id", ""), "poster_file": poster_file,
                                     "kind": e.get("kind") if e.get("kind") in ("competency", "awareness", "executive", "auditor") else "other"})
+            # Vacancies: every ad is read again on its own (words, then the
+            # picture), so the batch reply's short version never decides what
+            # a reader sees. An Admin upload marked Vacancy always is one; a
+            # group message is one when the batch listed it or its words say so.
+            if vacs is not None:
+                by_msg = {}
+                for v in j["vacancies"]:
+                    by_msg.setdefault(str(v.get("source_msg_id")), []).append(v)
+                for m in msgs:
+                    words = " ".join([m.get("text") or ""] + [a.get("content") or "" for a in m.get("attachments", [])])
+                    admin = (m.get("text") or "").startswith(ADMIN_VACANCY)
+                    if not (admin or str(m["id"]) in by_msg or VAC_TEXT.search(words)):
+                        continue
+                    jobs = read_vacancy(m, rows) or by_msg.get(str(m["id"]), [])
+                    for v in jobs:
+                        vk = (norm_title(v.get("title")), norm_title(v.get("employer")))
+                        if not v.get("title") or vk in seen_vacancies:
+                            continue  # same job at the same employer already on file
+                        cd = str(v.get("closing_date") or "")[:10]
+                        if _day(cd) and _day(cd) < dt.date.today():
+                            continue  # closed already: never listed
+                        seen_vacancies.add(vk)
+                        poster, poster_file = poster_for(m["id"], rows, dry)
+                        manual = src_of.get(str(m["id"])) == "manual"
+                        row = {k: str(v.get(k) or "")[:4000 if k in ("description", "requirements") else 300] for k in VAC_KEYS}
+                        row.update({"id": ids["VAC"](), "closing_date": cd if _day(cd) else "", "apply_link": safe_url(v.get("apply_link")),
+                                    "category": v.get("category") if v.get("category") in ("halal", "food", "cosmetic") else "halal",
+                                    "poster_url": poster, "poster_file": poster_file,
+                                    # Admin uploads publish at once; group ads wait in Drafts.
+                                    "status": "published" if manual else "draft", "source": str(m["id"]), "updated_at": ts})
+                        vac_rows.append(row)
+                        j["vacancies"].append({"source_msg_id": m["id"]})
             for g in j["guidelines"]:
                 gk = norm_title(g.get("title"))
                 if g.get("title") and gk in seen_guidelines:
@@ -391,18 +487,19 @@ def run(sources, max_batches, dry, minutes=20, attachments=None):
                     gl_rows.append({"id": ids["GL"](), "category": g.get("category", "halal"), "title": g["title"], "title_bm": g.get("title_bm", ""), "summary_en": g.get("summary_en", ""),
                                     "summary_bm": g.get("summary_bm", ""), "link": safe_url(g.get("link")), "issuer": g.get("issuer", ""), "effective_date": "", "updated_at": ts, "status": "draft", "source": g.get("source_msg_id", "")})
 
-            print(f"batch {batches}: {len(rows)} msgs → faq {len(faq_rows)} docs {len(doc_rows)} events {len(ev_rows)} guidelines {len(gl_rows)} via {provider}/{model}")
+            print(f"batch {batches}: {len(rows)} msgs → faq {len(faq_rows)} docs {len(doc_rows)} events {len(ev_rows)} guidelines {len(gl_rows)} vacancies {len(vac_rows)} via {provider}/{model}")
             if dry:
-                print(json.dumps({"faq": faq_rows, "documents": doc_rows, "events": ev_rows, "guidelines": gl_rows}, ensure_ascii=False, indent=1)[:4000])
+                print(json.dumps({"faq": faq_rows, "documents": doc_rows, "events": ev_rows, "guidelines": gl_rows, "vacancies": vac_rows}, ensure_ascii=False, indent=1)[:4000])
                 return "stop"
             if faq_rows: he_api.upsert("FAQ", faq_rows)
             if doc_rows: he_api.upsert("Documents", doc_rows)
             if ev_rows: he_api.upsert("Events", ev_rows)
+            if vac_rows: he_api.upsert("Vacancies", vac_rows)
             # Guidelines mirror the references library only (index_references.py);
             # a guideline mentioned in a group message is not added on its own.
             relevant = {str(x) for it in j["items"] if it.get("relevant") for x in msg_ids(it)}
             # A message that became a document, event or guideline was used too.
-            relevant |= {str(x.get("source_msg_id")) for key in ("documents", "events", "guidelines") for x in j[key] if x.get("source_msg_id")}
+            relevant |= {str(x.get("source_msg_id")) for key in ("documents", "events", "guidelines", "vacancies") for x in j[key] if x.get("source_msg_id")}
             relevant |= {str(d["source_msg_id"]) for d in doc_rows if d.get("source_msg_id")}
             done = [r["id"] for r in rows if r["id"] in relevant]
             skipped = [r["id"] for r in rows if r["id"] not in relevant]

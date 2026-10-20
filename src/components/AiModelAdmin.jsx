@@ -14,7 +14,7 @@ const SEES = 'vision' // third test per AI: can it read a picture?
 const fill = (s, o) => Object.keys(o).reduce((a, k) => a.replace('{' + k + '}', o[k]), s)
 const draftOf = (r) => ({ mode: r.mode || 'auto', strict: !!r.strict, model: { AFIQ: '', MIRELD: '', ...(r.model || {}) }, fast: { AFIQ: '', MIRELD: '', ...(r.fast || {}) }, keys: r.keys || {} })
 
-export default function AiModelAdmin({ lang }) {
+export default function AiModelAdmin({ lang, embedded = false }) {
   const [cfg, setCfg] = useState(null)
   const [models, setModels] = useState(null)
   const [old, setOld] = useState(false)
@@ -74,7 +74,7 @@ export default function AiModelAdmin({ lang }) {
   const why = (w) => { const k = 'ai_why_' + (w || 'other'); const v = t(lang, k); return v === k ? t(lang, 'ai_why_other') : v }
 
   return (
-    <div className="card p-5 mb-4 space-y-4">
+    <div className={embedded ? 'space-y-4 border-t border-line pt-5' : 'card p-5 mb-4 space-y-4'}>
       <div>
         <h3 className="font-semibold flex items-center gap-2"><Sparkles {...ICON} size={17} />{t(lang, 'ai_model_title')}</h3>
         <p className="text-sm text-ink-600 mt-1">{t(lang, 'ai_model_sub')}</p>

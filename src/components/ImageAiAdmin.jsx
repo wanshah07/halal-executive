@@ -1,24 +1,17 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { adminPost } from '../lib/api'
 import { t } from '../lib/i18n'
-import { ICON, Sparkles, ExternalLink } from './Icon'
+import { ICON, Sparkles } from './Icon'
 
 // Admin -> Wanshah 3 (Wan, 19 Oct 2026): the image expert, https://kiosapi.com/v1.
 // It reads pictures (a certificate OCR could not read) and makes pictures. It is
 // not in the text rotation of Wanshah 1 and 2. The key is the Script Property
 // KIOS_API_KEY; this card shows whether it works, lets Wan pick the two models
 // (the one that reads, the one that draws), and tests each with one real call.
-// The Image studio was removed on 19 Oct 2026 (Wan); the Video studio below is
-// the only generator left here, and a clip is always parked in Drive because
-// the gateway's own link expires.
+// The Image studio and the Video studio were removed (Wan, 19 and 20 Oct 2026).
 const fill = (s, o) => Object.keys(o).reduce((a, k) => a.replace('{' + k + '}', o[k]), s)
-const SECS = ['auto', '4', '5', '8', '10']
-// A video is started, not awaited: Apps Script stops a run at six minutes, so
-// the job id comes back at once and the panel asks after it. 10 minutes of
-// asking, then it stops and offers a manual check rather than polling for ever.
-const POLL_MS = 6000, POLL_MAX = 100
 
-export default function ImageAiAdmin({ lang }) {
+export default function ImageAiAdmin({ lang, embedded = false }) {
   const [cfg, setCfg] = useState(null)
   const [pick, setPick] = useState({ vision: '', image: '' })
   const [old, setOld] = useState(false)
@@ -46,42 +39,6 @@ export default function ImageAiAdmin({ lang }) {
     setBusy(true); setMsg('')
     try { const r = await adminPost('img_config_save', pick); setCfg(r); setTests({}); setMsg(t(lang, 'img_saved')); runTest('vision') }
     catch (e) { setMsg(e.message) } finally { setBusy(false) }
-  }
-  // ---- video ----------------------------------------------------------
-  const [vprompt, setVprompt] = useState('')
-  const [vsecs, setVsecs] = useState('auto')
-  const [vid, setVid] = useState(null)      // last reply: job, status, or the finished clip
-  const [vbusy, setVbusy] = useState(false)
-  const stop = useRef(false)
-  useEffect(() => () => { stop.current = true }, [])
-
-  async function pollVideo(job) {
-    for (let i = 0; i < POLL_MAX; i++) {
-      await new Promise((r) => setTimeout(r, POLL_MS))
-      if (stop.current) return
-      let r
-      try { r = await adminPost('video_status', { job }) }
-      catch (e) { r = { done: false, failed: true, code: 'NO REPLY', why: 'network', error: e.message } }
-      if (stop.current) return
-      setVid((v) => ({ ...(v || {}), ...r, job }))
-      if (r.done || r.failed) return
-    }
-    setVid((v) => ({ ...(v || {}), waited: true }))
-  }
-  async function makeVideo() {
-    setVbusy(true); setVid(null); stop.current = false
-    try {
-      const r = await adminPost('video_generate', { prompt: vprompt, seconds: vsecs === 'auto' ? '' : vsecs, model: '' })
-      setVid(r)
-      // Already finished (Code.gs saved it on the spot) -> nothing to wait for.
-      if (r.made !== false && !r.done && r.job) await pollVideo(r.job)
-    } catch (e) { setVid({ made: false, code: 'NO REPLY', why: 'network', error: e.message }) }
-    finally { setVbusy(false) }
-  }
-  async function checkVideo() {
-    if (!vid || !vid.job) return
-    setVbusy(true); stop.current = false
-    try { await pollVideo(vid.job) } finally { setVbusy(false) }
   }
 
   const why = (w) => { const k = 'ai_why_' + (w || 'other'); const v = t(lang, k); return v === k ? t(lang, 'ai_why_other') : v }
@@ -119,7 +76,7 @@ export default function ImageAiAdmin({ lang }) {
   )
 
   return (
-    <div className="card p-5 mb-4 space-y-4">
+    <div className={embedded ? 'space-y-4 border-t border-line pt-5' : 'card p-5 mb-4 space-y-4'}>
       <div>
         <h3 className="font-semibold flex items-center gap-2"><Sparkles {...ICON} size={17} />{t(lang, 'img_title')}</h3>
         <p className="text-sm text-ink-600 mt-1">{t(lang, 'img_sub')}</p>
@@ -159,27 +116,6 @@ export default function ImageAiAdmin({ lang }) {
           {msg && <span className="text-sm text-ink-600">{msg}</span>}
         </div>
 
-        <div className="rounded-xl border border-line p-4 space-y-3">
-          <div><h4 className="font-semibold">{t(lang, 'vid_studio')}</h4><p className="text-xs text-ink-400">{t(lang, 'vid_sub')}</p></div>
-          <textarea className="input min-h-20" value={vprompt} maxLength={1500} onChange={(e) => setVprompt(e.target.value)} placeholder={t(lang, 'vid_prompt_ph')} aria-label={t(lang, 'vid_studio')} />
-          <div className="flex flex-wrap items-center gap-3">
-            <select className="input w-auto" value={vsecs} onChange={(e) => setVsecs(e.target.value)} aria-label={t(lang, 'vid_secs')}>{SECS.map((x) => <option key={x} value={x}>{x === 'auto' ? t(lang, 'vid_secs_auto') : `${x} s`}</option>)}</select>
-            <button type="button" className="btn-brand" disabled={!cfg.key || vbusy || vprompt.trim().length < 3} onClick={makeVideo}>{vbusy ? t(lang, 'vid_starting') : t(lang, 'vid_make')}</button>
-            {vid && vid.job && !vid.done && !vbusy && <button type="button" className="btn" onClick={checkVideo}>{t(lang, 'vid_check')}</button>}
-          </div>
-          {vid && (vid.made === false || vid.failed) && <div className="text-xs space-y-0.5"><span className="chip bg-red-100 text-red-700"><span aria-hidden="true">●</span>&nbsp;{t(lang, 'ai_inactive')} · {vid.code || 'ERROR'}</span> <span className="text-red-700">{why(vid.why)}</span>{vid.error && <div className="font-mono text-[11px] text-ink-400 break-words">{vid.error}</div>}</div>}
-          {vid && vid.made !== false && !vid.failed && !vid.done && <p className="text-sm text-ink-600">{vid.waited ? t(lang, 'vid_gaveup') : t(lang, 'vid_working')}{vid.job ? <span className="text-ink-400"> · {t(lang, 'vid_job')} {vid.job}</span> : null}</p>}
-          {vid && vid.done && (
-            <div className="space-y-2">
-              {/* the gateway link plays while this session lasts; Drive is the durable copy */}
-              {vid.source_url && <video controls preload="metadata" className="max-h-96 w-full rounded-lg border border-line bg-black" src={vid.source_url} />}
-              <div className="flex flex-wrap items-center gap-3 text-sm">
-                <span className="text-ink-400">{vid.model}{vid.bytes ? ` · ${Math.round(vid.bytes / 1048576 * 10) / 10} MB` : ''}</span>
-                {vid.drive_url && <a className="btn px-2.5 py-1" href={vid.drive_url} target="_blank" rel="noreferrer">{t(lang, 'vid_in_drive')} <ExternalLink {...ICON} size={14} /></a>}
-              </div>
-            </div>
-          )}
-        </div>
       </>)}
       {!cfg && !old && msg && <div className="text-sm text-red-700 flex flex-wrap items-center gap-3">{msg}<button type="button" className="btn" onClick={() => { setMsg(''); load() }}>{t(lang, 'cf_check')}</button></div>}
     </div>

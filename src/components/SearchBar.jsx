@@ -7,7 +7,7 @@ export default function SearchBar({ lang, data, onOpen, onAsk }) {
   const [q, setQ] = useState('')
   const index = useMemo(() => buildIndex(data), [data])
   const hits = useMemo(() => search(index, q, 12), [index, q])
-  const label = { faq: t(lang, 'faq'), guidelines: t(lang, 'guidelines'), documents: t(lang, 'documents'), events: t(lang, 'events'), news: t(lang, 'news') }
+  const label = { faq: t(lang, 'faq'), guidelines: t(lang, 'guidelines'), documents: t(lang, 'documents'), events: t(lang, 'events'), news: t(lang, 'news'), vacancies: t(lang, 'vacancies'), certificates: t(lang, 'certificates'), references: t(lang, 'references') }
   return (
     <div className="relative">
       <div className="flex gap-2">
