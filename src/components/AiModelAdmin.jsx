@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { adminPost } from '../lib/api'
 import { t } from '../lib/i18n'
-import { ICON, Sparkles, Check } from './Icon'
+import { ICON, Sparkles } from './Icon'
 
 // Admin -> AI model (Wan, 18 Oct 2026): which AI answers and which model each
 // one uses. Saved in the Sheet's Settings (llm_*), read by Code.gs for site
@@ -75,73 +75,47 @@ export default function AiModelAdmin({ lang, embedded = false }) {
 
   return (
     <div className={embedded ? 'space-y-4 border-t border-line pt-5' : 'card p-5 mb-4 space-y-4'}>
-      <div>
-        <h3 className="font-semibold flex items-center gap-2"><Sparkles {...ICON} size={17} />{t(lang, 'ai_model_title')}</h3>
-        <p className="text-sm text-ink-600 mt-1">{t(lang, 'ai_model_sub')}</p>
-      </div>
+      <h3 className="font-semibold flex items-center gap-2"><Sparkles {...ICON} size={17} />{t(lang, 'ai_model_title')}</h3>
       {old && <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3">{t(lang, 'ai_old_backend')}</p>}
       {!cfg && !old && !msg && <div className="text-sm text-ink-400">{t(lang, 'loading')}</div>}
       {cfg && (<>
-        <fieldset>
-          <legend className="label">{t(lang, 'ai_mode_label')}</legend>
-          <div className="grid sm:grid-cols-3 gap-2">
-            {['auto', ...ORDER].map((m) => {
-              const off = m !== 'auto' && !cfg.keys[m]
-              return (
-                <label key={m} className={`flex items-start gap-2 rounded-lg border p-3 text-sm cursor-pointer ${cfg.mode === m ? 'border-brand-500 bg-brand-50' : 'border-line'} ${off ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                  <input type="radio" name="ai-mode" className="mt-0.5" checked={cfg.mode === m} disabled={off} onChange={() => setCfg({ ...cfg, mode: m })} />
-                  <span><b>{m === 'auto' ? t(lang, 'ai_mode_auto') : `${NAMES[m]} (${m})`}</b>
-                    <span className="block text-xs text-ink-600">{m === 'auto' ? t(lang, 'ai_mode_auto_sub') : off ? t(lang, 'ai_no_key') : t(lang, 'ai_mode_pin_sub')}</span></span>
-                </label>
-              )
-            })}
-          </div>
-          <label className={`mt-2 flex items-center gap-2 text-sm ${cfg.mode === 'auto' ? 'opacity-50' : ''}`}>
-            <input type="checkbox" checked={cfg.mode !== 'auto' && cfg.strict} disabled={cfg.mode === 'auto'} onChange={(e) => setCfg({ ...cfg, strict: e.target.checked })} />
-            {t(lang, 'ai_strict')}
+        {/* One line (Wan, 20 Oct 2026: "squeeze AI model into 1 line"): who answers,
+            each AI's two models, Save. The tests fold underneath. */}
+        <div className="flex flex-wrap items-end gap-2">
+          <div><label className="label" htmlFor="ai-mode">{t(lang, 'ai_mode_label')}</label>
+            <select id="ai-mode" className="input w-auto" value={cfg.mode} onChange={(e) => setCfg({ ...cfg, mode: e.target.value })}>
+              {['auto', ...ORDER].map((m) => <option key={m} value={m} disabled={m !== 'auto' && !cfg.keys[m]}>{m === 'auto' ? t(lang, 'ai_mode_auto') : NAMES[m]}</option>)}
+            </select></div>
+          {ORDER.map((n) => FIELDS.map(([f, label]) => (
+            <div key={n + f} className="min-w-0"><label className="label" htmlFor={`ai-${n}-${f}`}>{NAMES[n]} · {t(lang, f === 'fast' ? 'ai_short_fast' : 'ai_short_main')}</label>
+              <select id={`ai-${n}-${f}`} className="input w-auto max-w-[13rem]" value={cfg[f][n]} disabled={!cfg.keys[n]} onChange={(e) => { setCfg({ ...cfg, [f]: { ...cfg[f], [n]: e.target.value } }); setTest(n + ':' + f, null) }}>{options(n, f)}</select></div>
+          )))}
+          <label className={`flex items-center gap-1.5 text-xs pb-2.5 ${cfg.mode === 'auto' ? 'opacity-50' : ''}`} title={t(lang, 'ai_strict')}>
+            <input type="checkbox" checked={cfg.mode !== 'auto' && cfg.strict} disabled={cfg.mode === 'auto'} onChange={(e) => setCfg({ ...cfg, strict: e.target.checked })} />{t(lang, 'ai_only_this')}
           </label>
-        </fieldset>
-
-        <div className="grid lg:grid-cols-2 gap-3">
-          {ORDER.map((n) => {
-            const p = models && models.providers && models.providers[n]
-            return (
-              <div key={n} className="rounded-xl border border-line p-4 space-y-3">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-bold">{NAMES[n]}</span><span className="text-xs text-ink-400">{n}</span>
-                  {cfg.mode === n && <span className="chip bg-brand-100 text-brand-700">{t(lang, 'ai_chosen')}</span>}
-                  {!cfg.keys[n] && <span className="chip bg-red-100 text-red-700">{t(lang, 'ai_inactive')} · NO KEY</span>}
-                  {cfg.keys[n] && p && (p.reachable
-                    ? <span className="chip bg-brand-100 text-brand-700"><span aria-hidden="true">●</span>&nbsp;{t(lang, 'ai_gateway')} {t(lang, 'ai_active')} · HTTP {p.code || 200}</span>
-                    : <span className="chip bg-red-100 text-red-700"><span aria-hidden="true">●</span>&nbsp;{t(lang, 'ai_gateway')} {t(lang, 'ai_inactive')} · {p.code || 'ERROR'}</span>)}
-                </div>
-                {cfg.keys[n] && p && !p.reachable && <p className="text-xs text-red-700">{why(p.why)}</p>}
-                {FIELDS.map(([f, label]) => (
+          <button type="button" className="btn-brand" disabled={busy} onClick={save}>{busy ? '…' : t(lang, 'ai_save')}</button>
+        </div>
+        <div className="flex flex-wrap gap-2 text-xs">
+          {ORDER.map((n) => { const p = models && models.providers && models.providers[n]; return (
+            <span key={n} className={`chip ${!cfg.keys[n] || (p && !p.reachable) ? 'bg-red-100 text-red-700' : 'bg-brand-100 text-brand-700'}`}><span aria-hidden="true">●</span>&nbsp;{NAMES[n]} · {!cfg.keys[n] ? 'NO KEY' : p ? (p.reachable ? `${t(lang, 'ai_active')} · HTTP ${p.code || 200}` : `${t(lang, 'ai_inactive')} · ${p.code || 'ERROR'}`) : '…'}</span>) })}
+          {msg && <span className="text-sm text-ink-600">{msg}</span>}
+        </div>
+        <details className="rounded-lg border border-line p-3">
+          <summary className="cursor-pointer text-sm font-medium">{t(lang, 'ai_tests')}</summary>
+          <div className="mt-3 grid lg:grid-cols-2 gap-3">
+            {ORDER.map((n) => (
+              <div key={n} className="space-y-2">
+                <b className="text-sm">{NAMES[n]}</b>
+                {[...FIELDS.map(([f]) => f), SEES].map((f) => (
                   <div key={f}>
-                    <label className="label" htmlFor={`ai-${n}-${f}`}>{t(lang, label)}</label>
-                    <div className="flex gap-2">
-                      <select id={`ai-${n}-${f}`} className="input" value={cfg[f][n]} disabled={!cfg.keys[n]} onChange={(e) => { setCfg({ ...cfg, [f]: { ...cfg[f], [n]: e.target.value } }); setTest(n + ':' + f, null) }}>{options(n, f)}</select>
-                      <button type="button" className="btn shrink-0" disabled={!cfg.keys[n] || (tests[n + ':' + f] || {}).run} onClick={() => runTest(n, f, cfg[f][n])}>{t(lang, 'ai_test')}</button>
-                    </div>
+                    <button type="button" className="btn px-2.5 py-1 text-xs" disabled={!cfg.keys[n] || (tests[n + ':' + f] || {}).run} onClick={() => runTest(n, f, f === SEES ? cfg.model[n] : cfg[f][n])}>{f === SEES ? t(lang, 'ai_vision_btn') : `${t(lang, 'ai_test')} · ${t(lang, f === 'fast' ? 'ai_short_fast' : 'ai_short_main')}`}</button>
                     <div className="mt-1 min-h-4">{result(n, f)}</div>
                   </div>
                 ))}
-                <div>
-                  <div className="label">{t(lang, 'ai_vision_test')}</div>
-                  <div className="flex gap-2 items-center">
-                    <button type="button" className="btn shrink-0" disabled={!cfg.keys[n] || (tests[n + ':' + SEES] || {}).run} onClick={() => runTest(n, SEES, cfg.model[n])}>{t(lang, 'ai_vision_btn')}</button>
-                    <span className="text-xs text-ink-400">{t(lang, 'ai_vision_hint')}</span>
-                  </div>
-                  <div className="mt-1 min-h-4">{result(n, SEES)}</div>
-                </div>
               </div>
-            )
-          })}
-        </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <button type="button" className="btn-brand" disabled={busy} onClick={save}>{busy ? '…' : t(lang, 'ai_save')}</button>
-          {msg && <span className="text-sm text-ink-600">{msg}</span>}
-        </div>
+            ))}
+          </div>
+        </details>
       </>)}
       {!cfg && !old && msg && <div className="text-sm text-red-700 flex flex-wrap items-center gap-3">{msg}<button type="button" className="btn" onClick={() => { setMsg(''); load() }}>{t(lang, 'cf_check')}</button></div>}
     </div>

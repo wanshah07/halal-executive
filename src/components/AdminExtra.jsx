@@ -171,6 +171,17 @@ const MANAGED = [['FAQ', 'faq', (r, lang) => (lang === 'bm' ? r.question_bm || r
   ['News', 'news', (r) => r.title]]
 // A halal certificate's own Documents row is managed under Halal Certificates.
 const listOf = (data, key) => (key === 'documents' ? filedDocs(data && data.documents) : (data && data[key]) || [])
+// What Edit and + Add show per segment (Wan, 20 Oct 2026: "allow admin to
+// delete/edit/add manually"). Documents need a file, so they are added through
+// "Add screenshots or files"; here they can be edited and deleted.
+const D = (k, l, long) => [k, l, long]
+const EDIT_FIELDS = {
+  Guidelines: [D('category', 'Category (halal / food / cosmetic)'), D('title', 'Title'), D('title_bm', 'Tajuk (BM)'), D('issuer', 'Issuer'), D('effective_date', 'Effective date (YYYY-MM-DD)'), D('link', 'Link (https://…)'), D('summary_en', 'Summary (EN)', 1), D('summary_bm', 'Ringkasan (BM)', 1)],
+  Certificates: [D('company', 'Company certified'), D('cert_no', 'Certificate number'), D('scheme', 'Scheme'), D('category', 'Category (halal / food / cosmetic)'), D('state', 'State'), D('issuer', 'Issuing body'), D('reg_no', 'Registration no.'), D('issue_date', 'Issue date (YYYY-MM-DD)'), D('valid_from', 'Valid from (YYYY-MM-DD)'), D('valid_to', 'Valid until (YYYY-MM-DD)'), D('legal_authority', 'Legal authority', 1), D('office_address', 'Office address', 1), D('factory_address', 'Factory address', 1), D('products', 'Products (separate with ;)', 1), D('scope', 'Scope', 1)],
+  Documents: [D('title', 'Title'), D('kind', 'Kind (circular / form / guideline / standard / other)'), D('category', 'Category (halal / food / cosmetic)')],
+  News: [D('category', 'Category (halal / food / cosmetic)'), D('title', 'Title'), D('source', 'Source'), D('url', 'Link (https://…)'), D('summary_en', 'Summary (EN)', 1), D('summary_bm', 'Ringkasan (BM)', 1)],
+}
+const CAN_ADD = ['FAQ', 'Guidelines', 'Certificates', 'News']
 const FAQ_EDIT = [['category', 'Category'], ['subcategory', 'Subcategory'], ['question_en', 'Question (EN)'], ['question_bm', 'Soalan (BM)'], ['answer_formal_en', 'Answer, formal (EN)', 1], ['answer_layman_en', 'Answer, simple (EN)', 1], ['answer_formal_bm', 'Jawapan, rasmi (BM)', 1], ['answer_layman_bm', 'Jawapan, mudah (BM)', 1]]
 export function ContentManager({ lang, data, onChanged }) {
   const [tab, setTab] = useState('FAQ')
@@ -180,7 +191,10 @@ export function ContentManager({ lang, data, onChanged }) {
   const [edit, setEdit] = useState(null) // { id, fields }
   const [busy, setBusy] = useState(false)
   const [patched, setPatched] = useState({})
-  const startEdit = (r) => { const f = {}; FAQ_EDIT.forEach(([k]) => { f[k] = r[k] ?? '' }); setEdit({ id: r.id, fields: f }); setMsg('') }
+  const FIELDS_OF = (tb) => (tb === 'FAQ' ? FAQ_EDIT : EDIT_FIELDS[tb] || [])
+  const day = (v) => (/^\d{4}-\d{2}-\d{2}T/.test(String(v || '')) ? new Date(Date.parse(v) + 8 * 3600e3).toISOString().slice(0, 10) : v ?? '')
+  const startEdit = (r) => { const f = {}; FIELDS_OF(tab).forEach(([k]) => { f[k] = /date|valid_/.test(k) ? day(r[k]) : r[k] ?? '' }); setEdit({ id: r.id, fields: f }); setMsg('') }
+  const startAdd = () => { const f = {}; FIELDS_OF(tab).forEach(([k]) => { f[k] = k === 'category' ? 'halal' : '' }); setEdit({ id: '__new', fields: f }); setMsg('') }
   async function rephrase(r) {
     if (!edit || edit.id !== r.id) startEdit(r)
     setBusy(true); setMsg(t(lang, 'rephrasing'))
@@ -189,9 +203,27 @@ export function ContentManager({ lang, data, onChanged }) {
   }
   async function saveEdit() {
     setBusy(true); setMsg('')
-    try { await adminPost('review_save', { tab: 'FAQ', id: edit.id, fields: edit.fields }); setPatched((p) => ({ ...p, [edit.id]: edit.fields })); setEdit(null); setMsg(t(lang, 'saved')); onChanged && onChanged() }
-    catch (e) { setMsg(e.message) } finally { setBusy(false) }
+    try {
+      if (edit.id === '__new') await adminPost('content_add', { tab, fields: edit.fields })
+      else { await adminPost('review_save', { tab, id: edit.id, fields: edit.fields }); setPatched((p) => ({ ...p, [edit.id]: edit.fields })) }
+      setEdit(null); setMsg(t(lang, 'saved')); onChanged && onChanged()
+    } catch (e) { setMsg(e.message) } finally { setBusy(false) }
   }
+  const editor = (r) => (
+    <div className="mt-2 grid sm:grid-cols-2 gap-3 border border-brand-200 rounded-lg p-3 bg-brand-50/40">
+      {FIELDS_OF(tab).map(([k, lab, long]) => (
+        <div key={k} className={long ? 'sm:col-span-2' : ''}><label className="label" htmlFor={`cm-${r.id}-${k}`}>{lab}</label>
+          {long ? <textarea id={`cm-${r.id}-${k}`} className="input" rows={4} value={edit.fields[k]} onChange={(e) => setEdit({ ...edit, fields: { ...edit.fields, [k]: e.target.value } })} />
+            : <input id={`cm-${r.id}-${k}`} className="input" value={edit.fields[k]} onChange={(e) => setEdit({ ...edit, fields: { ...edit.fields, [k]: e.target.value } })} />}
+        </div>
+      ))}
+      <div className="sm:col-span-2 flex flex-wrap gap-2">
+        <button className="btn-brand" disabled={busy} onClick={saveEdit}>{busy ? '…' : r.id === '__new' ? t(lang, 'add_row') : t(lang, 'save_changes')}</button>
+        {tab === 'FAQ' && r.id !== '__new' && <button className="btn" disabled={busy} onClick={() => rephrase(r)}><Sparkles {...ICON} size={15} />{t(lang, 'rephrase')}</button>}
+        <button className="btn" onClick={() => setEdit(null)}>{t(lang, 'cancel')}</button>
+      </div>
+    </div>
+  )
   const [, key, label] = MANAGED.find((m) => m[0] === tab)
   const rows = listOf(data, key).map((r) => patched[r.id] ? { ...r, ...patched[r.id] } : r).filter((r) => !gone[tab + r.id] && (!q || JSON.stringify(r).toLowerCase().includes(q.toLowerCase())))
   async function del(r) {
@@ -206,7 +238,9 @@ export function ContentManager({ lang, data, onChanged }) {
           {MANAGED.map(([k, d]) => <option key={k} value={k}>{t(lang, d)} ({listOf(data, d).length})</option>)}
         </select>
         <input className="input flex-1 min-w-40" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t(lang, 'search_ph')} />
+        {CAN_ADD.includes(tab) && <button className="btn-brand" onClick={startAdd}>+ {t(lang, 'add_row')}</button>}
       </div>
+      {edit && edit.id === '__new' && editor({ id: '__new' })}
       {tab === 'FAQ' && <p className="text-xs text-ink-400">{t(lang, 'manage_faq_hint')}</p>}
       {msg && <div className="text-sm text-ink-600">{msg}</div>}
       <ul className="divide-y divide-line max-h-[32rem] overflow-auto">
@@ -214,25 +248,11 @@ export function ContentManager({ lang, data, onChanged }) {
           <li key={r.id} className="py-2 text-sm">
             <div className="flex items-start gap-3">
               <div className="min-w-0 flex-1"><span className="text-ink-400 text-xs mr-2">{r.id}</span>{label(r, lang)}<Stamps r={r} lang={lang} className="text-xs text-ink-400" /></div>
-              {tab === 'FAQ' && <button className="btn px-2.5 shrink-0" onClick={() => startEdit(r)}>{t(lang, 'edit')}</button>}
+              <button className="btn px-2.5 shrink-0" onClick={() => startEdit(r)}>{t(lang, 'edit')}</button>
               {tab === 'FAQ' && <button className="btn px-2.5 shrink-0" disabled={busy} onClick={() => rephrase(r)}><Sparkles {...ICON} size={15} />{t(lang, 'rephrase')}</button>}
               <button className="btn text-red-700 shrink-0" onClick={() => del(r)}>{t(lang, 'delete')}</button>
             </div>
-            {edit && edit.id === r.id && (
-              <div className="mt-2 grid sm:grid-cols-2 gap-3 border border-brand-200 rounded-lg p-3 bg-brand-50/40">
-                {FAQ_EDIT.map(([k, lab, long]) => (
-                  <div key={k} className={long ? 'sm:col-span-2' : ''}><label className="label" htmlFor={`cm-${r.id}-${k}`}>{lab}</label>
-                    {long ? <textarea id={`cm-${r.id}-${k}`} className="input" rows={4} value={edit.fields[k]} onChange={(e) => setEdit({ ...edit, fields: { ...edit.fields, [k]: e.target.value } })} />
-                      : <input id={`cm-${r.id}-${k}`} className="input" value={edit.fields[k]} onChange={(e) => setEdit({ ...edit, fields: { ...edit.fields, [k]: e.target.value } })} />}
-                  </div>
-                ))}
-                <div className="sm:col-span-2 flex flex-wrap gap-2">
-                  <button className="btn-brand" disabled={busy} onClick={saveEdit}>{busy ? '…' : t(lang, 'save_changes')}</button>
-                  <button className="btn" disabled={busy} onClick={() => rephrase(r)}><Sparkles {...ICON} size={15} />{t(lang, 'rephrase')}</button>
-                  <button className="btn" onClick={() => setEdit(null)}>{t(lang, 'cancel')}</button>
-                </div>
-              </div>
-            )}
+            {edit && edit.id === r.id && editor(r)}
           </li>
         ))}
         {!rows.length && <li className="py-2 text-sm text-ink-400">{t(lang, 'no_data')}</li>}

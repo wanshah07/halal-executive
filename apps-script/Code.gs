@@ -382,6 +382,7 @@ function doPost(e) {
       if (a === 'ref_set')       { needAdmin(); var rs = refSet(body.id, body.status); if (body.status === 'pending') rs.run = autoRun('references'); return json(rs); }
       if (a === 'event_save')    { needAdmin(); return json(eventSave(body)); }
       if (a === 'vacancy_save')  { needAdmin(); return json(vacancySave(body)); }
+      if (a === 'content_add')   { needAdmin(); return json(contentAdd(body.tab, body.fields || {})); }
       if (a === 'run_now')       { needAdmin(); return json(runNow(body)); }
       if (a === 'admin_delete')  { needAdmin(); return json(adminDelete(String(body.tab || ''), String(body.id || ''))); }
       if (a === 'poster_upload') { needAdmin(); return json(posterUpload(body)); }
@@ -881,16 +882,35 @@ var EDITABLE = {
   Events: ['title', 'title_bm', 'date_start', 'date_end', 'venue', 'link', 'description', 'poster_url', 'poster_file', 'kind'],
   Documents: ['title', 'kind', 'category'],
   Certificates: ['company', 'cert_no', 'scheme', 'state', 'category', 'valid_from', 'valid_to', 'products', 'issuer', 'legal_authority', 'reg_no', 'issue_date', 'office_address', 'factory_address', 'scope'],
-  Guidelines: ['category', 'title', 'title_bm', 'issuer', 'summary_en', 'summary_bm', 'link'],
+  Guidelines: ['category', 'title', 'title_bm', 'issuer', 'summary_en', 'summary_bm', 'link', 'effective_date'],
+  News: ['category', 'title', 'url', 'source', 'summary_en', 'summary_bm'],
   Vacancies: VACANCY_FIELDS,
 };
+// Admin adds a row by hand (Wan, 20 Oct 2026: "allow admin to delete/edit/add
+// manually"): the same fields Edit allows, published at once.
+var ADD_PREFIX = { FAQ: 'FAQ-M', Guidelines: 'GL-M', Certificates: 'CERT-M', News: 'NEWS-M' };
+function contentAdd(tab, fields) {
+  if (!ADD_PREFIX[tab]) throw new Error('Cannot add to ' + tab);
+  var id = ADD_PREFIX[tab] + Utilities.formatDate(new Date(), 'Asia/Kuala_Lumpur', 'yyMMddHHmmss'), now = new Date();
+  var first = tab === 'FAQ' ? 'question_en' : tab === 'Certificates' ? 'company' : 'title';
+  if (!String(fields[first] || '').trim()) throw new Error('Fill in ' + first.replace('_', ' ') + ' first.');
+  var row = { id: id, status: tab === 'Certificates' ? 'current' : 'published' };
+  if (TABS[tab].indexOf('created_at') >= 0) row.created_at = now.toISOString();
+  if (TABS[tab].indexOf('updated_at') >= 0) row.updated_at = now.toISOString();
+  if (tab === 'Guidelines') row.source = 'admin';
+  if (tab === 'News') { row.fetched_at = now.toISOString(); row.published_at = now.toISOString(); row.expires_at = new Date(now.getTime() + 72 * 3600e3).toISOString(); delete row.status; }
+  if (tab === 'FAQ') { row.confidence = 'high'; row.model = 'admin'; }
+  upsert(tab, [row]);
+  reviewSave(tab, id, fields);
+  return { ok: true, id: id };
+}
 function reviewSave(tab, id, fields) {
   var allowed = EDITABLE[tab]; if (!allowed) throw new Error('unknown tab');
   var patch = {};
   allowed.forEach(function (k) {
     if (fields[k] === undefined) return;
     var v = String(fields[k] == null ? '' : fields[k]).slice(0, k.indexOf('answer') === 0 || k === 'description' || k.indexOf('summary') === 0 || k === 'products' || k === 'scope' ? 6000 : 500);
-    if ((k === 'link' || k === 'poster_url' || k === 'poster_file' || k === 'apply_link') && v && !/^https?:\/\//i.test(v)) throw new Error(k + ' must start with https://');
+    if ((k === 'link' || k === 'url' || k === 'poster_url' || k === 'poster_file' || k === 'apply_link') && v && !/^https?:\/\//i.test(v)) throw new Error(k + ' must start with https://');
     patch[k] = v;
   });
   if (tab === 'Events' && patch.poster_url) { var pl = posterFromLink(patch.poster_url); if (pl) { patch.poster_url = pl.url; patch.poster_file = pl.file; } }
@@ -1936,11 +1956,17 @@ function visionOrder() {
   // Fixed priority (Wan, 20 Oct 2026: "wanshah 1 > wanshah 3 > wanshah 2"): Wanshah 1
   // first, Wanshah 3 when Wanshah 1 cannot, Wanshah 2 last. A text AI is still only
   // used once it has passed the picture test (canSee).
+  // Then (Wan, 20 Oct 2026: "the faster rate robot will automatically function")
+  // the fastest of them by their measured response (ping history, avg_ms) goes
+  // first; that fixed order only breaks a tie or stands in while nothing is measured.
   var order = [], has = function (n) { return PROVIDERS[n] && props().getProperty(PROVIDERS[n].keyProp) && canSee(n); };
   if (has('AFIQ')) order.push('AFIQ');
   if (kiosKey()) { try { if (kiosModel('vision', false)) order.push('KIOS'); } catch (e) { /* gateway lists no reading model */ } }
   if (has('MIRELD')) order.push('MIRELD');
-  return order;
+  var speed = function (n) { try { var st = pingStats(JSON.parse(props().getProperty('ping_' + n) || '[]')); return st.avg_ms == null || st.ok_rate < 80 ? 9e9 : st.avg_ms; } catch (e) { return 9e9; } };
+  var rank = {}; order.forEach(function (n, i) { rank[n] = i; });
+  var ms = {}; order.forEach(function (n) { ms[n] = speed(n); });
+  return order.sort(function (a, b) { return ms[a] - ms[b] || rank[a] - rank[b]; });
 }
 // A text AI is only asked to read a picture once it has shown it can: the test
 // picture's number must come back (llmTest vision). A model that cannot see makes

@@ -476,8 +476,9 @@ def run(sources, max_batches, dry, minutes=20, attachments=None):
                         print(f"event {str(e.get('title'))[:60]!r}: QR link replaces the text link {safe_url(e.get('link'))}")
                     ev_rows.append({"id": ids["EV"](), "title": e["title"], "title_bm": e.get("title_bm", ""), "date_start": e.get("date_start", ""), "date_end": e.get("date_end", ""), "venue": e.get("venue", ""),
                                     "poster_url": poster, "link": qr or safe_url(e.get("link")), "description": e.get("description", ""),
-                                    # Admin uploads publish at once; group posters wait in Drafts.
-                                    "status": "published" if src_of.get(str(e.get("source_msg_id"))) == "manual" else "draft",
+                                    # Group posters publish at once too (Wan, 20 Oct 2026: "all poster ...
+                                    # from telegram and whatsapp is always automatic appear in the website").
+                                    "status": "published",
                                     "source": e.get("source_msg_id", ""), "poster_file": poster_file,
                                     "kind": e.get("kind") if e.get("kind") in ("competency", "awareness", "executive", "auditor") else "other"})
             # Vacancies: every ad is read again on its own (words, then the
@@ -547,7 +548,11 @@ def run(sources, max_batches, dry, minutes=20, attachments=None):
         except Exception as e:  # one bad batch never stops the queue
             print(f"batch {batches} could not be filed ({type(e).__name__}: {e}); its rows are marked error and the run goes on", file=sys.stderr)
             if not dry:
-                he_api.raw_update([r["id"] for r in rows], status="error", processed_at=now(), notes=f"{type(e).__name__}: {e}"[:200])
+                # Tried again on the next runs, up to 3 times, before it is left as an
+                # error (Wan, 20 Oct 2026: "the 3 robots must fix all immediately").
+                for r in rows:
+                    tries = int((re.search(r"try (\d)", str(r.get("notes") or "")) or [0, 0])[1]) + 1
+                    he_api.raw_update([r["id"]], status="new" if tries < 3 else "error", processed_at=now(), notes=f"try {tries}: {type(e).__name__}: {e}"[:200])
             total += len(rows)
         note(f"batch {batches}: {total} messages read this run")
 

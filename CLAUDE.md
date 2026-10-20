@@ -439,7 +439,8 @@
     (Sidebar.jsx) gives FAQ, Certificates, Guidelines, Vacancies, Documents and
     News a sub-menu by category, Events one by training type and Directory its
     three sections. A sub-menu drops open by itself on the page you are on, and
-    on hover or keyboard focus (CSS grid-rows 0fr → 1fr, no JS). Each opens
+    on click: the page you are on starts open, clicking its title (or any item's
+    arrow) folds and unfolds it (Wan, 20 Oct 2026: hover-only could not be closed). Each opens
     `#page/<sub>`, which the page reads as its first filter (`sub` prop). The
     sidebar says "Certificates" (`nav_certs`) so the label fits beside its arrow.
     **Every card has a top box like an event's poster** ("all segments got their
@@ -484,3 +485,19 @@
     "We are hiring", takes the employer from the logo or email domain when no name
     is printed, and gives requirements as lines (a list is joined, not printed as
     `['...']`).
+43. **Admin adds, edits and deletes by hand** (Wan, 20 Oct 2026). Admin →
+    Manage: + Add (FAQ, Guidelines, Certificates, News; `content_add`, published
+    at once), Edit (those four and Documents; `review_save` with `EDITABLE`) and
+    Delete for good. Events and Vacancies have their own forms; FHCB and Directory
+    their own boxes. A document needs a file, so it is added through the upload box.
+44. **Group posters and certificates appear by themselves, and the robots retry**
+    (Wan, 20 Oct 2026: "always automatic appear in the website without fail, the 3
+    robots must fix all immediately, the faster rate robot will automatically
+    function"). Events and vacancies from WhatsApp and Telegram publish at once
+    (certificates already did). A batch that fails is put back as `new` and tried
+    on the next runs, up to 3 times (`try N` in Raw notes), before it stays `error`.
+    Picture reading goes to the FASTEST reader by measured response (`visionOrder`
+    sorts by `avg_ms`, an AI under 80% answer rate goes last), with W1 > W3 > W2
+    only as the tie-break; text answers were already chosen by speed (rule 2).
+    Admin → AI model is one line (who answers, each AI's main and quick model,
+    Only this one, Save); the tests fold underneath.

@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { t } from '../lib/i18n'
 import { DIRECTORY_SECTIONS, CATEGORIES, EVENT_KINDS } from '../lib/config'
 import { ICON, LayoutDashboard, MessagesSquare, Library, BadgeCheck, ScrollText, FolderOpen, CalendarDays, Newspaper, Settings, Globe, MapPinned, Briefcase, ChevronDown } from './Icon'
@@ -16,7 +16,8 @@ export const MENU = NAV.filter(([k]) => k !== 'admin')
 
 // Sub-menus (Wan, 20 Oct 2026: "sidebar got subsidebar which autodrop"). Each
 // opens #page/<sub>, which the page reads as its first filter. A sub-menu
-// drops open by itself on the page you are on, and on hover or keyboard focus.
+// drops open by itself on the page you are on; clicking the title of the page
+// you are on, or its arrow, folds and unfolds it (Wan, 20 Oct 2026).
 const byCat = CATEGORIES.map((c) => ({ sub: c.id, en: c.en, bm: c.bm }))
 export const SUBNAV = {
   faq: byCat, certificates: byCat, guidelines: byCat, vacancies: byCat, documents: byCat, news: byCat,
@@ -28,19 +29,25 @@ const current = (k, sub) => (k === 'directory' ? (sub === 'sertu' || sub === 'la
 
 export default function Sidebar({ lang, tab, sub, setTab, counts, mobileOpen, setMobileOpen }) {
   useEffect(() => { setMobileOpen(false) }, [tab, sub, setMobileOpen])
+  // Which sub-menus are open: the page you are on starts open, any can be toggled.
+  const [unfold, setUnfold] = useState({})
+  useEffect(() => { setUnfold((u) => ({ ...u, [tab]: true })) }, [tab])
   const items = MENU.map(([k, Icon]) => {
-    const subs = SUBNAV[k], here = tab === k
+    const subs = SUBNAV[k], here = tab === k, open = !!subs && (unfold[k] ?? here)
+    const toggle = () => setUnfold((u) => ({ ...u, [k]: !open }))
     return (
       <div key={k} className="group">
-        <a href={`#${k}`} onClick={(e) => { e.preventDefault(); setTab(k) }} title={t(lang, k)} aria-current={here ? 'page' : undefined}
-          className={`flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm font-medium transition ${here ? 'bg-brand-600 text-white' : 'text-ink-600 hover:bg-paper hover:text-ink-900'}`}>
+        <div className={`flex items-center rounded-lg transition ${here ? 'bg-brand-600 text-white' : 'text-ink-600 hover:bg-paper hover:text-ink-900'}`}>
+        <a href={`#${k}`} onClick={(e) => { e.preventDefault(); if (here && subs) toggle(); else { setTab(k); setUnfold((u) => ({ ...u, [k]: true })) } }} title={t(lang, k)} aria-current={here ? 'page' : undefined} aria-expanded={subs ? open : undefined}
+          className="flex flex-1 min-w-0 items-center gap-3 px-2.5 py-2 text-sm font-medium">
           <span className="w-6 flex justify-center shrink-0"><Icon {...ICON} size={19} /></span>
           <span className="flex-1 min-w-0 whitespace-nowrap overflow-hidden text-ellipsis">{t(lang, k === 'certificates' ? 'nav_certs' : k)}{counts && counts[k] != null && <span className="ml-1 text-xs opacity-70">({counts[k]})</span>}</span>
-          {subs && <ChevronDown {...ICON} size={15} className={`shrink-0 transition-transform duration-200 ${here ? 'rotate-180' : 'group-hover:rotate-180 group-focus-within:rotate-180'}`} />}
         </a>
+        {subs && <button type="button" onClick={toggle} aria-label={t(lang, k)} aria-expanded={open} className="shrink-0 px-2 py-2 rounded-lg"><ChevronDown {...ICON} size={15} className={`transition-transform duration-200 ${open ? 'rotate-180' : ''}`} /></button>}
+        </div>
         {subs && (
           // grid-rows 0fr → 1fr animates to the list's own height, whatever it is.
-          <div className={`grid transition-[grid-template-rows] duration-300 ease-out ${here ? 'grid-rows-[1fr]' : 'grid-rows-[0fr] group-hover:grid-rows-[1fr] group-focus-within:grid-rows-[1fr]'}`}>
+          <div className={`grid transition-[grid-template-rows] duration-300 ease-out ${open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}>
             <div className="overflow-hidden">
               <div className="ml-6 mt-0.5 mb-1 border-l border-line pl-2 flex flex-col gap-0.5">
                 {k !== 'directory' && <SubLink lang={lang} href={`#${k}`} on={here && !current(k, sub)} onGo={() => setTab(k)} label={t(lang, 'sub_all')} />}
