@@ -7,7 +7,13 @@ import "../../index.css";
 // passed in (copy prop, so the labels follow the page language), the stage
 // measures its own box instead of the whole window (it sits inside a page, not
 // full screen), the answer card is larger, and autoFocus can be turned off so a
-// phone does not open its keyboard on arrival. Everything else is as supplied.
+// phone does not open its keyboard on arrival. 20 Oct 2026, second round (Wan:
+// "only dark answer ... full answer, not cut off, remove dark background ... orb
+// functioning and rotate motion in mobile"): the dots are dark green for a light
+// page, the orb turns gently while idle (and at a quarter speed under reduced
+// motion, like the globe), and the answer card grows to its whole content, with
+// `extra` (details and sources) inside it, so there is one answer place.
+// Everything else is as supplied.
 const COPY_DEFAULT = {
   placeholder: "Ask anything…",
   labels: ["Thinking", "Searching", "Analyzing", "Composing"],
@@ -26,6 +32,9 @@ type Phase = "idle" | "launch" | "assemble" | "think" | "resolve" | "condense" |
 export interface MorphOrbProps {
   onSubmit?: (text: string) => Promise<string> | string;
   copy?: Partial<Copy>;
+  extra?: React.ReactNode;
+  /** Ask this question now, as if typed and sent (a suggested question was clicked). */
+  seed?: { text: string; n: number } | null;
   autoFocus?: boolean;
   maxLength?: number;
   minThinkMs?: number;
@@ -109,6 +118,7 @@ const T = (ch: string, from: number, to: number, t0: number, t1: number, ease: E
 interface Geo { pw: number; cw: number; H: number; dir: number }
 
 const launchTracks = (g: Geo): Track[] => [
+  T("orb.alpha", 0.6, 0, 0, 260, E.out),
   T("w", g.pw, g.pw - 12, 0, 100, E.out),
   T("oInput", 1, 0, 0, 160, E.in),
   T("inScale", 1, 0.6, 0, 160, E.in),
@@ -268,7 +278,8 @@ const COLORS: string[] = (() => {
   const out: string[] = [];
   for (let gi = 0; gi <= G_STEPS; gi++) {
     const g = gi / G_STEPS;
-    const r = Math.round(lerp(235, 52, g)), gg = Math.round(lerp(235, 211, g)), b = Math.round(lerp(235, 153, g));
+    // From the page's dark green (#0b4a2c) to bright green: readable on a light page.
+    const r = Math.round(lerp(11, 16, g)), gg = Math.round(lerp(74, 185, g)), b = Math.round(lerp(44, 129, g));
     for (let ai = 0; ai <= A_STEPS; ai++) out.push(`rgba(${r},${gg},${b},${(ai / A_STEPS).toFixed(3)})`);
   }
   return out;
@@ -401,7 +412,7 @@ function createOrb(canvas: HTMLCanvasElement, getSpeed: () => number, isReduced:
   const frame = (now: number) => {
     raf = 0;
     if (dead) return;
-    const dt = isReduced() ? 0 : Math.max(0, Math.min(0.05, (now - last) / 1000)) * getSpeed();
+    const dt = Math.max(0, Math.min(0.05, (now - last) / 1000)) * getSpeed() * (isReduced() ? 0.25 : 1);
     last = now;
     draw(dt);
     if (P.alpha > 0.002) raf = requestAnimationFrame(frame);
@@ -436,6 +447,7 @@ interface UI {
   focusAnswer(): void;
 }
 interface Env {
+  getAnswer: () => HTMLElement | null;
   root: HTMLElement; mover: HTMLElement; actor: HTMLElement; form: HTMLElement; ghosts: HTMLElement[];
   canvas: HTMLCanvasElement; pulse: HTMLElement; status: HTMLElement;
   getBody: () => HTMLElement | null;
@@ -574,9 +586,24 @@ function createRuntime(env: Env): Runtime {
   const set = (ch: string, v: number) => { vals[ch] = v; dirty.add(ch); };
   const flush = () => { dirty.forEach((ch) => CH[ch]?.(vals[ch])); dirty.clear(); };
   const setNow = (ch: string, v: number) => { vals[ch] = v; CH[ch]?.(v); };
+  // The orb waits above the pill, turning slowly, so the stage is never empty.
+  const IDLE_A = 0.6;
   const resetChannels = () => {
     setNow("w", geo.pw);
     for (const ch of Object.keys(INIT)) setNow(ch, INIT[ch]);
+    orb.P.k = 1; orb.P.spin = 0.5; setNow("orb.alpha", IDLE_A);
+    root.style.height = "";
+    root.style.setProperty("--home", geo.H.toFixed(1) + "px");
+  };
+  // The card grows to its whole answer; the stage grows with it so nothing is cut.
+  const growToAnswer = async (go: (t: Track[]) => Promise<void>, from: number) => {
+    const el = env.getAnswer();
+    if (!el) return;
+    const need = Math.ceil(el.scrollHeight) + 2;
+    if (need <= from + 1) return;
+    const base = root.clientHeight;
+    root.style.height = Math.max(base, Math.ceil((need / 2 + 16) / 0.46), Math.ceil((need / 2 + 80) / 0.54)) + "px";
+    await go([T("h", from, need, 0, 450, E.out)]);
   };
 
   /* ── timeline engine ── */
@@ -630,10 +657,12 @@ function createRuntime(env: Env): Runtime {
       if (!reduced) {
         await go(launchTracks(geo));
         setNow("r", ORB_D / 2);
+        orb.reset();
         env.ui.setPhase("assemble");
         await go(ASSEMBLE);
       } else {
         await go(R_OUT);
+        orb.reset();
         setNow("u", 1); setNow("w", ORB_D); setNow("h", ORB_D); setNow("r", ORB_D / 2);
         setNow("sTy", 0); setNow("orb.k", 1); setNow("orb.spin", 0);
         env.ui.setPhase("assemble");
@@ -672,6 +701,7 @@ function createRuntime(env: Env): Runtime {
         wStagger = n > 1 ? Math.min(45, 280 / (n - 1)) : 0;
         env.ui.setAnswer(body);
         await go(unfoldTracks(geo, (n - 1) * wStagger + wDur));
+        await growToAnswer(go, CARD_H);
       } else {
         env.ui.setPhase("resolve");
         env.ui.swapLabel(COPY.done);
@@ -690,6 +720,7 @@ function createRuntime(env: Env): Runtime {
         await go(R_GREEN_OUT);
         setNow("w", geo.cw); setNow("h", CARD_H); setNow("r", 20); setNow("dotS", 1);
         await go(rCardIn(wDur));
+        await growToAnswer(go, CARD_H);
       }
 
       env.ui.setPhase("answered");
@@ -769,8 +800,8 @@ function createRuntime(env: Env): Runtime {
       if (busy) return false;
       busy = true;
       geo.pw = pillW(root); geo.cw = cardW(root); geo.H = homeDy(root); // snapshot once, never read layout in frames
+      root.style.setProperty("--home", geo.H.toFixed(1) + "px");
       geo.dir = -geo.dir;
-      orb.reset();
       setNow("u", 0);
       const ac = child();
       current = ac;
@@ -793,6 +824,7 @@ function createRuntime(env: Env): Runtime {
       geo.pw = pillW(root); geo.cw = cardW(root); geo.H = homeDy(root);
       setNow("w", geo.pw);
       setNow("u", 0);
+      root.style.setProperty("--home", geo.H.toFixed(1) + "px");
     },
     busy: () => busy,
     destroy() {
@@ -851,6 +883,7 @@ export default function MorphOrb(props: MorphOrbProps) {
     const rt = createRuntime({
       root, mover, actor, form, ghosts, canvas, pulse, status,
       getBody: () => bodyRef.current,
+      getAnswer: () => answerRef.current,
       getSpeed: () => speedRef.current,
       isReduced: () => reducedRef.current,
       ui: {
@@ -951,6 +984,15 @@ export default function MorphOrb(props: MorphOrbProps) {
     window.requestAnimationFrame(() => { rt.start(text, makeCfg()); });
   };
 
+  useEffect(() => {
+    const sd = props.seed, rt = rtRef.current;
+    if (!sd || !sd.text || !rt) return;
+    if (rt.busy()) rt.hard();
+    lastTextRef.current = sd.text;
+    setValue(sd.text);
+    window.requestAnimationFrame(() => { rt.start(sd.text, makeCfg()); });
+  }, [props.seed && props.seed.n]);
+
   const ready = value.trim().length > 0;
   const words = answer.split(/\s+/).filter(Boolean);
 
@@ -1025,6 +1067,7 @@ export default function MorphOrb(props: MorphOrbProps) {
                 </React.Fragment>
               ))}
             </p>
+            {answer && props.extra ? <div className="mo-a-extra">{props.extra}</div> : null}
           </div>
         </div>
       </div>

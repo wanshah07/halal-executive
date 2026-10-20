@@ -32,9 +32,10 @@ export default function AiTeam({ lang, runs, sample, compact = false, embedded =
   }, [])
   const fromRuns = (n) => (runs || []).find((r) => r.provider === n)
   const cards = [
+    // Shown in priority order (Wan, 20 Oct 2026): Wanshah 1, then 3, then 2.
     { key: 'AFIQ', tone: 'afiq', name: 'Wanshah 1' },
-    { key: 'MIRELD', tone: 'mireld', name: 'Wanshah 2' },
     { key: 'KIOS', tone: 'kios', name: 'Wanshah 3', image: true },
+    { key: 'MIRELD', tone: 'mireld', name: 'Wanshah 2' },
   ].filter((c) => c.key !== 'KIOS' || !st || !st.providers || st.providers.KIOS) // an older Code.gs has no Wanshah 3 yet
   return (
     <div className={embedded ? '' : 'card p-5 mb-4'}>

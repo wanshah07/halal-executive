@@ -1933,10 +1933,13 @@ function visionRead(b) {
 // picture's words and shapes read back correctly), the pinned or faster first.
 function llmAnyKey() { return Object.keys(PROVIDERS).some(function (n) { return !!props().getProperty(PROVIDERS[n].keyProp); }); }
 function visionOrder() {
-  var order = [];
+  // Fixed priority (Wan, 20 Oct 2026: "wanshah 1 > wanshah 3 > wanshah 2"): Wanshah 1
+  // first, Wanshah 3 when Wanshah 1 cannot, Wanshah 2 last. A text AI is still only
+  // used once it has passed the picture test (canSee).
+  var order = [], has = function (n) { return PROVIDERS[n] && props().getProperty(PROVIDERS[n].keyProp) && canSee(n); };
+  if (has('AFIQ')) order.push('AFIQ');
   if (kiosKey()) { try { if (kiosModel('vision', false)) order.push('KIOS'); } catch (e) { /* gateway lists no reading model */ } }
-  var first = null; try { first = nextProvider(); } catch (e) { first = null; }
-  [first, first === 'MIRELD' ? 'AFIQ' : 'MIRELD'].forEach(function (n) { if (n && PROVIDERS[n] && props().getProperty(PROVIDERS[n].keyProp) && order.indexOf(n) < 0 && canSee(n)) order.push(n); });
+  if (has('MIRELD')) order.push('MIRELD');
   return order;
 }
 // A text AI is only asked to read a picture once it has shown it can: the test
@@ -2132,7 +2135,7 @@ function posterPreview(fileId) {
 // The words first (OCR or the file's text); when they leave the job title or
 // every way to apply empty, the picture itself goes to a picture-reading AI
 // (visionRead), which fills only the fields still empty.
-var VACANCY_READ = "You read one job vacancy advert from Malaysia (a poster, a screenshot or a message) for the halal, food, cosmetic or pharmaceutical industry. Return JSON {\"is_vacancy\":true|false,\"jobs\":[{\"title\":\"\",\"title_bm\":\"\",\"employer\":\"\",\"location\":\"\",\"state\":\"\",\"job_type\":\"\",\"salary\":\"\",\"requirements\":\"\",\"description\":\"\",\"apply_link\":\"\",\"apply_email\":\"\",\"apply_phone\":\"\",\"closing_date\":\"YYYY-MM-DD\",\"category\":\"halal|food|cosmetic\"}]}. One entry per job title in the ad. Copy every detail exactly as printed: employer, location, state (a Malaysian state name), job type (full-time, contract, internship, part-time), salary as printed, requirements as short lines separated by newlines, description (duties and benefits, 2-5 short sentences), how to apply (link, email, phone exactly as printed in the ad), closing date. title in English as printed, title_bm in Bahasa Malaysia (Malaysian, never Indonesian: syarikat not perusahaan, kualiti not kualitas). If the year of the closing date is not printed use the next such date on or after TODAY. Never invent a salary, date, employer or contact: leave the field empty when the ad does not print it.";
+var VACANCY_READ = "You read one job vacancy advert from Malaysia (a poster, a screenshot or a message) for the halal, food, cosmetic or pharmaceutical industry. Return JSON {\"is_vacancy\":true|false,\"jobs\":[{\"title\":\"\",\"title_bm\":\"\",\"employer\":\"\",\"location\":\"\",\"state\":\"\",\"job_type\":\"\",\"salary\":\"\",\"requirements\":\"\",\"description\":\"\",\"apply_link\":\"\",\"apply_email\":\"\",\"apply_phone\":\"\",\"closing_date\":\"YYYY-MM-DD\",\"category\":\"halal|food|cosmetic\"}]}. One entry per job title in the ad. title is the POSITION (e.g. Pembantu Pentadbir / Administrative Assistant, Halal Executive), never a slogan such as \"We are hiring\", \"Jawatan Kosong\" or \"Join our team\"; when the position is printed only in Malay, put it in title_bm and its English name in title. employer: the company name as printed, else the name in its logo, else the company named by the email domain or website (e.g. info@bluezone.com.my -> Bluezone); empty only when none of these is there. requirements: a plain string, one requirement per line, never a list. Copy every detail exactly as printed: employer, location, state (a Malaysian state name), job type (full-time, contract, internship, part-time), salary as printed, requirements as short lines separated by newlines, description (duties and benefits, 2-5 short sentences), how to apply (link, email, phone exactly as printed in the ad), closing date. title in English as printed, title_bm in Bahasa Malaysia (Malaysian, never Indonesian: syarikat not perusahaan, kualiti not kualitas). If the year of the closing date is not printed use the next such date on or after TODAY. Never invent a salary, date, employer or contact: leave the field empty when the ad does not print it.";
 function vacJobs(j) {
   j = j || {};
   if (j.is_vacancy === false) return [];
@@ -2162,7 +2165,7 @@ function vacancyFromPoster(b) {
   }
   out.jobs = out.jobs.map(function (job) {
     var o = {};
-    VACANCY_FIELDS.forEach(function (k) { if (job[k] != null && job[k] !== '' && k !== 'poster_url' && k !== 'poster_file') o[k] = String(job[k]).slice(0, k === 'description' || k === 'requirements' ? 4000 : 300); });
+    VACANCY_FIELDS.forEach(function (k) { if (Object.prototype.toString.call(job[k]) === '[object Array]') job[k] = job[k].join('\n'); if (job[k] != null && job[k] !== '' && k !== 'poster_url' && k !== 'poster_file') o[k] = String(job[k]).slice(0, k === 'description' || k === 'requirements' ? 4000 : 300); });
     if (o.apply_link && !/^https?:\/\//i.test(o.apply_link)) delete o.apply_link;
     if (['halal', 'food', 'cosmetic'].indexOf(o.category) < 0) o.category = 'halal';
     return o;

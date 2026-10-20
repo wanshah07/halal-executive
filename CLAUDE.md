@@ -458,3 +458,29 @@
     `.mo-status`, `.mo-root`; transforms set by the JS). `tw-animate-css` is not
     needed and not installed. The orb's card shows a short answer (38 words); the
     full answer, details and cited pages render in the card below it as before.
+    **Second round, 20 Oct 2026** (Wan: "only dark answer ... full answer, not cut
+    off, remove dark background but make the orb functioning and rotate motion in
+    mobile, fold the references library"). There is ONE answer place: the orb's
+    card. It grows to its whole content (`growToAnswer` measures `.mo-answer`
+    and the stage grows with it), and `extra` puts the detail, the sources and who
+    answered inside it; the old white answer card below is gone. The stage has no
+    dark background; the dots are dark green. The orb waits above the pill turning
+    slowly while idle (`--home` lifts it to the stage centre) and still turns, at a
+    quarter speed, under reduced motion. Suggested questions go through the orb
+    (`seed` prop). The library is folded (`<details>`).
+41. **Priority Wanshah 1 > Wanshah 3 > Wanshah 2** (Wan, 20 Oct 2026). Robot cards
+    are shown in that order, and `visionOrder` asks for a picture reading in that
+    order (each text AI still only after it passed the picture test). Text answers
+    keep the automatic speed choice (rule 2); pin Wanshah 1 in Admin → AI model to
+    make it lead text too.
+42. **Pictures from WhatsApp and Telegram are read by the AI** (Wan, 20 Oct 2026:
+    "make sure the whatsapp and telegram can read image from the sources, read by
+    AI and automation appear in website"). `message_for_model` sends a picture or
+    PDF whose OCR gave under 120 characters to `vision_read` (`picture_text`,
+    `PIC_READ`: copy every printed word, then say what the picture is), at most
+    `PIC_MAX` (30) a run, and adds the words to the attachment's content, so a
+    poster, a vacancy ad or a photographed circular reaches the model as text.
+    The vacancy prompt now insists the title is the position, never a slogan like
+    "We are hiring", takes the employer from the logo or email domain when no name
+    is printed, and gives requirements as lines (a list is joined, not printed as
+    `['...']`).

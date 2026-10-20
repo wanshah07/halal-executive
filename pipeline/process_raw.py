@@ -229,6 +229,35 @@ def safe_url(u):
     return u[:500] if re.match(r"^https?://", u, re.I) else ""
 
 
+# Pictures from WhatsApp and Telegram are read by a picture-reading AI when OCR
+# gets little or nothing from them (Wan, 20 Oct 2026: "make sure the whatsapp and
+# telegram can read image from the sources, read by AI"): a poster, a screenshot of
+# a circular or a photo of a certificate then reaches the model as words. Capped
+# per run so a backlog of photos cannot use up the gateway (30 a minute on Wanshah 1).
+PIC_FILE = re.compile(r"^image/|application/pdf", re.I)
+PIC_READ = """Read this picture from a halal industry group chat in Malaysia. First copy out EVERY word printed in it exactly as printed, line by line (titles, names, dates, numbers, links, emails, phone numbers, prices). Then, after a line '---', say in one or two sentences what the picture is (poster for an event, job vacancy ad, halal certificate, circular, screenshot of a chat, product photo, other). Never invent text that is not in the picture."""
+PIC_MAX = 30
+_pic = {"n": 0, "ready": None}
+
+
+def picture_text(file_id):
+    """Words read from one picture by Wanshah 1, 3 or 2 (Code.gs vision_read picks)."""
+    if _pic["ready"] is None:
+        try:
+            _pic["ready"] = bool(he_api.post("vision_read", ping=True).get("ready"))
+        except he_api.ApiError:
+            _pic["ready"] = False
+    if not _pic["ready"] or _pic["n"] >= PIC_MAX:
+        return ""
+    _pic["n"] += 1
+    try:
+        r = he_api.post("vision_read", id=file_id, system=PIC_READ, prompt="Read this picture.")
+    except he_api.ApiError as e:
+        print("picture not read:", str(e)[:120], file=sys.stderr)
+        return ""
+    return str(r.get("text") or "").strip() if r.get("ok") and r.get("read") else ""
+
+
 def message_for_model(r):
     """One Raw row as the model sees it: the text, plus the text read out of
     each attachment (screenshot OCR, PDF, Word, Excel, PowerPoint) so a
@@ -243,6 +272,11 @@ def message_for_model(r):
                 item["content"] = (he_api.drive_get(a["drive_file_id"], text=True).get("text") or "")[:ATTACH_CHARS]
             except he_api.ApiError as e:
                 item["content"] = f"[could not read: {e}]"
+            # Too little from OCR: the AI looks at the picture itself.
+            if PIC_FILE.search(str(a.get("mime") or "")) and len(re.sub(r"\s+", "", item.get("content") or "")) < 120:
+                seen = picture_text(a["drive_file_id"])
+                if seen:
+                    item["content"] = ((item.get("content") or "") + "\n[read by AI from the picture]\n" + seen)[:ATTACH_CHARS]
         atts.append(item)
     return {"id": r["id"], "source": r.get("source", ""), "ts": r["ts"], "text": (r.get("text") or "")[:3000], "attachments": atts}
 
@@ -470,7 +504,7 @@ def run(sources, max_batches, dry, minutes=20, attachments=None):
                         seen_vacancies.add(vk)
                         poster, poster_file = poster_for(m["id"], rows, dry)
                         manual = src_of.get(str(m["id"])) == "manual"
-                        row = {k: str(v.get(k) or "")[:4000 if k in ("description", "requirements") else 300] for k in VAC_KEYS}
+                        row = {k: ("\n".join(str(x) for x in v[k]) if isinstance(v.get(k), list) else str(v.get(k) or ""))[:4000 if k in ("description", "requirements") else 300] for k in VAC_KEYS}
                         row.update({"id": ids["VAC"](), "closing_date": cd if _day(cd) else "", "apply_link": safe_url(v.get("apply_link")),
                                     "category": v.get("category") if v.get("category") in ("halal", "food", "cosmetic") else "halal",
                                     "poster_url": poster, "poster_file": poster_file,
