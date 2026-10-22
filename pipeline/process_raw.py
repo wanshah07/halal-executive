@@ -547,6 +547,26 @@ def run(sources, max_batches, dry, minutes=20, attachments=None):
                 break
         except Exception as e:  # one bad batch never stops the queue
             print(f"batch {batches} could not be filed ({type(e).__name__}: {e}); its rows are marked error and the run goes on", file=sys.stderr)
+            # handle() may have already committed some of faq/doc/event/
+            # guideline/vacancy rows via he_api.upsert before the part that
+            # threw; re-sync the dedupe state from the API (not just this
+            # run's in-memory sets) so a retry of the same raw messages -
+            # whether later in this run or in a fresh process after a crash -
+            # never re-creates rows that were already written.
+            try:
+                faq2 = he_api.read("FAQ")
+                docs2 = he_api.read("Documents")
+                events2 = he_api.read("Events")
+                gls2 = he_api.read("Guidelines")
+                faq[:] = faq2
+                seen_files.update(str(d.get("drive_file_id")) for d in docs2 if d.get("drive_file_id"))
+                seen_hashes.update(str(d.get("content_hash")) for d in docs2 if d.get("content_hash"))
+                seen_events.update((norm_title(e2.get("title")), str(e2.get("date_start", ""))[:10]) for e2 in events2)
+                seen_guidelines.update(norm_title(g.get("title")) for g in gls2)
+                if vacs is not None:
+                    seen_vacancies.update((norm_title(v.get("title")), norm_title(v.get("employer"))) for v in he_api.read("Vacancies"))
+            except Exception as re_err:  # best effort resync; this run's in-memory sets still apply
+                print(f"dedupe resync after batch failure did not complete: {re_err}", file=sys.stderr)
             if not dry:
                 # Tried again on the next runs, up to 3 times, before it is left as an
                 # error (Wan, 20 Oct 2026: "the 3 robots must fix all immediately").
