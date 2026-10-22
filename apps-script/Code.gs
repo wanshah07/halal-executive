@@ -183,7 +183,7 @@ function doGet(e) {
   // Settings only (a few KB): the popup notice reads this first, so a colour
   // or poster changed in Admin shows without waiting for the full feed.
   if (a === 'settings') { var st = stripLlm(readSettings()); delete st.seed_deleted; return json({ ok: true, settings: st }); }
-  if (a === 'thumb') return json(thumbFor(String(e.parameter.id || '')));
+  if (a === 'thumb') { if (!rate('thumb', 60, 60)) return json({ ok: false, error: 'Busy, try again in a minute.' }); return json(thumbFor(String(e.parameter.id || ''))); }
   if (a === 'status') return json(aiStatus());
   return json({ ok: false, error: 'unknown action' });
 }
@@ -252,14 +252,20 @@ function cachedPublicData() {
   }
   if (!body) {
     try { cache.put(base + 'building', '1', 40); } catch (e) { /* cache full */ }
-    body = publicData();
     try {
-      var str = JSON.stringify(body), put = {}, n = Math.ceil(str.length / PUB_PIECE);
-      for (var k = 0; k < n; k++) put[base + k] = str.slice(k * PUB_PIECE, (k + 1) * PUB_PIECE);
-      put[base + 'n'] = String(n);
-      cache.putAll(put, PUB_TTL);
-    } catch (e) { /* too large to cache: serve uncached */ }
-    try { cache.remove(base + 'building'); } catch (e) { /* expires by itself */ }
+      body = publicData();
+      try {
+        var str = JSON.stringify(body), put = {}, n = Math.ceil(str.length / PUB_PIECE);
+        for (var k = 0; k < n; k++) put[base + k] = str.slice(k * PUB_PIECE, (k + 1) * PUB_PIECE);
+        put[base + 'n'] = String(n);
+        cache.putAll(put, PUB_TTL);
+      } catch (e) { /* too large to cache: serve uncached */ }
+    } finally {
+      // Always clear the flag, even when publicData() throws, or every other
+      // visitor would wait the full 15 s and then build their own copy anyway
+      // until the 40-second TTL expires on its own.
+      try { cache.remove(base + 'building'); } catch (e) { /* expires by itself */ }
+    }
   }
   body.collectors = collectorStatus();
   var now = Date.now();
@@ -432,7 +438,11 @@ function loginRequest(email) {
   var c = CacheService.getScriptCache();
   if (c.get('otp_rl_' + email)) return generic; // one code a minute
   if (!rate('otp_' + email, 5, 3600) || !rate('otp_all', 40, 3600)) return generic; // and a few an hour
-  var code = String(Math.floor(100000 + Math.random() * 900000));
+  // Utilities.getUuid() is backed by a CSPRNG (unlike Math.random, which is
+  // not safe for anything security-sensitive); derive the 6-digit code from
+  // it instead of rolling it with Math.random.
+  var rand = parseInt(Utilities.getUuid().replace(/-/g, '').slice(0, 8), 16);
+  var code = String(100000 + (rand % 900000));
   c.put('otp_' + email, code + '|0', 600);
   c.put('otp_rl_' + email, '1', 60);
   MailApp.sendEmail({ to: email, subject: 'Halal Executive admin code: ' + code,
@@ -560,8 +570,11 @@ function purgePastEvents() {
 var DELETABLE = ['FAQ', 'Guidelines', 'Events', 'Certificates', 'Documents', 'References', 'News', 'FHCB', 'Directory', 'Vacancies'];
 function removeDriveFile(id) {
   if (!id) return false;
+  // Never fall back to the Drive bin and still report success: "delete for
+  // good" means a failed remove must be surfaced as a failure, not hidden.
   try { Drive.Files.remove(id); return true; } catch (e) {
-    try { DriveApp.getFileById(id).setTrashed(true); return true; } catch (e2) { return false; }
+    Logger.log('removeDriveFile: could not permanently remove ' + id + ': ' + (e && e.message || e));
+    return false;
   }
 }
 function adminDelete(tab, id) {
@@ -570,9 +583,18 @@ function adminDelete(tab, id) {
   if (!row) throw new Error('Not found (already deleted?)');
   var file = '';
   if (tab === 'References') {
-    var sh = sheet('RefChunks'), v = sh.getDataRange().getValues(), keep = [v[0]];
-    for (var i = 1; i < v.length; i++) if (String(v[i][1]) !== id) keep.push(v[i]);
-    sh.clearContents(); sh.getRange(1, 1, keep.length, TABS.RefChunks.length).setValues(keep.map(safeRow));
+    var sh = sheet('RefChunks'), v = sh.getDataRange().getValues(), width = TABS.RefChunks.length;
+    // Build and validate the exact width to write BEFORE clearing anything:
+    // if the sheet ever grows an extra column, slicing/padding here means
+    // clearContents() can never run ahead of a write that then throws and
+    // loses every row in RefChunks.
+    var keep = [v[0]].concat(v.slice(1).filter(function (r) { return String(r[1]) !== id; }));
+    var toWrite = keep.map(function (row) {
+      row = row.slice(0, width);
+      while (row.length < width) row.push('');
+      return safeRow(row);
+    });
+    sh.clearContents(); sh.getRange(1, 1, toWrite.length, width).setValues(toWrite);
     file = row.drive_file_id; bumpAnswerVersion();
     // The guideline made from this reference goes too.
     var gl = readTab('Guidelines').filter(function (g) { return String(g.source) === id && String(g.id) === 'GL-' + id; });
@@ -1080,8 +1102,31 @@ function saveToInbox(a, r) {
   return { id: f.getId(), url: f.getUrl(), name: f.getName() };
 }
 
+// True when the file/folder sits somewhere under DRIVE_ROOT_ID (the "Halal
+// Executive" folder this script owns). Walks the parent chain since a file
+// can be nested several folders deep ("10 Documents/<category>/…").
+function isUnderDriveRoot(node) {
+  var rootId = props().getProperty('DRIVE_ROOT_ID');
+  if (!rootId) return false;
+  var guard = 0;
+  while (node && guard++ < 50) {
+    var parents = node.getParents();
+    if (!parents.hasNext()) return false;
+    var parent = parents.next();
+    if (parent.getId() === rootId) return true;
+    node = parent;
+  }
+  return false;
+}
+function assertUnderDriveRoot(node) {
+  if (!isUnderDriveRoot(node)) throw new Error('That file is outside the Halal Executive Drive folder.');
+}
+
 function driveUpload(b) {
   var f = folder(b.path || '00 Inbox').createFile(Utilities.newBlob(Utilities.base64Decode(b.b64), b.mime || 'application/octet-stream', b.name));
+  // folder() always resolves under DRIVE_ROOT_ID, but a belt-and-braces check
+  // here means a future change to folder() can never silently widen this.
+  assertUnderDriveRoot(f);
   return { ok: true, id: f.getId(), url: f.getUrl(), name: f.getName(), modified: f.getLastUpdated().toISOString() };
 }
 
@@ -1090,6 +1135,10 @@ function driveUpload(b) {
 // and to move the superseded one to "90 Archive/<category>".
 function driveFile(b) {
   var f = DriveApp.getFileById(b.id);
+  // The INGEST_TOKEN is shared with the pipeline/collectors; without this
+  // check it could rename or move ANY file in the owner's whole Drive, not
+  // just the ones this app manages.
+  assertUnderDriveRoot(f);
   if (b.name) f.setName(b.name);
   if (b.path) { var dest = folder(b.path); f.moveTo(dest); }
   if (b.description !== undefined) f.setDescription(b.description);
@@ -1103,7 +1152,11 @@ function driveFile(b) {
 // account. Each format is converted by Drive into a temporary Google file,
 // read, then deleted.
 function driveGet(b) {
-  var f = DriveApp.getFileById(b.id), blob = f.getBlob(), text = '';
+  var f = DriveApp.getFileById(b.id);
+  // Same reasoning as driveFile: the token must not be able to read any file
+  // in the owner's Drive, only the ones under the app's own root folder.
+  assertUnderDriveRoot(f);
+  var blob = f.getBlob(), text = '';
   if (b.text) { try { text = extractText(f, blob); } catch (e) { text = '[could not read: ' + (e.message || e) + ']'; } }
   return { ok: true, id: f.getId(), name: f.getName(), mime: blob.getContentType(), size: blob.getBytes().length, modified: f.getLastUpdated().toISOString(), sha256: sha256(blob.getBytes()), text: String(text || '').slice(0, 20000), b64: b.bytes ? Utilities.base64Encode(blob.getBytes()) : '' };
 }
