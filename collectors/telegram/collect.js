@@ -30,6 +30,23 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { ingest, post } from '../lib.js'
 
+// More than one bot (Wan, 23 Oct 2026: "another telegram bot to read the
+// message"). HE_BOT=<name> (letters only, e.g. dua) makes this copy read its own
+// settings from collectors/.env.<name> (bot token, chat id, allowed users; they
+// win over collectors/.env, which still gives the Sheet URL and ingest token),
+// keep its own state-<name>.json, and check in as "telegram<name>". Its rows
+// are still source "telegram", so the pipeline reads them like the first bot's,
+// and a message both bots see in one group is stored once (same msg_id).
+const BOT = String(process.env.HE_BOT || '').toLowerCase().replace(/[^a-z]/g, '')
+if (BOT) {
+  try {
+    for (const line of fs.readFileSync(new URL(`../.env.${BOT}`, import.meta.url), 'utf8').split(/\r?\n/)) {
+      const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/)
+      if (m) process.env[m[1]] = m[2].replace(/^['"]|['"]$/g, '')
+    }
+  } catch { console.error(`collectors/.env.${BOT} not found: this bot has no settings of its own.`); process.exit(1) }
+}
+
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN
 const GROUP = process.env.HE_GROUP_NAME || 'Halal Executive'
 const CHAT_ID = String(process.env.TELEGRAM_CHAT_ID || '').trim()
@@ -37,7 +54,7 @@ const ALLOWED = String(process.env.TELEGRAM_ALLOWED_USERS || '').split(/[,\s]+/)
 const SALT = process.env.HE_SALT || 'halal-executive'
 const MAX_FILE = 10 * 1024 * 1024 // same ceiling as Admin uploads; a bigger file is noted, not sent
 const MAX_OUTBOX = 300
-const STATE = new URL('./state.json', import.meta.url)
+const STATE = new URL(BOT ? `./state-${BOT}.json` : './state.json', import.meta.url)
 const hash = (s) => crypto.createHash('sha256').update(SALT + String(s)).digest('hex').slice(0, 16)
 const botOpts = (polling) => ({ polling, ...(process.env.TELEGRAM_API_BASE ? { baseApiUrl: process.env.TELEGRAM_API_BASE } : {}) })
 const isOurs = (c) => !!c && ['group', 'supergroup'].includes(c.type) && (CHAT_ID ? String(c.id) === CHAT_ID : String(c.title || '').trim().toLowerCase() === GROUP.trim().toLowerCase())
@@ -192,7 +209,7 @@ const beat = async () => {
   let st = 'CONNECTED'
   try { await Promise.race([bot.getMe(), new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 30000))]) } catch { st = 'UNKNOWN' }
   bad = st === 'CONNECTED' ? 0 : bad + 1
-  await post('heartbeat', { source: 'telegram', group: GROUP, last_msg: state.lastTs || '', version: 'collector-1', state: st })
+  await post('heartbeat', { source: 'telegram' + BOT, group: GROUP, last_msg: state.lastTs || '', version: 'collector-1', state: st })
     .catch((e) => console.error('heartbeat failed:', e.message || e))
   pollErrors = 0
   flush()

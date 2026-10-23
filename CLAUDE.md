@@ -501,3 +501,23 @@
     only as the tie-break; text answers were already chosen by speed (rule 2).
     Admin → AI model is one line (who answers, each AI's main and quick model,
     Only this one, Save); the tests fold underneath.
+45. **FAQ answers publish themselves, never blocked by a marker** (Wan, 23 Oct
+    2026: "auto publish without any [SAHKAN] or blocker, you must find the sources
+    accurately"; this replaces the 15 Oct "back to Drafts" rule). process_raw
+    publishes an answer at once unless it carries a `[SAHKAN]` marker; a phone
+    number or WhatsApp link is cut out of the answer instead of holding it back.
+    resolve_sahkan (the next phase of the same run) fills each marker from the
+    references library with the page cited and the quote checked word for word,
+    or takes the point out, and publishes. When the AI's completion fails the
+    checks (a quote not in the passage, a new number, a marker left), none of it
+    is used: `drop_marked` publishes the answer without the sentences that needed
+    the missing fact. Unconfirmed points always stay in `verify_notes` for the
+    admin, never in the answer. Drafts with no marker are published on every run.
+    Raw rows a failed batch left as `error` are queued again at the start of each
+    run until they have had 3 tries.
+46. **More than one Telegram bot** (Wan, 23 Oct 2026). `add-telegram.sh <name>`
+    (letters only, e.g. `dua`) sets up another bot beside the first: its token,
+    group and allowed users in `collectors/.env.<name>`, pm2 `he-telegram-<name>`,
+    `HE_BOT=<name>`, its own `state-<name>.json`, heartbeat `telegram<name>` (the
+    Overview lists it). Its rows are source `telegram`, and a message both bots
+    see in one group is stored once (same `chat:message` id).

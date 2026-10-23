@@ -28,6 +28,14 @@ from prompts import SYSTEM, VACANCY_READ
 # An answer that carries a link or a phone number is never published without
 # review: group messages can be wrong or planted.
 RISKY = re.compile(r"(https?://|www\.|\+?6?01\d[\s-]?\d{3,4}[\s-]?\d{4}|wa\.me)", re.I)
+# FAQ answers publish by themselves (Wan, 23 Oct 2026: "auto publish without any
+# [SAHKAN] or blocker, you must find the sources accurately"). A phone number or
+# WhatsApp link is taken out of the answer rather than holding it back (rule 3);
+# an answer with a [SAHKAN] marker waits only until resolve_sahkan.py, the next
+# phase of the same run, fills it from the references or takes it out, and then
+# publishes it.
+PHONE = re.compile(r"(\+?6?01\d[\s-]?\d{3,4}[\s-]?\d{4}|https?://wa\.me/\S+|wa\.me/\S+)", re.I)
+MARKER = re.compile(r"\[SAHKAN", re.I)
 
 BATCH = 25
 CHAR_BUDGET = 40000      # per model call; rows with long attachments make smaller batches
@@ -327,6 +335,16 @@ def run(sources, max_batches, dry, minutes=20, attachments=None):
     a row is only marked once its batch is filed."""
     start = time.time()
     job = "process_raw:" + ",".join(sources)
+    # Rows a failed batch left as error get their remaining tries (up to 3 in all).
+    if not dry:
+        try:
+            for s in sources:
+                bad = [r for r in he_api.raw_list(status="error", source=s, limit=200) if "try 3" not in str(r.get("notes") or "")]
+                if bad:
+                    he_api.raw_update([r["id"] for r in bad], status="new")
+                    print(f"{len(bad)} {s} rows from failed batches queued again")
+        except he_api.ApiError as e:
+            print("error rows not requeued:", e, file=sys.stderr)
     try:
         left0 = int(he_api.post("raw_stats").get("new", 0))
     except Exception:
@@ -408,9 +426,11 @@ def run(sources, max_batches, dry, minutes=20, attachments=None):
                     "answer_formal_bm": it.get("answer_formal_bm", ""), "answer_layman_bm": it.get("answer_layman_bm", ""),
                     "source_refs": ";".join(sorted(set((old.get("source_refs", "").split(";") if old.get("source_refs") else []) + msg_ids(it))))[:500],
                     "confidence": it.get("confidence", "medium"),
-                    "status": old.get("status") or ("published" if it.get("confidence") == "high" and not RISKY.search(" ".join(str(it.get(k, "")) for k in ("answer_formal_en", "answer_formal_bm", "answer_layman_en", "answer_layman_bm"))) else "draft"),
+                    "status": "hidden" if old.get("status") == "hidden" else ("draft" if MARKER.search(" ".join(str(it.get(k, "")) for k in ("answer_formal_en", "answer_formal_bm", "answer_layman_en", "answer_layman_bm"))) else "published"),
                     "created_at": old.get("created_at") or ts, "updated_at": ts, "model": f"{provider}:{model}",
                 }
+                for k in ("answer_formal_en", "answer_layman_en", "answer_formal_bm", "answer_layman_bm"):
+                    row[k] = PHONE.sub("", row[k]).strip()
                 faq_rows.append(row); by_id[rid] = row
             faq = list(by_id.values())
 

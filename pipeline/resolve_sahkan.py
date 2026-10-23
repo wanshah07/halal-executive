@@ -167,6 +167,17 @@ def needs_pass(row, latest):
     return has_open and latest and str(latest) > str(row.get("verified_at") or "")
 
 
+def drop_marked(text):
+    """The answer without every sentence that carries a [SAHKAN] marker: the
+    fallback when the AI's completion fails the checks, so nothing unverified is
+    added and nothing is left blocked (Wan, 23 Oct 2026). If every sentence has
+    a marker, only the markers go."""
+    text = str(text or "")
+    parts = re.split(r"(?<=[.!?。])\s+|\n+", text)
+    kept = [p for p in parts if p.strip() and not MARK.search(p)]
+    return (" ".join(kept) if kept else MARK.sub("", text)).replace("  ", " ").strip()
+
+
 def check(row, out, passages):
     """Reasons to discard the reply; empty when it is safe to write."""
     why = []
@@ -218,15 +229,17 @@ def main():
         # answer could never be written back when its reference arrives.
         print("FAQ tab has no verify_notes column yet: paste the new Code.gs and run setup. Markers stay hidden on the page meanwhile.")
         return 0
-    # An answer with points the references do not state yet is not published:
-    # it goes back to Admin → Drafts until a reference confirms it (Wan, 15 Oct 2026).
-    back = [dict(r, status="draft", updated_at=now()) for r in faq if r.get("status") == "published" and len(str(r.get("verify_notes") or "")) > 2]
-    if back:
-        he_api.upsert("FAQ", back)
-        print(f"{len(back)} published answers with unconfirmed points moved to drafts")
+    # Auto-publish (Wan, 23 Oct 2026, replacing the 15 Oct "back to Drafts" rule):
+    # an answer whose text carries no [SAHKAN] marker is published. A point the
+    # references could not confirm was already taken OUT of the text and kept in
+    # verify_notes for the admin, so what is published only says what the sources say.
+    up = [dict(r, status="published", updated_at=now()) for r in faq if r.get("status") == "draft" and not any(MARK.search(str(r.get(f) or "")) for f in ANSWERS) and str(r.get("question_en") or r.get("question_bm") or "").strip()]
+    if up:
+        he_api.upsert("FAQ", up)
+        print(f"{len(up)} drafts with no open marker published")
     todo = [r for r in faq if needs_pass(r, latest)][: a.limit]
     print(f"{len(todo)} FAQ entries to complete; {len(docs)} reference passages indexed")
-    done, errs, provider, model, closed, still = 0, [], "", "", 0, 0
+    done, errs, provider, model, closed, still, fell = 0, [], "", "", 0, 0, []
     t_end = time.time() + a.minutes * 60
     for row in todo:
         if time.time() > t_end:
@@ -252,9 +265,13 @@ def main():
             continue
         why = check(row, out, passages)
         if why:
-            print(f"[skip] {row['id']}: " + "; ".join(why)[:400])
-            errs.append(f"{row['id']}: {why[0]}"[:200])
-            continue
+            # The completion cannot be trusted, so none of it is used: the answer
+            # is published as it was, minus the sentences that needed a fact the
+            # references did not give. Every open point goes to verify_notes.
+            print(f"[fallback] {row['id']}: " + "; ".join(why)[:300])
+            fell.append(row["id"])
+            out = {f: drop_marked(row.get(f)) for f in ANSWERS}
+            out["resolved"], out["open"] = [], pts
         open_left = [str(x)[:300] for x in (out.get("open") or []) if str(x).strip()]
         closed += len(out.get("resolved") or [])
         still += len(open_left)
@@ -262,8 +279,11 @@ def main():
         for f in ANSWERS:
             new[f] = str(out[f]).strip()
         new["verify_notes"] = json.dumps(open_left, ensure_ascii=False) if open_left else ""
-        if open_left and new.get("status") == "published":
-            new["status"] = "draft"  # unconfirmed points: back to Drafts
+        # Every marker is filled or taken out of the text (check() refuses a reply
+        # that leaves one), so the answer is published; points still unconfirmed
+        # stay in verify_notes for the admin, never in the answer.
+        if new.get("status") != "hidden":
+            new["status"] = "published"
         new["verified_at"] = now()
         if any(new[f] != row.get(f) for f in ANSWERS):
             new["updated_at"] = now()
@@ -271,7 +291,7 @@ def main():
         done += 1
         print(f"[ok] {row['id']}: {len(out.get('resolved') or [])} confirmed from references, {len(open_left)} left out pending a reference")
     if todo:
-        he_api.run_log("resolve_sahkan", provider, model, done, not errs, f"confirmed {closed}, open {still}; " + "; ".join(errs)[:400])
+        he_api.run_log("resolve_sahkan", provider, model, done, not errs, f"confirmed {closed}, open {still}, fallback {len(fell)}; " + "; ".join(errs)[:400])
     print(f"done: {done} updated, {closed} points confirmed, {still} still open, {len(errs)} skipped")
     return 0
 

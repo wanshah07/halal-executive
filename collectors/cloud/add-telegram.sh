@@ -18,8 +18,17 @@
 # leaves the collector running under pm2 as he-telegram (restarts on a crash
 # and on reboot). The site shows Telegram as Live (Overview -> Collectors)
 # within 5 minutes, and the watchdog emails the admins if it stops.
+#
+# A SECOND (or third) bot (Wan, 23 Oct 2026): give it a short name, letters only:
+#
+#   curl -fsSL https://raw.githubusercontent.com/wanshah07/halal-executive/main/collectors/cloud/add-telegram.sh | bash -s -- dua
+#
+# It asks only for that bot's token, group and your id, keeps them in
+# collectors/.env.dua, and runs it as pm2 he-telegram-dua beside the first one.
 set -euo pipefail
-IN="${HE_INPUT:-/dev/tty}"   # where the questions are read from (a test can point it at a file)
+IN="${HE_INPUT:-/dev/tty}"
+BOT="$(printf '%s' "${1:-}" | tr 'A-Z' 'a-z' | tr -cd 'a-z')"
+NAME="he-telegram${BOT:+-$BOT}"   # where the questions are read from (a test can point it at a file)
 
 echo "== 1/5 Node.js, git, pm2 =="
 if ! command -v node >/dev/null || [ "$(node -p 'process.versions.node.split(".")[0]')" -lt 20 ]; then
@@ -44,7 +53,12 @@ have() { grep -q "^$1=." "$ENV"; }
 setv() { grep -v "^$1=" "$ENV" > "$ENV.tmp" || true; printf '%s=%s\n' "$1" "$2" >> "$ENV.tmp"; mv "$ENV.tmp" "$ENV"; chmod 600 "$ENV"; }
 if ! have HE_API_URL; then read -rp "Apps Script web app URL (ends in /exec): " URL <"$IN"; setv HE_API_URL "$URL"; fi
 if ! have HE_INGEST_TOKEN; then read -rsp "INGEST_TOKEN (hidden): " TOKEN <"$IN"; echo; setv HE_INGEST_TOKEN "$TOKEN"; fi
+if [ -n "$BOT" ]; then
+  # The second bot's own settings go in collectors/.env.<name>; the Sheet URL and token above are shared.
+  ENV=~/halal-executive/collectors/.env.$BOT; touch "$ENV"; chmod 600 "$ENV"
+fi
 if ! have TELEGRAM_BOT_TOKEN; then read -rsp "Telegram bot token from BotFather (hidden): " BT <"$IN"; echo; setv TELEGRAM_BOT_TOKEN "$BT"; fi
+export HE_BOT="$BOT"
 
 echo "== 4/5 Which group? =="
 node collect.js --chats
@@ -58,14 +72,14 @@ if ! have TELEGRAM_ALLOWED_USERS; then
 fi
 
 echo "== 5/5 Run for good under pm2 =="
-pm2 delete he-telegram >/dev/null 2>&1 || true
-pm2 start collect.js --name he-telegram --max-memory-restart 300M
+pm2 delete "$NAME" >/dev/null 2>&1 || true
+HE_BOT="$BOT" pm2 start collect.js --name "$NAME" --max-memory-restart 300M
 pm2 save
 sudo env PATH="$PATH" pm2 startup systemd -u "${USER:-$(id -un)}" --hp "$HOME" >/dev/null 2>&1 || true
 sleep 6
-pm2 logs he-telegram --lines 12 --nostream || true
+pm2 logs "$NAME" --lines 12 --nostream || true
 echo
-echo "Done. Check with:  pm2 logs he-telegram --lines 20"
+echo "Done. Check with:  pm2 logs $NAME --lines 20"
 echo "Telegram shows as Live on the site (Overview -> Collectors) within 5 minutes."
 echo "Messages in the group from now on, and anything you send or forward to the bot, reach the Sheet."
 echo "Older group messages come from an export (Telegram Desktop -> Export chat history, with photos and files):"

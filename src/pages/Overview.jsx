@@ -110,11 +110,12 @@ export default function Overview({ lang, data, setTab }) {
           </div>
           <div className="card p-5">
             <h3 className="font-semibold mb-3">{t(lang, 'collectors')}</h3>
-            {['whatsapp', 'telegram', 'facebook'].map((s) => {
+            {/* A second Telegram bot checks in as telegram<name> (collect.js HE_BOT) and is listed too. */}
+            {['whatsapp', 'telegram', ...Object.keys(data.collectors || {}).filter((k) => /^telegram[a-z]+$/.test(k)), 'facebook'].map((s) => {
               const hb = (data.collectors || {})[s]
               const age = hb ? (Date.now() - Date.parse(hb.ts)) / 60000 : null
               const live = age != null && age < 15
-              return <div key={s} className="flex items-center justify-between text-sm py-1"><span className="capitalize">{s}</span><span className={`chip ${live ? 'bg-brand-100 text-brand-700' : age != null ? 'bg-red-100 text-red-700' : 'bg-paper text-ink-400 border border-line'}`}>{live ? `● ${t(lang, 'live')}` : age != null ? `${t(lang, 'offline')} · ${Math.round(age)} min` : t(lang, 'not_started')}</span></div>
+              return <div key={s} className="flex items-center justify-between text-sm py-1"><span className="capitalize">{s.replace(/^telegram(.+)$/, 'Telegram $1')}</span><span className={`chip ${live ? 'bg-brand-100 text-brand-700' : age != null ? 'bg-red-100 text-red-700' : 'bg-paper text-ink-400 border border-line'}`}>{live ? `● ${t(lang, 'live')}` : age != null ? `${t(lang, 'offline')} · ${Math.round(age)} min` : t(lang, 'not_started')}</span></div>
             })}
             <p className="text-xs text-ink-400 mt-2">{t(lang, 'collectors_hint')}</p>
           </div>
