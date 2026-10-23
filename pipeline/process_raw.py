@@ -445,9 +445,14 @@ def run(sources, max_batches, dry, minutes=20, attachments=None):
                 # Admin uploads are published by the organiser; group files wait as drafts.
                 return "from:admin; " if src_of.get(str(mid)) == "manual" else "from:group; "
 
+            POSTERISH = re.compile(r"\b(poster|flyer|brochure|pamphlet|leaflet)\b", re.I)
+            event_msgs = {str(e.get("source_msg_id")) for e in j["events"]}
             for d in j["documents"]:
                 a = att_index.get((d.get("source_msg_id"), d.get("attachment_name")))
                 if not a:
+                    continue
+                # A poster is an event's picture, not a document (Wan, 23 Oct 2026).
+                if d.get("kind") == "poster" or POSTERISH.search(str(d.get("title") or "")) or (str(d.get("source_msg_id")) in event_msgs and d.get("kind") in ("other", None, "")):
                     continue
                 if a["drive_file_id"] in seen_files or (a.get("sha256") and a["sha256"] in seen_hashes):
                     continue  # this file is already a Documents row

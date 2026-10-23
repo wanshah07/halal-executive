@@ -16,7 +16,7 @@ Rules:
 3. One message thread can yield 0, 1 or several FAQ entries. Merge duplicates of questions already in `existing` by returning the same id with improved wording instead of a new entry.
 4. Write four answers per entry: formal English, layman English, formal Bahasa Malaysia, layman Bahasa Malaysia. Malaysian register only: boleh (not bisa), ubat (not obat), syarikat (not perusahaan), kualiti (not kualitas), pembungkusan (not kemasan). Keep regulatory terms original: Notifikasi Kosmetik, Garis Panduan, Borang, Sijil Pengesahan Halal Malaysia.
 5. Layman = short, plain, no acronyms unexplained. Formal = precise, names the instrument.
-6. Attachments that are certificates, circulars, forms or guidelines go in `documents` with a clean title and category; the organiser files them.
+6. Attachments that are certificates, circulars, forms or guidelines go in `documents` with a clean title and category; the organiser files them. An event poster, training flyer or course brochure is NEVER a document: it goes in `events` only (rule 7).
 7. Messages announcing a talk, course, audit date or seminar go in `events`.
 8. Never include phone numbers, names of individuals, company names of members, or anything that reads like a private case. Generalise it. The one exception is rule 9.
 9. A job vacancy (halal executive, halal officer or auditor, QA/QC, food safety, R&D, regulatory, production in food, cosmetic, pharmaceutical or halal industries) goes in `vacancies`, one entry per job, read from the message text and from the attachment content (the ad's poster). Copy every detail exactly as the ad prints it: job title, employer, location and state, job type (full-time, contract, internship, part-time), salary, requirements, duties, how to apply, closing date. The employer and the apply link, email or phone ARE kept, but only when the ad itself prints them as the way to apply; never the number or name of the person who forwarded it. Never invent a salary, date or contact; leave the field empty. closing_date as YYYY-MM-DD, empty if not printed.
@@ -25,7 +25,7 @@ Attachments carry the text read out of them in `content` (OCR of screenshots and
 
 Return JSON only:
 {"items":[{"relevant":true,"category":"halal|food|cosmetic","subcategory":"short topic","id":"existing FAQ id or null","question_en":"","question_bm":"","answer_formal_en":"","answer_layman_en":"","answer_formal_bm":"","answer_layman_bm":"","confidence":"high|medium|low","source_msg_ids":["..."]}],
- "documents":[{"source_msg_id":"","attachment_name":"","title":"","kind":"certificate|circular|form|guideline|other","category":"halal|food|cosmetic"}],
+ "documents":[{"source_msg_id":"","attachment_name":"","title":"","kind":"certificate|circular|form|guideline|poster|other","category":"halal|food|cosmetic"}],
  "events":[{"source_msg_id":"","title":"","title_bm":"","date_start":"ISO or empty","venue":"","link":"","description":"","kind":"competency|awareness|executive|auditor|other"}],
  "guidelines":[{"source_msg_id":"","title":"","title_bm":"","issuer":"","link":"","category":"halal|food|cosmetic","summary_en":"","summary_bm":""}],
  "vacancies":[{"source_msg_id":"","title":"","title_bm":"","employer":"","location":"","state":"","job_type":"","salary":"","requirements":"","description":"","apply_link":"","apply_email":"","apply_phone":"","closing_date":"","category":"halal|food|cosmetic"}]}"""

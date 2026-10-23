@@ -512,7 +512,9 @@
     checks (a quote not in the passage, a new number, a marker left), none of it
     is used: `drop_marked` publishes the answer without the sentences that needed
     the missing fact. Unconfirmed points always stay in `verify_notes` for the
-    admin, never in the answer. Drafts with no marker are published on every run.
+    admin, never in the answer. Drafts with no marker are published on every run; the `sahkan` job runs
+    with `--limit 400 --minutes 25` so a backlog of marked drafts clears in one or
+    two runs.
     Raw rows a failed batch left as `error` are queued again at the start of each
     run until they have had 3 tries.
 46. **More than one Telegram bot** (Wan, 23 Oct 2026). `add-telegram.sh <name>`
@@ -521,3 +523,22 @@
     `HE_BOT=<name>`, its own `state-<name>.json`, heartbeat `telegram<name>` (the
     Overview lists it). Its rows are source `telegram`, and a message both bots
     see in one group is stored once (same `chat:message` id).
+47. **FHCB country PDFs from MyIHAB** (Wan, 23 Oct 2026: "scrape and make individual
+    FHCB individual file and new banner for new FHCB countries"). JAKIM's
+    `myehalal.halal.gov.my/myihab/v1/` lists 51 countries (101 bodies) in its
+    "Recognized Foreign Halal Certification Bodies" modal; each row's PDF is
+    `system/_cms/view_gambar.php?files=<id>.pdf` (the `search_cb_country.php`
+    endpoint it names answers 404; the table is in the page itself). The 51 PDFs
+    are in `public/fhcb/list/<Country>.pdf`, indexed by `src/data/fhcb_countries.json`
+    (`new` = JAKIM's NEW badge: Belarus, Pakistan, Palestine, Philippines, Turkiye).
+    The five "Newly Approved" bodies (one per NEW country, read from those PDFs) are
+    FHCB-097..101 in the seed (`fhcb.json`, 101 rows now, `note` "Newly Approved");
+    Admin → FHCB → Load adds them to the Sheet. The FHCB page shows a "Newly approved
+    on MyIHAB" banner (`NewFhcb`, from the live rows or the seed until Load) and every
+    country's PDF; the card and table mark a NEW row. Re-scrape when JAKIM changes
+    the modal's counts.
+48. **An event poster is never a document** (Wan, 23 Oct 2026). `isEventDoc` in
+    certs.js (kind poster/event/flyer, or a title with poster, flyer, brochure,
+    pamphlet, leaflet) keeps them out of every document list through `filedDocs`;
+    process_raw skips such a document row and the prompt says a poster goes in
+    `events` only.

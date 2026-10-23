@@ -54,7 +54,7 @@ export const COUNTRY_COORDS = {
   Poland: [51.9, 19.1], Portugal: [39.4, -8.2], Russia: [61.5, 105.3], Singapore: [1.35, 103.8], 'South Africa': [-30.6, 22.9], 'South Korea': [35.9, 127.8], Korea: [35.9, 127.8],
   Spain: [40.5, -3.7], 'Sri Lanka': [7.9, 80.8], Switzerland: [46.8, 8.2], Taiwan: [23.7, 121.0], Thailand: [15.9, 100.9], Tunisia: [33.9, 9.5], Turkiye: [38.96, 35.2], Turkey: [38.96, 35.2],
   Uganda: [1.4, 32.3], Ukraine: [48.4, 31.2], 'United Kingdom': [55.4, -3.4], 'United States of America': [37.1, -95.7], 'United States': [37.1, -95.7], Uruguay: [-32.5, -55.8],
-  Vietnam: [14.1, 108.3], France: [46.2, 2.2], Belgium: [50.5, 4.5], Denmark: [56.3, 9.5], 'United Arab Emirates': [23.4, 53.8],
+  Vietnam: [14.1, 108.3], Belarus: [53.7, 27.95], Palestine: [31.9, 35.2], 'Palestinian Territory': [31.9, 35.2], France: [46.2, 2.2], Belgium: [50.5, 4.5], Denmark: [56.3, 9.5], 'United Arab Emirates': [23.4, 53.8],
 }
 export const countryCoords = (name) => COUNTRY_COORDS[name] || COUNTRY_COORDS[Object.keys(COUNTRY_COORDS).find((k) => k.toLowerCase() === String(name || '').trim().toLowerCase())] || null
 export const stateCoords = (name) => { const s = MY_STATES.find((x) => x.id === name); return s ? [s.lat, s.lng] : null }

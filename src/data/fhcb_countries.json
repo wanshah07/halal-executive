@@ -1,0 +1,363 @@
+{
+ "fetched": "2026-10-23",
+ "source": "https://myehalal.halal.gov.my/myihab/v1/ (MyIHAB, Recognized Foreign Halal Certification Bodies & Authorities: 101 FHCB, 51 countries/regions)",
+ "countries": [
+  {
+   "country": "Argentina",
+   "jakim_name": "Argentina",
+   "file": "./fhcb/list/Argentina.pdf",
+   "new": false,
+   "source_file": "20261006_doc_12676.pdf"
+  },
+  {
+   "country": "Australia",
+   "jakim_name": "Australia",
+   "file": "./fhcb/list/Australia.pdf",
+   "new": false,
+   "source_file": "20261006_doc_754496.pdf"
+  },
+  {
+   "country": "Austria",
+   "jakim_name": "Austria",
+   "file": "./fhcb/list/Austria.pdf",
+   "new": false,
+   "source_file": "20261006_doc_827373.pdf"
+  },
+  {
+   "country": "Bangladesh",
+   "jakim_name": "Bangladesh",
+   "file": "./fhcb/list/Bangladesh.pdf",
+   "new": false,
+   "source_file": "20261006_doc_991852.pdf"
+  },
+  {
+   "country": "Belarus",
+   "jakim_name": "Belarus",
+   "file": "./fhcb/list/Belarus.pdf",
+   "new": true,
+   "source_file": "20261016_doc_413414.pdf"
+  },
+  {
+   "country": "Bosnia and Herzegovina",
+   "jakim_name": "Bosnia And Herzegovina",
+   "file": "./fhcb/list/Bosnia_And_Herzegovina.pdf",
+   "new": false,
+   "source_file": "20261006_doc_851363.pdf"
+  },
+  {
+   "country": "Brazil",
+   "jakim_name": "Brazil",
+   "file": "./fhcb/list/Brazil.pdf",
+   "new": false,
+   "source_file": "20261006_doc_83027.pdf"
+  },
+  {
+   "country": "Brunei",
+   "jakim_name": "Brunei Darussalam",
+   "file": "./fhcb/list/Brunei_Darussalam.pdf",
+   "new": false,
+   "source_file": "20261006_doc_640547.pdf"
+  },
+  {
+   "country": "Canada",
+   "jakim_name": "Canada",
+   "file": "./fhcb/list/Canada.pdf",
+   "new": false,
+   "source_file": "20261006_doc_918465.pdf"
+  },
+  {
+   "country": "Chile",
+   "jakim_name": "Chile",
+   "file": "./fhcb/list/Chile.pdf",
+   "new": false,
+   "source_file": "20261006_doc_73748.pdf"
+  },
+  {
+   "country": "China",
+   "jakim_name": "China",
+   "file": "./fhcb/list/China.pdf",
+   "new": false,
+   "source_file": "20261006_doc_235811.pdf"
+  },
+  {
+   "country": "Egypt",
+   "jakim_name": "Egypt",
+   "file": "./fhcb/list/Egypt.pdf",
+   "new": false,
+   "source_file": "20261006_doc_415590.pdf"
+  },
+  {
+   "country": "Germany",
+   "jakim_name": "Germany",
+   "file": "./fhcb/list/Germany.pdf",
+   "new": false,
+   "source_file": "20261006_doc_213775.pdf"
+  },
+  {
+   "country": "India",
+   "jakim_name": "India",
+   "file": "./fhcb/list/India.pdf",
+   "new": false,
+   "source_file": "20261006_doc_505155.pdf"
+  },
+  {
+   "country": "Indonesia",
+   "jakim_name": "Indonesia",
+   "file": "./fhcb/list/Indonesia.pdf",
+   "new": false,
+   "source_file": "20261006_doc_73285.pdf"
+  },
+  {
+   "country": "Iran",
+   "jakim_name": "Iran, Islamic Republic Of",
+   "file": "./fhcb/list/Iran_Islamic_Republic_Of.pdf",
+   "new": false,
+   "source_file": "20261006_doc_679568.pdf"
+  },
+  {
+   "country": "Ireland",
+   "jakim_name": "Ireland",
+   "file": "./fhcb/list/Ireland.pdf",
+   "new": false,
+   "source_file": "20261006_doc_262364.pdf"
+  },
+  {
+   "country": "Italy",
+   "jakim_name": "Italy",
+   "file": "./fhcb/list/Italy.pdf",
+   "new": false,
+   "source_file": "20261006_doc_680801.pdf"
+  },
+  {
+   "country": "Japan",
+   "jakim_name": "Japan",
+   "file": "./fhcb/list/Japan.pdf",
+   "new": false,
+   "source_file": "20261006_doc_85142.pdf"
+  },
+  {
+   "country": "Jordan",
+   "jakim_name": "Jordan",
+   "file": "./fhcb/list/Jordan.pdf",
+   "new": false,
+   "source_file": "20261006_doc_437279.pdf"
+  },
+  {
+   "country": "Kazakhstan",
+   "jakim_name": "Kazakstan",
+   "file": "./fhcb/list/Kazakstan.pdf",
+   "new": false,
+   "source_file": "20261006_doc_325999.pdf"
+  },
+  {
+   "country": "Kenya",
+   "jakim_name": "Kenya",
+   "file": "./fhcb/list/Kenya.pdf",
+   "new": false,
+   "source_file": "20261006_doc_26100.pdf"
+  },
+  {
+   "country": "South Korea",
+   "jakim_name": "Korea, Republic Of",
+   "file": "./fhcb/list/Korea_Republic_Of.pdf",
+   "new": false,
+   "source_file": "20261007_doc_731973.pdf"
+  },
+  {
+   "country": "Lithuania",
+   "jakim_name": "Lithuania",
+   "file": "./fhcb/list/Lithuania.pdf",
+   "new": false,
+   "source_file": "20261007_doc_388261.pdf"
+  },
+  {
+   "country": "Maldives",
+   "jakim_name": "Maldives",
+   "file": "./fhcb/list/Maldives.pdf",
+   "new": false,
+   "source_file": "20261007_doc_262557.pdf"
+  },
+  {
+   "country": "Mongolia",
+   "jakim_name": "Mongolia",
+   "file": "./fhcb/list/Mongolia.pdf",
+   "new": false,
+   "source_file": "20261007_doc_912137.pdf"
+  },
+  {
+   "country": "Morocco",
+   "jakim_name": "Morocco",
+   "file": "./fhcb/list/Morocco.pdf",
+   "new": false,
+   "source_file": "20261007_doc_735419.pdf"
+  },
+  {
+   "country": "Netherlands",
+   "jakim_name": "Netherlands",
+   "file": "./fhcb/list/Netherlands.pdf",
+   "new": false,
+   "source_file": "20261007_doc_884549.pdf"
+  },
+  {
+   "country": "New Zealand",
+   "jakim_name": "New Zealand",
+   "file": "./fhcb/list/New_Zealand.pdf",
+   "new": false,
+   "source_file": "20261007_doc_479193.pdf"
+  },
+  {
+   "country": "Pakistan",
+   "jakim_name": "Pakistan",
+   "file": "./fhcb/list/Pakistan.pdf",
+   "new": true,
+   "source_file": "20261016_doc_560722.pdf"
+  },
+  {
+   "country": "Palestine",
+   "jakim_name": "Palestinian Territory",
+   "file": "./fhcb/list/Palestinian_Territory.pdf",
+   "new": true,
+   "source_file": "20261016_doc_77185.pdf"
+  },
+  {
+   "country": "Philippines",
+   "jakim_name": "Philippines",
+   "file": "./fhcb/list/Philippines.pdf",
+   "new": true,
+   "source_file": "20261016_doc_446551.pdf"
+  },
+  {
+   "country": "Poland",
+   "jakim_name": "Poland",
+   "file": "./fhcb/list/Poland.pdf",
+   "new": false,
+   "source_file": "20261007_doc_286212.pdf"
+  },
+  {
+   "country": "Portugal",
+   "jakim_name": "Portugal",
+   "file": "./fhcb/list/Portugal.pdf",
+   "new": false,
+   "source_file": "20261007_doc_870993.pdf"
+  },
+  {
+   "country": "Russia",
+   "jakim_name": "Russian Federation",
+   "file": "./fhcb/list/Russian_Federation.pdf",
+   "new": false,
+   "source_file": "20261007_doc_803442.pdf"
+  },
+  {
+   "country": "Kingdom of Saudi Arabia",
+   "jakim_name": "Saudi Arabia",
+   "file": "./fhcb/list/Saudi_Arabia.pdf",
+   "new": false,
+   "source_file": "20261007_doc_487739.pdf"
+  },
+  {
+   "country": "Singapore",
+   "jakim_name": "Singapore",
+   "file": "./fhcb/list/Singapore.pdf",
+   "new": false,
+   "source_file": "20261007_doc_644230.pdf"
+  },
+  {
+   "country": "South Africa",
+   "jakim_name": "South Africa",
+   "file": "./fhcb/list/South_Africa.pdf",
+   "new": false,
+   "source_file": "20261007_doc_702349.pdf"
+  },
+  {
+   "country": "Spain",
+   "jakim_name": "Spain",
+   "file": "./fhcb/list/Spain.pdf",
+   "new": false,
+   "source_file": "20261007_doc_273744.pdf"
+  },
+  {
+   "country": "Sri Lanka",
+   "jakim_name": "Sri Lanka",
+   "file": "./fhcb/list/Sri_Lanka.pdf",
+   "new": false,
+   "source_file": "20261007_doc_212406.pdf"
+  },
+  {
+   "country": "Switzerland",
+   "jakim_name": "Switzerland",
+   "file": "./fhcb/list/Switzerland.pdf",
+   "new": false,
+   "source_file": "20261016_doc_802253.pdf"
+  },
+  {
+   "country": "Taiwan",
+   "jakim_name": "Taiwan, Province Of China",
+   "file": "./fhcb/list/Taiwan_Province_Of_China.pdf",
+   "new": false,
+   "source_file": "20261009_doc_420199.pdf"
+  },
+  {
+   "country": "Thailand",
+   "jakim_name": "Thailand",
+   "file": "./fhcb/list/Thailand.pdf",
+   "new": false,
+   "source_file": "20261009_doc_404834.pdf"
+  },
+  {
+   "country": "Tunisia",
+   "jakim_name": "Tunisia",
+   "file": "./fhcb/list/Tunisia.pdf",
+   "new": false,
+   "source_file": "20261009_doc_918041.pdf"
+  },
+  {
+   "country": "Turkiye",
+   "jakim_name": "Turkiye",
+   "file": "./fhcb/list/Turkiye.pdf",
+   "new": true,
+   "source_file": "20261016_doc_920739.pdf"
+  },
+  {
+   "country": "Uganda",
+   "jakim_name": "Uganda",
+   "file": "./fhcb/list/Uganda.pdf",
+   "new": false,
+   "source_file": "20261009_doc_62440.pdf"
+  },
+  {
+   "country": "Ukraine",
+   "jakim_name": "Ukraine",
+   "file": "./fhcb/list/Ukraine.pdf",
+   "new": false,
+   "source_file": "20261009_doc_65496.pdf"
+  },
+  {
+   "country": "United Kingdom",
+   "jakim_name": "United Kingdom",
+   "file": "./fhcb/list/United_Kingdom.pdf",
+   "new": false,
+   "source_file": "20261009_doc_115428.pdf"
+  },
+  {
+   "country": "United States of America",
+   "jakim_name": "United States",
+   "file": "./fhcb/list/United_States.pdf",
+   "new": false,
+   "source_file": "20261009_doc_985513.pdf"
+  },
+  {
+   "country": "Uruguay",
+   "jakim_name": "Uruguay",
+   "file": "./fhcb/list/Uruguay.pdf",
+   "new": false,
+   "source_file": "20261009_doc_115579.pdf"
+  },
+  {
+   "country": "Vietnam",
+   "jakim_name": "Vietnam",
+   "file": "./fhcb/list/Vietnam.pdf",
+   "new": false,
+   "source_file": "20261009_doc_989497.pdf"
+  }
+ ]
+}

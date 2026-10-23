@@ -97,7 +97,7 @@ jobs:
               phase 40 "Review references" python index_references.py --audit
               phase 10 "Fill SAHKAN from references" python resolve_sahkan.py ;;
             bench)      phase 10 "Time MIRELD and AFIQ" python llm_router.py --bench ;;
-            sahkan)     phase 20 "Fill SAHKAN from references" python resolve_sahkan.py ;;
+            sahkan)     phase 28 "Fill SAHKAN from references" python resolve_sahkan.py --limit 400 --minutes 25 ;;
             event_qr)   phase 20 "Read QR codes on event posters" python event_qr.py ;;
             *) echo "unknown job"; exit 1 ;;
           esac

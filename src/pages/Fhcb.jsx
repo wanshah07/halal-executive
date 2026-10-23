@@ -6,6 +6,8 @@ import { safeUrl } from '../lib/safe'
 import { fmtDate } from '../lib/util'
 import { countryCoords } from '../lib/config'
 import seed from '../data/fhcb.json'
+import lists from '../data/fhcb_countries.json'
+import { FileText, Sparkles } from '../components/Icon'
 import { ICON, Mail, Phone, MapPin, ExternalLink } from '../components/Icon'
 import Lightbox from '../components/Lightbox'
 
@@ -107,6 +109,10 @@ export default function Fhcb({ lang, data, focusId, focusKey }) {
         {!list.length && <p className="text-xs text-ink-400 mt-2">{t(lang, 'fhcb_no_doc')}</p>}
       </section>
 
+      {/* New on MyIHAB (Wan, 23 Oct 2026): the countries JAKIM marks NEW, each with
+          its own list PDF, and every country's PDF in a folded list below. */}
+      <NewFhcb lang={lang} all={all} onPick={pickCountry} />
+
       <section className="card p-5 mb-4">
         <h3 className="font-semibold mb-1">{t(lang, 'fhcb_map')}</h3>
         <p className="text-xs text-ink-400 mb-3">{t(lang, 'fhcb_map_hint')}</p>
@@ -121,7 +127,7 @@ export default function Fhcb({ lang, data, focusId, focusKey }) {
         columns={[
           { key: 'logo', label: '', render: (r) => logo(r, 'w-24 h-16') },
           { key: 'no', label: '#' },
-          { key: 'country', label: t(lang, 'country') },
+          { key: 'country', label: t(lang, 'country'), render: (r) => <span>{r.country}{isNewRow(r) && <span className="chip bg-gold-500 text-white ml-1 text-[10px]">NEW</span>}</span> },
           { key: 'name', label: t(lang, 'name'), render: (r) => <span className="font-medium">{r.name}</span> },
           { key: 'kind', label: t(lang, 'fhcb_kind'), render: kindChip },
           { key: 'contact', label: t(lang, 'contact'), render: contacts },
@@ -132,7 +138,7 @@ export default function Fhcb({ lang, data, focusId, focusKey }) {
             <div className="flex items-start gap-3">
               {logo(r, 'w-28 h-20 shrink-0')}
               <div className="min-w-0">
-                <div className="text-xs text-ink-400">#{r.no} · {r.country}</div>
+                <div className="text-xs text-ink-400">#{r.no} · {r.country}{isNewRow(r) && <span className="chip bg-gold-500 text-white ml-1 text-[10px]">NEW</span>}{pdfOf(r.country) && <> · <a className="text-brand-700 hover:underline" href={pdfOf(r.country)} target="_blank" rel="noreferrer">PDF</a></>}</div>
                 <div className="font-semibold leading-snug break-words">{r.name}</div>
                 <div className="mt-1">{kindChip(r)}</div>
               </div>
@@ -143,5 +149,39 @@ export default function Fhcb({ lang, data, focusId, focusKey }) {
         )} />
       <Lightbox src={zoom && zoom.src} alt={zoom && zoom.alt} onClose={() => setZoom(null)} />
     </div>
+  )
+}
+
+// Per-country list PDFs scraped from MyIHAB (src/data/fhcb_countries.json).
+const pdfOf = (country) => { const c = lists.countries.find((x) => x.country === country); return c ? c.file : '' }
+const isNewRow = (r) => /newly approved/i.test(String(r.note || ''))
+function NewFhcb({ lang, all, onPick }) {
+  const fresh = lists.countries.filter((c) => c.new)
+  // Until Admin presses Load, the live Sheet has no new rows yet: show them from the seed.
+  const bodies = (all.some(isNewRow) ? all : seed).filter(isNewRow)
+  return (
+    <section className="card p-5 mb-4 border-gold-500/60 bg-gradient-to-br from-amber-50 to-white">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="font-semibold flex items-center gap-2"><Sparkles {...ICON} size={17} className="text-gold-500" />{t(lang, 'fhcb_new_title')} <span className="chip bg-gold-500 text-white">{bodies.length}</span></h3>
+        <span className="text-xs text-ink-400">{t(lang, 'fhcb_new_src')} · {fmtDate(lists.fetched, lang)}</span>
+      </div>
+      <p className="text-sm text-ink-600 mt-1">{t(lang, 'fhcb_new_sub')}</p>
+      <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        {fresh.map((c) => {
+          const rows = bodies.filter((r) => r.country === c.country)
+          return (
+            <div key={c.country} className="rounded-xl border border-line bg-white p-3 flex flex-col gap-1">
+              <div className="flex items-center justify-between gap-2"><button type="button" className="font-semibold hover:underline text-left" onClick={() => onPick(c.country)}>{c.country}</button><span className="chip bg-gold-500 text-white text-[10px]">NEW</span></div>
+              <ul className="text-sm text-ink-900 list-disc pl-5">{rows.map((r) => <li key={r.id}>{r.name}</li>)}</ul>
+              <a className="btn self-start mt-1 px-2.5 py-1 text-xs" href={c.file} target="_blank" rel="noreferrer"><FileText {...ICON} size={14} /> {t(lang, 'fhcb_view_pdf')}</a>
+            </div>
+          )
+        })}
+      </div>
+      <details className="mt-3 text-sm">
+        <summary className="cursor-pointer text-brand-700">{t(lang, 'fhcb_all_pdf')} ({lists.countries.length})</summary>
+        <div className="mt-2 flex flex-wrap gap-1.5">{lists.countries.map((c) => <a key={c.country} className={`chip border ${c.new ? 'border-gold-500 bg-amber-50' : 'border-line bg-paper'} hover:bg-brand-50`} href={c.file} target="_blank" rel="noreferrer">{c.country} <FileText {...ICON} size={12} className="ml-1" /></a>)}</div>
+      </details>
+    </section>
   )
 }
