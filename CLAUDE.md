@@ -547,7 +547,11 @@
     Sheet lacks, skipping ids in Settings `seed_deleted`; the FHCB page, the count
     in the sidebar, the map, the globe and the export all use it, so they read 101
     bodies / 51 countries, which is also what the 51 PDFs add up to (checked page
-    by page).
+    by page). **Admin tallies too** (25 Oct 2026): the Admin FHCB box shows the bundled
+    rows the Sheet lacks and adds them to the Sheet the moment Admin opens it (`seed_rows`,
+    once per visit), and `pipeline/seed_fhcb.py` does the same every 30-minute run
+    (ids from the seed, rows only ADDED, never overwritten, never one in `seed_deleted`),
+    so the Sheet, Admin and the page always read the same 101.
 48. **An event poster is never a document** (Wan, 23 Oct 2026). `isEventDoc` in
     certs.js (kind poster/event/flyer, or a title with poster, flyer, brochure,
     pamphlet, leaflet) keeps them out of every document list through `filedDocs`;

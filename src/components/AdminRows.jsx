@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { adminPost, dropLocal, refreshAll } from '../lib/api'
 import { safeUrl } from '../lib/safe'
 import { t } from '../lib/i18n'
@@ -28,7 +28,19 @@ export function RowManager({ lang, tab, data, onChanged }) {
   const [all, setAll] = useState(null)
   const reload = () => adminPost('rows_list', { tab }).then((r) => setAll(r.rows)).catch(() => setAll(null))
   useEffect(() => { reload() }, [tab, data]) // eslint-disable-line react-hooks/exhaustive-deps
-  const live = all || (data && data[key]) || []
+  const liveRows = all || (data && data[key]) || []
+  // FHCB: the bundled JAKIM list is part of what Admin shows (101 bodies, 51 countries), and
+  // any body the Sheet lacks is added to it as soon as Admin opens (Wan, 25 Oct 2026); the
+  // pipeline does the same every run (seed_fhcb.py). A deleted body stays deleted.
+  const goneSeed = (() => { try { return JSON.parse(((data && data.settings) || {}).seed_deleted || '[]') } catch { return [] } })()
+  const missing = tab === 'FHCB' && all ? seed.filter((r) => !all.some((x) => String(x.id) === String(r.id)) && !goneSeed.includes('FHCB:' + r.id)) : []
+  const live = [...liveRows, ...missing]
+  const autoSeeded = useRef(false)
+  useEffect(() => {
+    if (!missing.length || autoSeeded.current) return
+    autoSeeded.current = true
+    adminPost('seed_rows', { tab, rows: seed }).then(() => { reload(); refreshAll(); onChanged && onChanged() }).catch((er) => { autoSeeded.current = false; setMsg(er.message) })
+  }, [missing.length]) // eslint-disable-line react-hooks/exhaustive-deps
   const [q, setQ] = useState('')
   const [row, setRow] = useState(null)
   const [logo, setLogo] = useState(null)
