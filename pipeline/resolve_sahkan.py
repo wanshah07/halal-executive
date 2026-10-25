@@ -189,11 +189,144 @@ def drop_marked(text):
     """The answer without every sentence that carries a [SAHKAN] marker or any
     trace of one: the fallback when the AI's completion fails the checks, so
     nothing unverified is added and nothing is left blocked (Wan, 23 Oct 2026).
-    If every sentence has a marker, only the markers go."""
+    If every sentence has a marker nothing is left, and the caller borrows the sibling
+    answer (formal <-> layman) or keeps the entry as a draft."""
     text = str(text or "")
     parts = re.split(r"(?<=[.!?。])\s+|\n+", text)
     kept = [p for p in parts if p.strip() and not has_marker(p)]
-    return re.sub(r"\s{2,}", " ", " ".join(kept) if kept else strip_traces(text)).strip()
+    return re.sub(r"\s{2,}", " ", " ".join(kept)).strip()
+
+
+# ---- Per-marker fill (Wan, 25 Oct 2026: "markers get sourced, not cut") -------------------
+# Asking the model to rewrite all four answers at once made one slip anywhere (a marker
+# kept, a number it added) throw away the whole reply, so nothing was ever sourced. Each
+# marker is now its own small job: the model gives the few words that replace it, with the
+# passage and the exact quote; the code checks that gap alone and does the substitution,
+# adding the citation itself. A gap that fails is cut (its sentence) and nothing else.
+FILL_SYSTEM = """You fill gaps in FAQ answers for halal executives in Malaysia using ONLY the numbered passages from official references.
+
+Each gap is a marker [SAHKAN: <missing fact>] inside one sentence of an answer. You get the gaps (with the sentence around each one and the language of that answer) and the passages.
+
+For each gap:
+- If a passage states the missing fact: "text" = only the words that replace the marker so the sentence reads naturally (a few words or one short clause; do not repeat the citation, it is added for you). Write it in the language of that answer: EN = English; BM = Bahasa Malaysia in the Malaysian register (boleh, ubat, syarikat, kualiti, pembungkusan; never Indonesian), regulatory terms kept original. "n" = the passage number. "quote" = the sentence or phrase of that passage that states the fact, copied word for word (max 25 words). Every number, fee, date, form name and clause in "text" must appear in that quote.
+- If no passage states it: "text" = null. Never use outside knowledge and never guess.
+
+Return JSON only: {"gaps":[{"id":1,"text":"","n":1,"quote":""}]}"""
+
+OCC = re.compile(r"\[\s*SAHKAN:?\s*([^\]]*)\]", re.I)
+INDO = re.compile(r"\b(bisa|obat|perusahaan|kualitas|kemasan|resiko|izin edar|pemerintah)\b", re.I)
+SHORT = [("Pindaan", "Pindaan MPPHM (Domestik) 2020"), ("Manual Prosedur Pensijilan Halal Malaysia", "MPPHM (Domestik) 2020"),
+         ("Malaysian Halal Management System", "MHMS 2020")]
+
+
+def short_title(title):
+    for key, name in SHORT:
+        if key.lower() in str(title).lower():
+            return name
+    return re.sub(r"[()]", "", str(title)).strip()
+
+
+def sentence_at(text, i, j):
+    a = max(text.rfind(c, 0, i) for c in ".!?\n") + 1
+    ends = [k for k in (text.find(c, j) for c in ".!?\n") if k >= 0]
+    b = (min(ends) + 1) if ends else len(text)
+    return text[a:b].strip()
+
+
+def gaps_of(row):
+    gaps = []
+    for f in ANSWERS:
+        t = str(row.get(f) or "")
+        for m in OCC.finditer(t):
+            gaps.append({"id": len(gaps) + 1, "field": f, "span": m.span(), "point": m.group(1).strip()[:300],
+                         "lang": "BM" if f.endswith("_bm") else "EN", "sentence": sentence_at(t, m.start(), m.end())})
+    return gaps
+
+
+def passages_for(row, gaps, docs, df, avg, per=4, cap=10):
+    seen, out = set(), []
+    q0 = " ".join([str(row.get("question_en") or ""), str(row.get("question_bm") or "")])
+    for g in gaps:
+        for d in rank(g["point"] + " " + g["sentence"] + " " + q0, docs, df, avg, k=per):
+            key = (d["ref_id"], d["page"], d["text"][:60])
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append({"n": len(out) + 1, **d})
+            if len(out) >= cap:
+                return out
+    return out
+
+
+def related(point, quote):
+    """The quote must be about the gap: it shares the point's content words (Malay <-> English
+    pairs included), or a made-up match like "RM300" under a question about committee size passes."""
+    pt = set(toks(point))
+    if not pt:
+        return False
+    qt = set(toks(quote))
+    shared = [w for w in pt if w in qt or any(x in qt for x in SYN.get(w, []))]
+    return len(shared) >= min(2, len(pt))
+
+
+def accept(gap, r, by_n):
+    """The sourced replacement for one gap, or (None, why)."""
+    text = r.get("text")
+    if not isinstance(text, str) or not text.strip():
+        return None, "no passage states it"
+    text = re.sub(r"\s+", " ", text).strip()
+    p = by_n.get(int(r.get("n"))) if str(r.get("n") or "").isdigit() else None
+    q = norm(r.get("quote"))
+    if not p:
+        return None, f"cites passage {r.get('n')} that was not sent"
+    if len(q) < 8 or q not in norm(p["text"]):
+        return None, f"quote not found in passage {r.get('n')}"
+    if not related(gap["point"], r.get("quote")):
+        return None, "the quote is not about the gap"
+    if len(text) > 240 or has_marker(text):
+        return None, "replacement too long or carries a marker"
+    if gap["lang"] == "BM" and INDO.search(text):
+        return None, "Indonesian wording"
+    extra = numbers(text) - numbers(r.get("quote")) - numbers(gap["sentence"])
+    if extra:
+        return None, f"numbers not in the quote: {sorted(extra)}"
+    cite = f"({short_title(p['title'])}, {'ms.' if gap['lang'] == 'BM' else 'p.'} {p['page']})"
+    return f"{text.rstrip('.')} {cite}", ""
+
+
+def fill_gaps(row, gaps, passages):
+    """(new answers, [points sourced], [points cut], [reasons], (provider, model))."""
+    got, why, used = {}, [], ("", "")
+    if passages:
+        by_n = {p["n"]: p for p in passages}
+        user = ("Passages:\n" + "\n\n".join(f"[{p['n']}] {p['title']}, page {p['page']}\n{p['text']}" for p in passages)
+                + "\n\nGaps:\n" + "\n".join(f"{g['id']}. ({g['lang']}) missing: {g['point'] or '(not named)'}\n   sentence: {g['sentence']}" for g in gaps)
+                + "\n\nQuestion: " + str(row.get("question_en") or row.get("question_bm") or ""))
+        r = llm_router.complete_json([{"role": "system", "content": FILL_SYSTEM}, {"role": "user", "content": user}], max_tokens=2000, temperature=0.1)
+        used = (r["provider"], r["model"])
+        out = r["json"]
+        items = out.get("gaps") if isinstance(out, dict) else out
+        for it in items if isinstance(items, list) else []:
+            if isinstance(it, dict) and str(it.get("id") or "").isdigit():
+                g = next((x for x in gaps if x["id"] == int(it["id"])), None)
+                if g:
+                    rep, bad = accept(g, it, by_n)
+                    if rep:
+                        got[g["id"]] = rep
+                    elif it.get("text"):
+                        why.append(f"gap {g['id']}: {bad}")
+    fields = {f: str(row.get(f) or "") for f in ANSWERS}
+    for g in sorted(gaps, key=lambda x: (x["field"], -x["span"][0])):
+        if g["id"] in got:
+            a, b = g["span"]
+            t = fields[g["field"]]
+            fields[g["field"]] = t[:a].rstrip(" ") + (" " if a and t[a - 1] == " " else "") + got[g["id"]] + t[b:]
+    for f in ANSWERS:                      # a gap with no source: its sentence goes, nothing else
+        if has_marker(fields[f]):
+            fields[f] = drop_marked(fields[f])
+    sourced = [g["point"] for g in gaps if g["id"] in got]
+    cut = [g["point"] for g in gaps if g["id"] not in got]
+    return fields, sourced, cut, why, used
 
 
 def check(row, out, passages):
@@ -263,33 +396,54 @@ def main():
         if time.time() > t_end:
             print("time box reached; the rest wait for the next run"); break
         pts = open_points(row)
-        q = " ".join([str(row.get("question_en") or ""), str(row.get("question_bm") or "")] + pts)
-        passages = [{"n": i + 1, **d} for i, d in enumerate(rank(q, docs, df, avg))] if docs else []
-        user = ("Passages:\n" + ("\n\n".join(f"[{p['n']}] {p['title']}, page {p['page']}\n{p['text']}" for p in passages) or "(none: the references library has nothing on this yet)")
-                + "\n\nEntry:\n" + json.dumps({"question_en": row.get("question_en"), "question_bm": row.get("question_bm"), **{f: row.get(f) for f in ANSWERS}}, ensure_ascii=False)
-                + "\n\nOpen points:\n" + "\n".join(f"- {p}" for p in pts))
-        try:
-            r = llm_router.complete_json([{"role": "system", "content": SYSTEM}, {"role": "user", "content": user}], max_tokens=2500, temperature=0.1)
-        except llm_router.LLMError as e:
-            errs.append(f"{row['id']}: {e}")
-            continue
-        provider, model = r["provider"], r["model"]
-        out = r["json"] or {}
-        if not isinstance(out, dict):
-            # A model sometimes answers with a bare JSON list; that crashed the
-            # whole phase on 15 Oct 2026. Skip the entry; the next run asks again.
-            print(f"[skip] {row['id']}: reply was a {type(out).__name__}, not an object")
-            errs.append(f"{row['id']}: reply not an object")
-            continue
-        why = check(row, out, passages)
-        if why:
-            # The completion cannot be trusted, so none of it is used: the answer
-            # is published as it was, minus the sentences that needed a fact the
-            # references did not give. Every open point goes to verify_notes.
-            print(f"[fallback] {row['id']}: " + "; ".join(why)[:300])
-            fell.append(row["id"])
-            out = {f: drop_marked(row.get(f)) for f in ANSWERS}
-            out["resolved"], out["open"] = [], pts
+        gaps = gaps_of(row)
+        if gaps:
+            ps = passages_for(row, gaps, docs, df, avg) if docs else []
+            try:
+                fields, sourced, cut, why, used = fill_gaps(row, gaps, ps)
+            except llm_router.LLMError as e:
+                errs.append(f"{row['id']}: {e}")
+                continue
+            except (KeyError, TypeError, ValueError) as e:
+                print(f"[skip] {row['id']}: reply not usable ({type(e).__name__})")
+                errs.append(f"{row['id']}: reply not usable")
+                continue
+            provider, model = used if used[0] else (provider, model)
+            if why:
+                print(f"[gap-fallback] {row['id']}: " + "; ".join(why)[:300])
+            prior = [x for x in pts if norm(x) not in {norm(g["point"]) for g in gaps}]
+            out = dict(fields, resolved=[{"point": x} for x in sourced], open=cut + prior)
+            if cut:
+                fell.append(row["id"])
+        else:
+            q = " ".join([str(row.get("question_en") or ""), str(row.get("question_bm") or "")] + pts)
+            passages = [{"n": i + 1, **d} for i, d in enumerate(rank(q, docs, df, avg))] if docs else []
+            user = ("Passages:\n" + ("\n\n".join(f"[{p['n']}] {p['title']}, page {p['page']}\n{p['text']}" for p in passages) or "(none: the references library has nothing on this yet)")
+                    + "\n\nEntry:\n" + json.dumps({"question_en": row.get("question_en"), "question_bm": row.get("question_bm"), **{f: row.get(f) for f in ANSWERS}}, ensure_ascii=False)
+                    + "\n\nOpen points:\n" + "\n".join(f"- {p}" for p in pts))
+            try:
+                r = llm_router.complete_json([{"role": "system", "content": SYSTEM}, {"role": "user", "content": user}], max_tokens=2500, temperature=0.1)
+            except llm_router.LLMError as e:
+                errs.append(f"{row['id']}: {e}")
+                continue
+            provider, model = r["provider"], r["model"]
+            out = r["json"] or {}
+            if not isinstance(out, dict):
+                # A model sometimes answers with a bare JSON list; that crashed the
+                # whole phase on 15 Oct 2026. Skip the entry; the next run asks again.
+                print(f"[skip] {row['id']}: reply was a {type(out).__name__}, not an object")
+                errs.append(f"{row['id']}: reply not an object")
+                continue
+            why = check(row, out, passages)
+            if why:
+                # The completion cannot be trusted, so none of it is used: the answer
+                # is published as it was, minus the sentences that needed a fact the
+                # references did not give. Every open point goes to verify_notes.
+                print(f"[fallback] {row['id']}: " + "; ".join(why)[:300])
+                fell.append(row["id"])
+                out = {f: drop_marked(row.get(f)) for f in ANSWERS}
+                out["resolved"], out["open"] = [], pts
+
         open_left = [str(x)[:300] for x in (out.get("open") or []) if str(x).strip()]
         closed += len(out.get("resolved") or [])
         still += len(open_left)

@@ -523,6 +523,20 @@
     two runs.
     Raw rows a failed batch left as `error` are queued again at the start of each
     run until they have had 3 tries.
+    **A marker is only `[SAHKAN ...]` (or a bare upper-case `SAHKAN:`), never the
+    letters** (25 Oct 2026). `sahkan`, `disahkan`, `mengesahkan` are ordinary Malay:
+    `resolve_sahkan.py` matched them anywhere (`"SAHKAN" in text.upper()`, and a
+    `TRACE` regex added in 1164f25), so every Malay answer using the verb failed
+    its own check, no marker was ever filled (0 of 157), and the fallback then cut
+    real sentences out of published answers (FAQ-0498 lost its last sentence).
+    `has_marker()` / `drop_marked()` are the only tests now; never grep the bare word.
+    **The fill is per marker** (`fill_gaps`): the model returns, for each gap, the few
+    words that replace it plus the passage number and an exact quote; the code checks
+    that gap alone (quote word for word in the passage, the quote shares the point's
+    words (`related`), every number in the quote or the sentence, no Indonesian wording),
+    adds the citation itself ("MPPHM (Domestik) 2020, ms. 23") and substitutes. A gap that
+    fails loses only its own sentence and goes to `verify_notes`. An entry with no marker
+    but open notes still uses the whole-answer rewrite when a new reference arrives.
 46. **More than one Telegram bot** (Wan, 23 Oct 2026). `add-telegram.sh <name>`
     (letters only, e.g. `dua`) sets up another bot beside the first: its token,
     group and allowed users in `collectors/.env.<name>`, pm2 `he-telegram-<name>`,
@@ -564,7 +578,7 @@
     `halalexecutive.kkmhalalconsultant.com`, the Drive folder "Halal Executive"
     (renaming it would make Apps Script create a new one), the WhatsApp, Telegram and
     Facebook GROUP names (`HE_GROUP_NAME`), and "Halal Executive" the job and
-    training title. The logo picture still reads Halal Executive: it is Wan's artwork.
+    training title. The logo is the Malaysian Halal Practitioners artwork Wan supplied on 25 Oct 2026 (`he-logo.png`, `he-favicon.png`, `favicon.ico`, `he-apple-touch-icon.png`, full lock-up `mhp-lockup.png`).
     The hero title no longer has to fit one line on phones and tablets (it wraps
     there; one line from 1024 px).
 50. **Overview robots show only what works** (Wan, 25 Oct 2026: "remove red tab"):

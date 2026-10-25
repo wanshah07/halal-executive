@@ -1,7 +1,8 @@
 # Brand assets
 
-**Since 15 Oct 2026 the site's own mark is the Halal Executive logo** (Wan's
-artwork): `he-logo.png` (512 px, transparent, header), `he-favicon.png`
+**Since 25 Oct 2026 the site's own mark is the Malaysian Halal Practitioners logo**
+(Wan's artwork, black on white converted to transparent; `mhp-lockup.png` is the full
+1024 px lock-up). Before that it was the Halal Executive logo (Wan's artwork): `he-logo.png` (512 px, transparent, header), `he-favicon.png`
 (64 px, dome and Arabic only, strokes thickened for tab sizes),
 `../favicon.ico` (16/32/48) and `he-apple-touch-icon.png` (180 px on white).
 The JAKIM files below stay for the certificate placeholder tile.
