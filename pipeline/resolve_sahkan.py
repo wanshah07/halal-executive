@@ -36,6 +36,24 @@ import llm_router
 
 ANSWERS = ["answer_formal_en", "answer_layman_en", "answer_formal_bm", "answer_layman_bm"]
 MARK = re.compile(r"\[SAHKAN:?\s*([^\]]*)\]", re.I)
+# "sahkan" is also an ordinary Malay verb (disahkan, mengesahkan, sila sahkan), so a
+# marker is only ever the bracketed form, or a bare upper-case "SAHKAN:" that stands
+# alone as a word. Matching the letters anywhere cut real sentences out of published
+# answers on 25 Oct 2026 and made every Malay answer fail its own check.
+BARE = re.compile(r"(?<![A-Za-z])SAHKAN(?![A-Za-z])\s*:")
+TRACE_CASE = re.compile(r"(?<![A-Za-z])SAHKAN(?![A-Za-z])\s*:[^\n]*")
+
+
+def has_marker(text):
+    """True for [SAHKAN ...] in any case, or a bare upper-case SAHKAN: ; never for the Malay word."""
+    t = str(text or "")
+    return bool(MARK.search(t) or re.search(r"\[\s*SAHKAN\b", t, re.I) or BARE.search(t))
+
+
+def strip_traces(text):
+    t = MARK.sub("", str(text or ""))
+    t = re.sub(r"\[\s*SAHKAN\b[^\]\n]*\]?", "", t, flags=re.I)
+    return TRACE_CASE.sub("", t)
 
 # Same tokeniser, stop words and Malay <-> English pairs as askReferences()
 # in apps-script/Code.gs, so both rank passages the same way.
@@ -161,16 +179,10 @@ def open_points(row):
 def needs_pass(row, latest):
     if row.get("status") == "hidden":
         return False
-    if any(MARK.search(str(row.get(f) or "")) or "SAHKAN" in str(row.get(f) or "").upper() for f in ANSWERS):
+    if any(has_marker(row.get(f)) for f in ANSWERS):
         return True
     has_open = len(str(row.get("verify_notes") or "")) > 2
     return has_open and latest and str(latest) > str(row.get("verified_at") or "")
-
-
-# Any trace of the marker, bracketed or not, closed or not (the AI sometimes writes
-# "[SAHKAN: ... [x] ...]" or "SAHKAN:" with no brackets; FAQ-0536 kept coming back
-# because such a leftover survived the fallback).
-TRACE = re.compile(r"\[?\s*SAHKAN\b[^\]\n]*\]?", re.I)
 
 
 def drop_marked(text):
@@ -180,8 +192,8 @@ def drop_marked(text):
     If every sentence has a marker, only the markers go."""
     text = str(text or "")
     parts = re.split(r"(?<=[.!?。])\s+|\n+", text)
-    kept = [p for p in parts if p.strip() and not TRACE.search(p) and not MARK.search(p)]
-    return re.sub(r"\s{2,}", " ", " ".join(kept) if kept else TRACE.sub("", MARK.sub("", text))).strip()
+    kept = [p for p in parts if p.strip() and not has_marker(p)]
+    return re.sub(r"\s{2,}", " ", " ".join(kept) if kept else strip_traces(text)).strip()
 
 
 def check(row, out, passages):
@@ -205,7 +217,7 @@ def check(row, out, passages):
         if not new:
             why.append(f"{f} empty")
             continue
-        if MARK.search(new) or "SAHKAN" in new.upper():
+        if has_marker(new):
             why.append(f"{f} still has a marker")
         if len(new) < 0.4 * len(MARK.sub("", old)):
             why.append(f"{f} shrank from {len(old)} to {len(new)} chars")
@@ -239,7 +251,7 @@ def main():
     # an answer whose text carries no [SAHKAN] marker is published. A point the
     # references could not confirm was already taken OUT of the text and kept in
     # verify_notes for the admin, so what is published only says what the sources say.
-    up = [dict(r, status="published", updated_at=now()) for r in faq if r.get("status") == "draft" and not any(MARK.search(str(r.get(f) or "")) for f in ANSWERS) and str(r.get("question_en") or r.get("question_bm") or "").strip()]
+    up = [dict(r, status="published", updated_at=now()) for r in faq if r.get("status") == "draft" and not any(has_marker(r.get(f)) for f in ANSWERS) and str(r.get("question_en") or r.get("question_bm") or "").strip()]
     if up:
         he_api.upsert("FAQ", up)
         print(f"{len(up)} drafts with no open marker published")
@@ -285,7 +297,7 @@ def main():
         for f in ANSWERS:
             new[f] = str(out[f]).strip()
         for f in ANSWERS:  # last line of defence: no trace of a marker is ever published
-            if TRACE.search(new[f]):
+            if has_marker(new[f]):
                 new[f] = drop_marked(new[f])
         # A language or register left empty by the cut borrows its sibling's text; an entry with
         # nothing left to say in any answer is the one thing that stays a draft.
