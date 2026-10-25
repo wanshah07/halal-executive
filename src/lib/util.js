@@ -42,3 +42,30 @@ const LIVE = ['published', 'current', 'indexed']
 const idStamp = (r) => { const m = /-M?(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})$/.exec(String((r && r.id) || '')); return m ? `20${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}+08:00` : '' }
 export const uploadedAt = (r) => (r && (r.created_at || r.received_at || r.added_at || r.fetched_at || idStamp(r) || r.updated_at)) || ''
 export const publishedAt = (r) => (r && (r.published_at || r.indexed_at || (LIVE.includes(r.status) ? r.updated_at || uploadedAt(r) : ''))) || ''
+
+// ---- When an event or a vacancy is over (mirrors Code.gs, Malaysia time) ----
+// Events go the moment their START day is over (Wan, 25 Oct 2026); vacancies 5
+// working days (Mon-Fri) after they appeared, or a day after the closing date when
+// that comes first. Code.gs deletes them for good on its 30-minute timer; these
+// keep a copy the page saved earlier from showing them in the meantime.
+const mytParts = (ms) => { const p = new Intl.DateTimeFormat('en-GB', { timeZone: MYT, year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short' }).formatToParts(new Date(ms)).reduce((a, x) => { a[x.type] = x.value; return a }, {}); return { ymd: `${p.year}-${p.month}-${p.day}`, dow: { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7 }[p.weekday] } }
+const dayFirst = (v) => { const m = String(v || '').match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})/); return m ? `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : '' }
+export const eventPast = (e, now = Date.now()) => {
+  const v = e && e.date_start
+  if (!v) return false
+  const ymd = dayFirst(v) || (isNaN(Date.parse(v)) ? '' : mytParts(Date.parse(v)).ymd)
+  return !!ymd && now >= Date.parse(`${ymd}T00:00:00+08:00`) + 864e5
+}
+export const vacancyExpiry = (v) => {
+  let t = Date.parse(v.published_at || v.created_at || v.updated_at || '')
+  if (isNaN(t)) return NaN
+  while (mytParts(t).dow > 5) t = Date.parse(`${mytParts(t).ymd}T00:00:00+08:00`) + 864e5
+  for (let n = 0; n < 5;) { t += 864e5; if (mytParts(t).dow <= 5) n++ }
+  return t
+}
+export const vacancyOver = (v, now = Date.now()) => {
+  const c = v.closing_date && (dayFirst(v.closing_date) || (isNaN(Date.parse(v.closing_date)) ? '' : mytParts(Date.parse(v.closing_date)).ymd))
+  if (c && now >= Date.parse(`${c}T00:00:00+08:00`) + 864e5) return true
+  const x = vacancyExpiry(v)
+  return !isNaN(x) && now >= x
+}

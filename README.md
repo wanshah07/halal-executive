@@ -1,4 +1,4 @@
-# Halal Executive
+# Malaysian Halal Practitioners Hub (formerly Halal Executive)
 
 Knowledge hub for halal executives in Malaysia, built from what members share
 in the **Halal Executive** WhatsApp, Facebook and Telegram groups.

@@ -7,6 +7,8 @@ import SearchBar from './components/SearchBar'
 import Chatbot from './components/Chatbot'
 import Overview from './pages/Overview'
 import { certStatus, splitProducts, filedDocs } from './lib/certs'
+import { fhcbRows } from './lib/fhcb'
+import { eventPast, vacancyOver } from './lib/util'
 import { loadData, savedData, snapshotData, loadSettings } from './lib/api'
 // Admin upload queue: loaded with the app so it keeps sending on every page.
 import './lib/uploadQueue'
@@ -63,7 +65,7 @@ const EXPORT = (lang, data) => ({
   guidelines: { title: t(lang, 'guidelines'), rows: data.guidelines || [], cols: ['id', 'category', 'title', 'title_bm', 'issuer', 'summary_en', 'summary_bm', 'link', 'effective_date', 'updated_at', 'created_at', 'published_at'] },
   documents: { title: t(lang, 'documents'), rows: filedDocs(data.documents), cols: ['id', 'status', 'title', 'kind', 'category', 'version', 'supersedes_id', 'received_at', 'updated_at', 'drive_url', 'published_at'] },
   events: { title: t(lang, 'events'), rows: data.events || [], cols: ['id', 'kind', 'title', 'title_bm', 'date_start', 'date_end', 'venue', 'link', 'description', 'created_at', 'published_at'] },
-  fhcb: { title: t(lang, 'fhcb'), rows: data.fhcb || [], cols: ['id', 'no', 'country', 'name', 'kind', 'address', 'persons', 'tel', 'fax', 'email', 'website', 'source_ref', 'effective_date', 'updated_at'] },
+  fhcb: { title: t(lang, 'fhcb'), rows: fhcbRows(data), cols: ['id', 'no', 'country', 'name', 'kind', 'address', 'persons', 'tel', 'fax', 'email', 'website', 'source_ref', 'effective_date', 'updated_at'] },
   directory: { title: t(lang, 'directory'), rows: data.directory || [], cols: ['id', 'type', 'subtype', 'name', 'state', 'country', 'coverage', 'address', 'pic', 'phone', 'email', 'website', 'website2', 'accreditation', 'description', 'source_ref', 'updated_at'] },
   vacancies: { title: t(lang, 'vacancies'), rows: data.vacancies || [], cols: ['id', 'category', 'title', 'title_bm', 'employer', 'location', 'state', 'job_type', 'salary', 'requirements', 'description', 'apply_link', 'apply_email', 'apply_phone', 'closing_date', 'updated_at'] },
   news: { title: t(lang, 'news'), rows: data.news || [], cols: ['id', 'category', 'title', 'source', 'url', 'published_at', 'expires_at', 'summary_en', 'summary_bm'] },
@@ -137,7 +139,7 @@ export default function App() {
 
   if (!data) return <div className="p-8 text-ink-600">{err || t(lang, 'loading')}</div>
   const live = (n) => !n.expires_at || Date.parse(n.expires_at) > Date.now()
-  const counts = { references: (data.references || []).length, faq: (data.faq || []).length, certificates: (data.certificates || []).length, guidelines: (data.guidelines || []).length, documents: filedDocs(data.documents).filter((d) => d.status === 'current').length, events: (data.events || []).length, fhcb: (data.fhcb || []).length || undefined, directory: (data.directory || []).length || undefined, vacancies: (data.vacancies || []).filter((v) => !v.closing_date || Date.parse(v.closing_date) + 864e5 > Date.now()).length, news: (data.news || []).filter(live).length }
+  const counts = { references: (data.references || []).length, faq: (data.faq || []).length, certificates: (data.certificates || []).length, guidelines: (data.guidelines || []).length, documents: filedDocs(data.documents).filter((d) => d.status === 'current').length, events: (data.events || []).filter((e) => !eventPast(e)).length, fhcb: fhcbRows(data).length || undefined, directory: (data.directory || []).length || undefined, vacancies: (data.vacancies || []).filter((v) => v.status !== 'hidden' && v.status !== 'draft' && !vacancyOver(v)).length, news: (data.news || []).filter(live).length }
 
   return (
     <div className="min-h-screen">
@@ -170,7 +172,7 @@ export default function App() {
           <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-5 pb-24 sm:pb-5 sm:pr-48 text-xs text-ink-400">
             <p className="mb-3 text-ink-600 leading-relaxed"><b>{t(lang, 'disclaimer_title')}.</b> {t(lang, 'disclaimer_body')}</p>
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <div><span className="font-semibold text-ink-600">Halal Executive</span> · halalexecutive.kkmhalalconsultant.com · {t(lang, 'updated')} {new Date(data._fetched).toLocaleString()}</div>
+              <div><span className="font-semibold text-ink-600">Malaysian Halal Practitioners Hub</span> · halalexecutive.kkmhalalconsultant.com · {t(lang, 'updated')} {new Date(data._fetched).toLocaleString()}</div>
               <div className="font-medium text-ink-600">{t(lang, 'developed')}</div>
             </div>
           </div>

@@ -68,8 +68,10 @@ export default function Notice({ lang, settings, preview, onClose, active = true
   const untilDay = noticeDay(settings.notice_until)
   const until = untilDay ? Date.parse(untilDay + 'T23:59:59+08:00') : Infinity
   const posters = parsePosters(settings.notice_posters)
-  const title = (lang === 'bm' && settings.notice_title_bm) || settings.notice_title || t(lang, 'notice')
-  const body = (lang === 'bm' && settings.notice_body_bm) || settings.notice_body || ''
+  // The notice was typed in Admin under the old name; it follows the new one (25 Oct 2026).
+  const renamed = (v) => String(v || '').replace(/halal executive hub/gi, 'Malaysian Halal Practitioners Hub')
+  const title = renamed((lang === 'bm' && settings.notice_title_bm) || settings.notice_title || t(lang, 'notice'))
+  const body = renamed((lang === 'bm' && settings.notice_body_bm) || settings.notice_body || '')
   const bg = /^#[0-9a-f]{6}$/i.test(settings.notice_color || '') ? settings.notice_color : (LEVEL[settings.notice_level] || LEVEL.info)
   const fg = textOn(bg)
   const button = (lang === 'bm' && settings.notice_button_bm) || settings.notice_button || t(lang, 'notice_ok')

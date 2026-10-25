@@ -30,13 +30,13 @@ export default function Header({ lang, setLang, tab, sub, setTab, onRefresh, onE
               <img
                 src="./brand/he-logo.png"
                 onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = './brand/halal-logo.svg' }}
-                alt="Halal Executive logo"
+                alt="Malaysian Halal Practitioners Hub logo"
                 className="h-11 w-11 sm:h-12 sm:w-12 object-contain shrink-0"
               />
               <div className="min-w-0">
                 {/* Phones: the name on two short lines so it never runs under the buttons */}
-                <div className="sm:hidden text-[12px] font-bold tracking-wide leading-[1.15] uppercase whitespace-nowrap"><div>Halal Executive</div><div>Hub</div></div>
-                <div className="hidden sm:block text-lg font-bold tracking-wide leading-tight uppercase truncate">{SITE_NAME}</div>
+                <div className="sm:hidden text-[11px] font-bold tracking-wide leading-[1.15] uppercase whitespace-nowrap"><div>Malaysian Halal</div><div>Practitioners Hub</div></div>
+                <div className="hidden sm:block text-[15px] lg:text-lg font-bold tracking-wide leading-tight uppercase line-clamp-2">{SITE_NAME}</div>
               </div>
             </a>
           </div>

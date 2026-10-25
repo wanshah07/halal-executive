@@ -1,4 +1,4 @@
-# Standing rules for halal-executive
+# Standing rules for halal-executive (site name: Malaysian Halal Practitioners Hub)
 
 1. **The Sheet is the database.** Every write goes through
    `apps-script/Code.gs`. Do not add a second writer (no gspread, no direct
@@ -57,7 +57,9 @@
    Deleting for good (row + its Drive file) happens only through Admin's
    Delete button, which asks first (`adminDelete` in Code.gs). Finished
    events (a day after they end) and their uploaded posters are removed by
-   `purgePastEvents` on the 30-minute timer (Wan, 14 Oct 2026), and so are AI
+   `purgePastEvents` on the 30-minute timer (Wan, 14 Oct 2026; since 25 Oct 2026 an
+   event goes the moment its START day is over, Malaysia time: `eventPast` in
+   Code.gs, `eventPast` in util.js for a page saved earlier), and so are AI
    draft events taken from a message more than 120 days old (Wan, 15 Oct 2026).
    "Removed" means deleted for good (Wan, 20 Oct 2026: "permanently deleted"):
    an uploaded poster goes through `removeDriveFile` (`Drive.Files.remove`,
@@ -430,10 +432,14 @@
     apply link, email or phone ARE kept when the ad itself prints them as the way to
     apply; the number or name of whoever forwarded the ad never is.
     Same job at the same employer is skipped (`seen_vacancies`). An ad already past
-    its closing date is never listed. **A vacancy is deleted for good a day after
-    `closing_date`, or 60 days after it was added when it has none**
-    (`vacancyOver`, `purgeClosedVacancies` on the 30-minute timer, through
-    `adminDelete`, so its poster goes too). An older Code.gs (no `Vacancies` tab)
+    its closing date is never listed. **A vacancy is deleted for good 5 working days
+    (Monday to Friday, Malaysia time) after it appeared** (`published_at`, which an
+    Admin edit keeps), **or a day after `closing_date` if that comes first** (Wan,
+    25 Oct 2026, replacing the 60-day rule; `vacancyExpiry` / `vacancyOver`,
+    `purgeClosedVacancies` on the 30-minute timer, through `adminDelete`, so its
+    poster goes too; util.js mirrors it so a saved page hides it at once). Public
+    holidays and the Friday-Saturday weekend of some states are not subtracted;
+    an ad that appears on a weekend starts counting on Monday. An older Code.gs (no `Vacancies` tab)
     makes the pipeline skip vacancies rather than fail.
 39. **Sub-menus and boxes** (Wan, 20 Oct 2026). The sidebar's `SUBNAV`
     (Sidebar.jsx) gives FAQ, Certificates, Guidelines, Vacancies, Documents and
@@ -536,9 +542,26 @@
     Admin → FHCB → Load adds them to the Sheet. The FHCB page shows a "Newly approved
     on MyIHAB" banner (`NewFhcb`, from the live rows or the seed until Load) and every
     country's PDF; the card and table mark a NEW row. Re-scrape when JAKIM changes
-    the modal's counts.
+    the modal's counts. **The page tallies with MyIHAB without anyone pressing
+    Load** (25 Oct 2026): `fhcbRows` (src/lib/fhcb.js) adds every seed row the
+    Sheet lacks, skipping ids in Settings `seed_deleted`; the FHCB page, the count
+    in the sidebar, the map, the globe and the export all use it, so they read 101
+    bodies / 51 countries, which is also what the 51 PDFs add up to (checked page
+    by page).
 48. **An event poster is never a document** (Wan, 23 Oct 2026). `isEventDoc` in
     certs.js (kind poster/event/flyer, or a title with poster, flyer, brochure,
     pamphlet, leaflet) keeps them out of every document list through `filedDocs`;
     process_raw skips such a document row and the prompt says a poster goes in
     `events` only.
+49. **The site is called Malaysian Halal Practitioners Hub** (Wan, 25 Oct 2026,
+    replacing "Halal Executive Hub"): `SITE_NAME`, the page title, the header
+    (two lines on phones), the hero welcome line, the footer, exports, e-mails and
+    the Assistant prompt in Code.gs. Not renamed on purpose: the domain
+    `halalexecutive.kkmhalalconsultant.com`, the Drive folder "Halal Executive"
+    (renaming it would make Apps Script create a new one), the WhatsApp, Telegram and
+    Facebook GROUP names (`HE_GROUP_NAME`), and "Halal Executive" the job and
+    training title. The logo picture still reads Halal Executive: it is Wan's artwork.
+    The hero title no longer has to fit one line on phones and tablets (it wraps
+    there; one line from 1024 px).
+50. **Overview robots show only what works** (Wan, 25 Oct 2026: "remove red tab"):
+    `Caps` with `onlyWorking` on the compact card; Admin keeps the red ✗ and grey ?.

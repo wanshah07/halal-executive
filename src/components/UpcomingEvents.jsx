@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { t } from '../lib/i18n'
 import { safeUrl } from '../lib/safe'
-import { fmtDateTime } from '../lib/util'
+import { fmtDateTime, eventPast } from '../lib/util'
 import Poster from './Poster'
 import { ICON, ArrowRight, ArrowUpRight } from './Icon'
 
@@ -10,7 +10,7 @@ import { ICON, ArrowRight, ArrowUpRight } from './Icon'
 // Phones and tablets: one row that slides on its own every 4 seconds (swipe
 // to move it yourself; it rests while touched, and loops back at the end).
 export default function UpcomingEvents({ lang, events, posters = [], setTab }) {
-  const up = (events || []).filter((e) => Date.parse(e.date_end || e.date_start) >= Date.now() - 864e5)
+  const up = (events || []).filter((e) => !eventPast(e))
     .sort((a, b) => Date.parse(a.date_start) - Date.parse(b.date_start)).slice(0, 8)
   const ps = (posters || []).filter((p) => safeUrl(p.url))
   const title = (e) => (lang === 'bm' ? e.title_bm || e.title : e.title)

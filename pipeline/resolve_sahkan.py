@@ -161,21 +161,27 @@ def open_points(row):
 def needs_pass(row, latest):
     if row.get("status") == "hidden":
         return False
-    if any(MARK.search(str(row.get(f) or "")) for f in ANSWERS):
+    if any(MARK.search(str(row.get(f) or "")) or "SAHKAN" in str(row.get(f) or "").upper() for f in ANSWERS):
         return True
     has_open = len(str(row.get("verify_notes") or "")) > 2
     return has_open and latest and str(latest) > str(row.get("verified_at") or "")
 
 
+# Any trace of the marker, bracketed or not, closed or not (the AI sometimes writes
+# "[SAHKAN: ... [x] ...]" or "SAHKAN:" with no brackets; FAQ-0536 kept coming back
+# because such a leftover survived the fallback).
+TRACE = re.compile(r"\[?\s*SAHKAN\b[^\]\n]*\]?", re.I)
+
+
 def drop_marked(text):
-    """The answer without every sentence that carries a [SAHKAN] marker: the
-    fallback when the AI's completion fails the checks, so nothing unverified is
-    added and nothing is left blocked (Wan, 23 Oct 2026). If every sentence has
-    a marker, only the markers go."""
+    """The answer without every sentence that carries a [SAHKAN] marker or any
+    trace of one: the fallback when the AI's completion fails the checks, so
+    nothing unverified is added and nothing is left blocked (Wan, 23 Oct 2026).
+    If every sentence has a marker, only the markers go."""
     text = str(text or "")
     parts = re.split(r"(?<=[.!?。])\s+|\n+", text)
-    kept = [p for p in parts if p.strip() and not MARK.search(p)]
-    return (" ".join(kept) if kept else MARK.sub("", text)).replace("  ", " ").strip()
+    kept = [p for p in parts if p.strip() and not TRACE.search(p) and not MARK.search(p)]
+    return re.sub(r"\s{2,}", " ", " ".join(kept) if kept else TRACE.sub("", MARK.sub("", text))).strip()
 
 
 def check(row, out, passages):
@@ -278,6 +284,18 @@ def main():
         new = dict(row)
         for f in ANSWERS:
             new[f] = str(out[f]).strip()
+        for f in ANSWERS:  # last line of defence: no trace of a marker is ever published
+            if TRACE.search(new[f]):
+                new[f] = drop_marked(new[f])
+        # A language or register left empty by the cut borrows its sibling's text; an entry with
+        # nothing left to say in any answer is the one thing that stays a draft.
+        for lang in ("en", "bm"):
+            fm, ly = new[f"answer_formal_{lang}"], new[f"answer_layman_{lang}"]
+            if not fm and ly: new[f"answer_formal_{lang}"] = ly
+            if not ly and fm: new[f"answer_layman_{lang}"] = fm
+        if not any(new[f] for f in ANSWERS):
+            print(f"[hold] {row['id']}: nothing left to publish after the markers were cut")
+            continue
         new["verify_notes"] = json.dumps(open_left, ensure_ascii=False) if open_left else ""
         # Every marker is filled or taken out of the text (check() refuses a reply
         # that leaves one), so the answer is published; points still unconfirmed

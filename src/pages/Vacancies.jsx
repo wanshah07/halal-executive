@@ -5,14 +5,14 @@ import CategoryFilter, { catChip } from '../components/CategoryFilter'
 import Poster from '../components/Poster'
 import Cover from '../components/Cover'
 import { t } from '../lib/i18n'
-import { fmtDate } from '../lib/util'
+import { fmtDate, vacancyOver } from '../lib/util'
 import { ICON, ArrowUpRight, Briefcase, Mail, Phone, MapPin, ChevronDown, ChevronRight } from '../components/Icon'
 
 // Halal job vacancies (Wan, 20 Oct 2026): read from the WhatsApp and Telegram
 // groups or added in Admin. The Hub is not the employer, and the notice above
 // the list says so on every visit. A vacancy leaves the page a day after its
 // closing date (Code.gs purgeClosedVacancies deletes it for good).
-const closed = (v) => { const d = Date.parse(v.closing_date); return !isNaN(d) && d + 864e5 < Date.now() }
+const closed = (v) => vacancyOver(v)
 // A phone printed in the ad becomes a tap-to-call link; WhatsApp numbers too.
 const tel = (p) => String(p || '').replace(/[^\d+]/g, '')
 

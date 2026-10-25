@@ -19,7 +19,7 @@ export function exportCSV(name, rows, columns) {
 export function exportPDF(name, title, rows, columns) {
   const cols = columns && columns.length ? columns : Object.keys(rows[0] || {}).map((k) => ({ key: k, label: k }))
   const doc = new jsPDF({ orientation: cols.length > 5 ? 'landscape' : 'portrait', unit: 'pt', format: 'a4' })
-  doc.setFontSize(16); doc.text(`Halal Executive · ${title}`, 40, 40)
+  doc.setFontSize(16); doc.text(`Malaysian Halal Practitioners Hub · ${title}`, 40, 40)
   doc.setFontSize(9); doc.setTextColor(100); doc.text(`halalexecutive.kkmhalalconsultant.com · exported ${new Date().toLocaleString('en-MY')} · ${rows.length} rows`, 40, 56)
   autoTable(doc, {
     startY: 70, head: [cols.map((c) => c.label)], body: rows.map((r) => cols.map((c) => cell(r[c.key]))),
@@ -38,7 +38,7 @@ export async function exportDOCX(name, title, rows, columns) {
   })
   const doc = new Document({
     sections: [{ children: [
-      new Paragraph({ text: `Halal Executive · ${title}`, heading: HeadingLevel.HEADING_1 }),
+      new Paragraph({ text: `Malaysian Halal Practitioners Hub · ${title}`, heading: HeadingLevel.HEADING_1 }),
       new Paragraph({ children: [new TextRun({ text: `halalexecutive.kkmhalalconsultant.com · exported ${new Date().toLocaleString('en-MY')} · ${rows.length} rows`, size: 16, color: '666666' })] }),
       table,
       new Paragraph({ children: [new TextRun({ text: 'Developed by Wanshah', size: 16, color: '888888' })] }),

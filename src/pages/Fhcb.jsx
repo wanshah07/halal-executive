@@ -6,6 +6,7 @@ import { safeUrl } from '../lib/safe'
 import { fmtDate } from '../lib/util'
 import { countryCoords } from '../lib/config'
 import seed from '../data/fhcb.json'
+import { fhcbRows } from '../lib/fhcb'
 import lists from '../data/fhcb_countries.json'
 import { FileText, Sparkles } from '../components/Icon'
 import { ICON, Mail, Phone, MapPin, ExternalLink } from '../components/Icon'
@@ -17,10 +18,7 @@ const MapView = lazy(() => import('../components/MapView'))
 // Rows live in the Sheet's FHCB tab (added, edited and removed in Admin as
 // each gazetted update lands); until the tab is seeded the bundled list of
 // 21 August 2026 shows. Every entry cites the document and page it came from.
-export const fhcbRows = (data) => {
-  const live = (data.fhcb || []).filter((r) => r.status !== 'hidden')
-  return live.length ? live : seed
-}
+export { fhcbRows }
 export const splitList = (s) => String(s || '').split(/;\s*/).map((x) => x.trim()).filter(Boolean)
 const siteHref = (w) => { const s = String(w || '').trim(); return safeUrl(/^https?:\/\//i.test(s) ? s : 'https://' + s) }
 

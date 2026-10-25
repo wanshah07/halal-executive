@@ -3,7 +3,7 @@ import { safeUrl, imageUrl } from '../lib/safe'
 import { EVENT_KINDS } from '../lib/config'
 import Segment from '../components/Segment'
 import { t } from '../lib/i18n'
-import { fmtDateTime } from '../lib/util'
+import { fmtDateTime, eventPast } from '../lib/util'
 import Poster from '../components/Poster'
 import { ICON, ArrowUpRight } from '../components/Icon'
 
@@ -12,7 +12,7 @@ export const kindChip = (id, lang) => <span className={`chip ${id && id !== 'oth
 export default function Events({ lang, data, sub }) {
   const [kind, setKind] = useState(sub || 'all')
   useEffect(() => { setKind(sub || 'all') }, [sub])
-  const all = (data.events || []).filter((e) => e.status !== 'hidden')
+  const all = (data.events || []).filter((e) => e.status !== 'hidden' && !eventPast(e))
   const rows = all.filter((e) => kind === 'all' || (e.kind || 'other') === kind).sort((a, b) => Date.parse(a.date_start) - Date.parse(b.date_start))
   const filters = (
     <select className="input w-auto" value={kind} onChange={(e) => setKind(e.target.value)} aria-label={t(lang, 'event_kind')}>

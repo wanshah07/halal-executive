@@ -1,5 +1,5 @@
 /**
- * Halal Executive — Google Apps Script backend.
+ * Malaysian Halal Practitioners Hub (formerly Halal Executive) — Google Apps Script backend.
  *
  * One Sheet, one web app. The page reads it (GET ?action=data), the pipeline
  * and collectors write to it (POST with INGEST_TOKEN), the Admin panel writes
@@ -78,7 +78,7 @@ function setup() {
     if (sh.getLastRow() === 0) { sh.appendRow(TABS[name]); sh.setFrozenRows(1); }
     else ensureHeader(sh, TABS[name]);
   });
-  var defaults = { hero_title: 'Halal Executive', hero_subtitle: 'Answers, guidelines and documents for halal executives, in one place.', hero_cta: 'Open the FAQ', hero_cta_url: '#faq', notice_enabled: 'false', notice_level: 'info', posters: '[]', llm_turn: '0' };
+  var defaults = { hero_title: 'Malaysian Halal Practitioners Hub', hero_subtitle: 'Answers, guidelines and documents for halal practitioners in Malaysia, in one place.', hero_cta: 'Open the FAQ', hero_cta_url: '#faq', notice_enabled: 'false', notice_level: 'info', posters: '[]', llm_turn: '0' };
   var cur = readSettings();
   Object.keys(defaults).forEach(function (k) { if (cur[k] === undefined) sheet('Settings').appendRow([k, defaults[k]]); });
   var P = props();
@@ -306,7 +306,7 @@ function publicData() {
     // Every halal certificate is on the site (Wan, 20 Oct 2026: "do not make halal cert hidden"), until
     // it expires; then purgeExpiredCerts deletes it for good.
     certificates: noMarks(readTab('Certificates').filter(function (r) { return r.status !== 'expired' && !(r.valid_to && eventOver({ date_start: r.valid_to }, now)); })),
-    events: noMarks(readTab('Events').filter(function (r) { return r.status !== 'hidden' && r.status !== 'draft' && !eventOver(r, now); })),
+    events: noMarks(readTab('Events').filter(function (r) { return r.status !== 'hidden' && r.status !== 'draft' && !eventPast(r, now); })),
     news: readTab('News').filter(function (r) { return !r.expires_at || Date.parse(r.expires_at) > now; }),
     fhcb: readTab('FHCB').filter(function (r) { return r.status !== 'hidden' && r.status !== 'draft'; }),
     vacancies: noMarks(readTab('Vacancies').filter(function (r) { return r.status !== 'hidden' && r.status !== 'draft' && !vacancyOver(r, now); })),
@@ -445,8 +445,8 @@ function loginRequest(email) {
   var code = String(100000 + (rand % 900000));
   c.put('otp_' + email, code + '|0', 600);
   c.put('otp_rl_' + email, '1', 60);
-  MailApp.sendEmail({ to: email, subject: 'Halal Executive admin code: ' + code,
-    body: 'Your sign-in code for the Halal Executive admin panel is ' + code + '.\n\nIt works for 10 minutes. If you did not ask for it, ignore this email.\n\nhalalexecutive.kkmhalalconsultant.com' });
+  MailApp.sendEmail({ to: email, subject: 'Malaysian Halal Practitioners Hub admin code: ' + code,
+    body: 'Your sign-in code for the Malaysian Halal Practitioners Hub admin panel is ' + code + '.\n\nIt works for 10 minutes. If you did not ask for it, ignore this email.\n\nhalalexecutive.kkmhalalconsultant.com' });
   return generic;
 }
 
@@ -536,8 +536,25 @@ function eventOver(e, now) {
   var t = v instanceof Date ? v.getTime() : m ? new Date(+m[3], +m[2] - 1, +m[1]).getTime() : Date.parse(v);
   return !isNaN(t) && t + 24 * 3600 * 1000 < now;
 }
+// An event is gone the moment its START day is over, Malaysia time (Wan, 25 Oct
+// 2026: "remove permanently and immediately after starts day"), whatever its end
+// date says. publicData hides it at once; purgePastEvents (30-minute timer)
+// deletes the row and its uploaded poster for good.
+function eventPast(e, now) {
+  var v = e.date_start;
+  if (!v) return eventOver(e, now);
+  var m = String(v).match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})/), end;
+  if (m) end = new Date(+m[3], +m[2] - 1, +m[1] + 1).getTime();
+  else {
+    var t = v instanceof Date ? v.getTime() : Date.parse(v);
+    if (isNaN(t)) return eventOver(e, now);
+    var s = Utilities.formatDate(new Date(t), 'Asia/Kuala_Lumpur', 'yyyy-MM-dd').split('-');
+    end = new Date(+s[0], +s[1] - 1, +s[2] + 1).getTime();
+  }
+  return now >= end;
+}
 function purgePastEvents() {
-  var now = Date.now(), evs = readTab('Events'), gone = evs.filter(function (e) { return eventOver(e, now); });
+  var now = Date.now(), evs = readTab('Events'), gone = evs.filter(function (e) { return eventPast(e, now); });
   // AI drafts taken from a message more than 120 days old (the chat-export
   // backlog) are past events too, whatever year the model guessed (Wan, 15 Oct 2026).
   var stale = evs.filter(function (e) { return e.status === 'draft' && e.source && e.source !== 'admin' && gone.indexOf(e) < 0; });
@@ -699,7 +716,7 @@ function tickWatch() {
   w.checked = new Date(now).toISOString();
   P.setProperty('watch', JSON.stringify(w));
   if (mail.length) {
-    try { MailApp.sendEmail({ to: (adminEmails().length ? adminEmails() : [Session.getEffectiveUser().getEmail()]).join(','), subject: 'Halal Executive watchdog: ' + (Object.keys(problems).length ? 'needs attention' : 'all working again'), body: mail.join('\n\n') + '\n\nAdmin → Progress shows the live state.' }); }
+    try { MailApp.sendEmail({ to: (adminEmails().length ? adminEmails() : [Session.getEffectiveUser().getEmail()]).join(','), subject: 'Malaysian Halal Practitioners Hub watchdog: ' + (Object.keys(problems).length ? 'needs attention' : 'all working again'), body: mail.join('\n\n') + '\n\nAdmin → Progress shows the live state.' }); }
     catch (e) { console.error('watch mail: ' + e); }
   }
   return w;
@@ -729,13 +746,24 @@ function purgeExpiredCerts() {
   docs.forEach(function (d) { try { adminDelete('Documents', String(d.id)); } catch (e) { console.error('doc purge ' + d.id + ': ' + e); } });
   return gone.length + docs.length;
 }
-// A vacancy is over a day after its closing date, or 60 days after it was
-// added when the ad gives none. It is then deleted for good with its poster,
-// like a finished event (Wan, 20 Oct 2026).
+// A vacancy is deleted for good 5 WORKING DAYS after it appeared on the site
+// (Wan, 25 Oct 2026), or a day after its closing date when that comes first.
+// Working days are Monday to Friday, Malaysia time; public holidays and the
+// Friday-Saturday weekend of some states are not subtracted. It appeared when it
+// was first published (published_at, kept when Admin edits it), else when added.
+// An ad that appears on a Saturday or Sunday starts counting on Monday.
+function vacancyExpiry(v) {
+  var t = Date.parse(v.published_at || v.created_at || v.updated_at || '');
+  if (isNaN(t)) return NaN;
+  var day = function (ms) { return +Utilities.formatDate(new Date(ms), 'Asia/Kuala_Lumpur', 'u'); }; // 1 = Monday ... 7 = Sunday
+  while (day(t) > 5) { t = new Date(Utilities.formatDate(new Date(t), 'Asia/Kuala_Lumpur', 'yyyy/MM/dd')).getTime() + 864e5; }
+  var n = 0; while (n < 5) { t += 864e5; if (day(t) <= 5) n++; }
+  return t;
+}
 function vacancyOver(v, now) {
-  if (v.closing_date) return eventOver({ date_start: v.closing_date }, now);
-  var t = Date.parse(v.created_at || v.updated_at || '');
-  return !isNaN(t) && now - t > 60 * 864e5;
+  if (v.closing_date && eventOver({ date_start: v.closing_date }, now)) return true;
+  var x = vacancyExpiry(v);
+  return !isNaN(x) && now >= x;
 }
 function purgeClosedVacancies() {
   var now = Date.now(), gone = readTab('Vacancies').filter(function (v) { return vacancyOver(v, now); });
@@ -868,7 +896,7 @@ function reviewList() {
   var unconfirmed = readTab('FAQ').filter(function (r) { return r.status === 'published' && String(r.verify_notes || '').length > 2 && String(r.verify_notes) !== '[]'; }).map(function (r) { return r.id; });
   if (unconfirmed.length) updateByIds('FAQ', unconfirmed, { status: 'draft', updated_at: new Date().toISOString() });
   var now = Date.now();
-  REVIEW_TABS.forEach(function (t) { out[t] = readTab(t).filter(function (r) { return r.status === 'draft' && !(t === 'Documents' && String(r.kind).toLowerCase() === 'certificate') && !(t === 'Events' && eventOver(r, now)) && !(t === 'Vacancies' && vacancyOver(r, now)) && !(t === 'Certificates' && r.valid_to && eventOver({ date_start: r.valid_to }, now)); }); });
+  REVIEW_TABS.forEach(function (t) { out[t] = readTab(t).filter(function (r) { return r.status === 'draft' && !(t === 'Documents' && String(r.kind).toLowerCase() === 'certificate') && !(t === 'Events' && eventPast(r, now)) && !(t === 'Vacancies' && vacancyOver(r, now)) && !(t === 'Certificates' && r.valid_to && eventOver({ date_start: r.valid_to }, now)); }); });
   // Points the pipeline could not confirm from the references library: they
   // were left out of the published answer and wait here until a reference
   // that states them is uploaded.
@@ -1609,7 +1637,7 @@ function chat(b) {
   var vp = { page: '', passages: [] }; try { vp = pagePassages(b.question); } catch (e) { vp = { page: '', passages: [] }; }
   var all = vp.passages.map(function (p) { return { type: 'reference', id: p.title + ', page ' + p.page, title: p.title + ', page ' + p.page, body: p.text }; }).concat(b.context || []).concat(refPass.map(function (p) { return { type: 'reference', id: p.title + ', page ' + p.page, title: p.title + ', page ' + p.page, body: p.text.slice(0, 1400) }; }));
   var ctx = all.map(function (c, i) { return '[' + (i + 1) + '] (' + c.type + ' ' + c.id + ') ' + c.title + '\n' + c.body; }).join('\n\n');
-  var sys = 'You are the Halal Executive assistant for halal executives in Malaysia. Answer ONLY from the numbered context entries (FAQ, guidelines, documents, events, certificates, news and passages from the official references). Cite entries like [1]; for a reference passage also name the document and page. A one-word question (e.g. "warna") means: what do the sources say about it? If the context does not answer, say so in one sentence and suggest the References tab.' + VERIFY_RULE + (vp.page ? PAGE_RULE : '') + ' Keep regulatory terms original (Notifikasi Kosmetik, Garis Panduan, Borang). Never invent a limit, entry number or date; if a number is not in the context, say it is not in the site sources yet and ask the user to find the guideline and page that state it. Reply in ' + lang + ', the language of the question. Be brief but always finish the answer.';
+  var sys = 'You are the Malaysian Halal Practitioners Hub assistant for halal practitioners in Malaysia. Answer ONLY from the numbered context entries (FAQ, guidelines, documents, events, certificates, news and passages from the official references). Cite entries like [1]; for a reference passage also name the document and page. A one-word question (e.g. "warna") means: what do the sources say about it? If the context does not answer, say so in one sentence and suggest the References tab.' + VERIFY_RULE + (vp.page ? PAGE_RULE : '') + ' Keep regulatory terms original (Notifikasi Kosmetik, Garis Panduan, Borang). Never invent a limit, entry number or date; if a number is not in the context, say it is not in the site sources yet and ask the user to find the guideline and page that state it. Reply in ' + lang + ', the language of the question. Be brief but always finish the answer.';
   try {
     var r = complete([{ role: 'system', content: sys }, { role: 'user', content: 'Context:\n' + (ctx || '(none)') + '\n\nQuestion: ' + b.question }], { max_tokens: 1500, fast: true, whole: true });
     return { ok: true, answer: String(r.text).replace(/<think>[\s\S]*?<\/think>/g, '').trim(), provider: r.provider, model: r.model };

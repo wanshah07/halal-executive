@@ -4,7 +4,7 @@
 export const API_URL = import.meta.env.VITE_API_URL || ''
 export const SHEET_URL = import.meta.env.VITE_SHEET_URL || ''
 export const DRIVE_FOLDER_URL = import.meta.env.VITE_DRIVE_FOLDER_URL || ''
-export const SITE_NAME = 'Halal Executive Hub'
+export const SITE_NAME = 'Malaysian Halal Practitioners Hub' // renamed from Halal Executive Hub, 25 Oct 2026 (Wan)
 export const NEWS_TTL_HOURS = 72
 export const CATEGORIES = [
   { id: 'halal',    en: 'Halal',    bm: 'Halal',    hint_en: 'MPPHM (Domestik) 2020, MHMS 2020, MS 1500:2019, Halal Assurance System, logo use', hint_bm: 'MPPHM (Domestik) 2020, MHMS 2020, MS 1500:2019, Sistem Jaminan Halal, penggunaan logo' },

@@ -55,7 +55,7 @@ export default function AiTeam({ lang, runs, sample, compact = false, embedded =
               <div className="shrink-0"><Robot3D tone={c.tone} state={state} size={compact ? 104 : 118} name={c.name} /></div>
               <div className="min-w-0 w-full sm:w-auto">
                 <div className={`flex items-center gap-2 flex-wrap ${compact ? 'justify-center' : ''}`}><span className="text-lg font-bold">{c.name}</span><span className={`chip ${chip}`}><span aria-hidden="true">●</span>&nbsp;{t(lang, 'st_' + state)}{state === 'offline' && p && p.code ? ` · ${/^\d+$/.test(p.code) ? 'HTTP ' + p.code : p.code}` : ''}</span>{st && st.mode === c.key && <span className="chip bg-brand-100 text-brand-700">{t(lang, 'ai_chosen')}</span>}</div>
-                <Caps lang={lang} c={c} p={p} state={state} center={compact} />
+                <Caps lang={lang} c={c} p={p} state={state} center={compact} onlyWorking={compact} />
                 {!compact && <div className="text-xs text-ink-400 mb-1">{c.key}</div>}
                 {!compact && <dl className="text-sm grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
                   <dt className="text-ink-400">{t(lang, c.image ? 'img_reads' : 'model_used')}</dt><dd className="truncate font-medium">{(p && p.model) || (run && run.model) || '—'}</dd>
@@ -79,7 +79,9 @@ export default function AiTeam({ lang, runs, sample, compact = false, embedded =
 // What each robot does, in one row (Wan, 20 Oct 2026: "read, write, read image").
 // Wanshah 1 and 2 read and write text; reading a picture is shown only once the
 // picture test has said so. Wanshah 3 reads pictures and writes (makes) them.
-function Caps({ lang, c, p, state, center }) {
+// On the public Overview only what the robot CAN do is shown (Wan, 25 Oct 2026: "remove red tab");
+// Admin keeps the red ✗ and the grey ? so a missing ability is visible there.
+function Caps({ lang, c, p, state, center, onlyWorking }) {
   const off = state === 'offline'
   const img = c.image ? !!(p && p.model) : p && p.sees
   const items = c.image
@@ -87,7 +89,7 @@ function Caps({ lang, c, p, state, center }) {
     : [['cap_read', true], ['cap_write', true], ['cap_read_image', img]]
   return (
     <div className={`flex flex-wrap gap-1 my-1 ${center ? 'justify-center' : ''}`}>
-      {items.map(([k, on]) => {
+      {items.filter(([, on]) => !onlyWorking || on === true).map(([k, on]) => {
         const cls = off ? 'bg-paper text-ink-400 border border-line' : on === true ? 'bg-brand-50 text-brand-700 border border-brand-100' : on === false ? 'bg-red-50 text-red-700 border border-red-100' : 'bg-paper text-ink-600 border border-line'
         return <span key={k} className={`chip ${cls}`}>{on === true && !off ? '✓ ' : on === false && !off ? '✗ ' : ''}{t(lang, k)}{on == null && !off ? ' ?' : ''}</span>
       })}

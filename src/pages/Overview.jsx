@@ -1,10 +1,11 @@
+import { fhcbRows } from '../lib/fhcb'
 import StatCard from '../components/StatCard'
 import Bars from '../components/Bars'
 import Hero from '../components/Hero'
 import { CATEGORIES } from '../lib/config'
 import { t } from '../lib/i18n'
 import Pager from '../components/Pager'
-import { count, daysAgo, fmtDateTime } from '../lib/util'
+import { count, daysAgo, fmtDateTime, eventPast } from '../lib/util'
 import { catChip } from '../components/CategoryFilter'
 import { lazy, Suspense, useMemo, useState } from 'react'
 import { monthlySeries } from '../lib/series'
@@ -24,11 +25,11 @@ export default function Overview({ lang, data, setTab }) {
   const faq = data.faq || [], docs = filedDocs(data.documents), events = data.events || [], news = data.news || [], gl = data.guidelines || []
   // One dot per country that has a JAKIM-recognised foreign certification body.
   const globeMarkers = useMemo(() => {
-    const n = {}; (data.fhcb || []).forEach((r) => { n[r.country] = (n[r.country] || 0) + 1 })
+    const n = {}; fhcbRows(data).forEach((r) => { n[r.country] = (n[r.country] || 0) + 1 })
     return Object.entries(n).map(([c, k]) => { const ll = countryCoords(c); return ll && { location: ll, size: 0.03 + Math.min(k, 6) * 0.008 } }).filter(Boolean)
-  }, [data.fhcb])
+  }, [data.fhcb, data.settings])
   const recent = faq.filter((f) => daysAgo(f.created_at) <= 7)
-  const upcoming = events.filter((e) => Date.parse(e.date_end || e.date_start) >= Date.now())
+  const upcoming = events.filter((e) => !eventPast(e))
   const byCat = count(faq, 'category')
   const bySource = (data.raw_stats && data.raw_stats.by_source) || {}
   const posters = (() => { try { return JSON.parse(data.settings.posters || '[]') } catch { return [] } })()

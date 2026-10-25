@@ -178,7 +178,7 @@ bot.on('message', async (m) => {
         if (m.from && !told.has(m.from.id)) { told.add(m.from.id); bot.sendMessage(m.chat.id, `This bot only takes files from its owner. Your Telegram id is ${m.from.id}. Give it to the owner if you should be allowed.`).catch(() => {}) }
         return
       }
-      if (m.text && m.text.startsWith('/')) { bot.sendMessage(m.chat.id, 'Send or forward a message, photo or file here and it goes to the Halal Executive Hub.').catch(() => {}); return }
+      if (m.text && m.text.startsWith('/')) { bot.sendMessage(m.chat.id, 'Send or forward a message, photo or file here and it goes to the Malaysian Halal Practitioners Hub.').catch(() => {}); return }
     }
     const o = direct ? origin(m) : {}
     const row = { source: 'telegram', group: direct ? (o.chat || 'Telegram (sent to the bot)') : m.chat.title, msg_id: `${m.chat.id}:${m.message_id}`, sender_hash: hash(direct && o.who ? o.who : m.from && m.from.id), ts: new Date((direct && o.when ? o.when : m.date) * 1000).toISOString(), text: m.text || m.caption || '', attachments: [] }
