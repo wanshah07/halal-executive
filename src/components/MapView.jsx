@@ -1,6 +1,13 @@
 import { useEffect, useRef } from 'react'
-import maplibregl from 'maplibre-gl'
+import * as maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
+// maplibre-gl 6 runs its tile work in a separate worker file and finds it next
+// to its own module, which is not where Vite puts a bundled chunk. Shipping
+// the worker as an asset and naming it here keeps the map inside the page's
+// CSP (worker-src 'self').
+import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url'
+
+maplibregl.setWorkerUrl(workerUrl)
 
 // One map for the whole site (MapLibre GL on Carto's Positron basemap, the
 // same style the mapcn / flightcn component Wan sent uses). Markers are circles

@@ -84,6 +84,12 @@ export function savedData() {
   try { const c = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null'); if (c && c.faq) return { ...c, _stale: true } } catch { /* ignore */ }
   return null
 }
+// A snapshot younger than this stands in for the live feed on a first visit.
+// The deploy rewrites data.json after every pipeline run (every 30 minutes,
+// plus a few minutes to build), so a fresh one carries what the Sheet carries;
+// an older one means the pipeline has stopped, and the live feed is asked.
+export const SNAPSHOT_FRESH_MS = 45 * 60 * 1000
+export const snapshotFresh = (d) => !!d && d._snapshot === true && Date.now() - Date.parse(d._fetched) < SNAPSHOT_FRESH_MS
 export async function snapshotData() {
   if (!API_URL) return null
   try {
@@ -91,7 +97,10 @@ export async function snapshotData() {
     if (!r.ok) return null
     const d = stripMarks(await r.json())
     if (!d || !Array.isArray(d.faq)) return null
-    d._source = 'sheet'; d._fetched = d.generated_at || new Date().toISOString(); d._stale = true
+    d._source = 'sheet'; d._fetched = d.generated_at || new Date().toISOString(); d._stale = true; d._snapshot = true
+    // Saved like a live copy, so the next visit asks the Sheet instead of
+    // downloading the snapshot again.
+    try { localStorage.setItem(CACHE_KEY, JSON.stringify(d)) } catch { /* ignore */ }
     return d
   } catch { return null }
 }

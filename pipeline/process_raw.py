@@ -529,7 +529,6 @@ def run(sources, max_batches, dry, minutes=20, attachments=None):
                             continue  # closed already: never listed
                         seen_vacancies.add(vk)
                         poster, poster_file = poster_for(m["id"], rows, dry)
-                        manual = src_of.get(str(m["id"])) == "manual"
                         row = {k: ("\n".join(str(x) for x in v[k]) if isinstance(v.get(k), list) else str(v.get(k) or ""))[:4000 if k in ("description", "requirements") else 300] for k in VAC_KEYS}
                         row.update({"id": ids["VAC"](), "closing_date": cd if _day(cd) else "", "apply_link": safe_url(v.get("apply_link")),
                                     "category": v.get("category") if v.get("category") in ("halal", "food", "cosmetic") else "halal",

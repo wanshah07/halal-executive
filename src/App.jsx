@@ -9,7 +9,7 @@ import Overview from './pages/Overview'
 import { certStatus, splitProducts, filedDocs } from './lib/certs'
 import { fhcbRows } from './lib/fhcb'
 import { eventPast, vacancyOver } from './lib/util'
-import { loadData, savedData, snapshotData, loadSettings } from './lib/api'
+import { loadData, savedData, snapshotData, snapshotFresh, loadSettings } from './lib/api'
 // Admin upload queue: loaded with the app so it keeps sending on every page.
 import './lib/uploadQueue'
 import { t } from './lib/i18n'
@@ -114,16 +114,27 @@ export default function App() {
     } catch (e) { setErr(String(e.message || e)); if (retries.current++ < 6) setTimeout(() => refresh(true), 30000) } finally { setLoading(false) }
   }, [])
   useEffect(() => {
-    // First visit on this browser: show the deploy's snapshot while the live
-    // feed loads, instead of a blank "Loading".
-    if (!savedData()) snapshotData().then((d) => d && setData((cur) => cur || d))
-    // Always ask the Sheet on page load (the saved copy shows meanwhile), so a
-    // change made in Admin (notice colour, posters) shows on the next refresh
-    // on every device, not after the 5-minute browser cache runs out.
-    refresh(true)
+    // A browser that has a saved copy asks the Sheet on every page load (the
+    // saved copy shows meanwhile), so a change made in Admin (notice colour,
+    // posters) shows on the next refresh on every device, not after the
+    // 5-minute browser cache runs out.
+    // A first visit shows the deploy's snapshot (data.json, next to the page)
+    // and asks the Sheet only when that snapshot is missing or stale: both
+    // are the same ~2 MB feed, and fetching them together (29 Oct 2026) made
+    // every first visit download it twice and the slower connection pay for
+    // it in time to first content.
+    let on = true
+    const boot = async () => {
+      if (savedData()) { refresh(true); return }
+      const snap = await snapshotData()
+      if (!on) return
+      if (snap) setData((cur) => cur || snap)
+      if (snapshotFresh(snap)) setLoading(false); else refresh(true)
+    }
+    boot()
     const again = () => refresh(true)
     addEventListener('he:refresh', again)
-    return () => removeEventListener('he:refresh', again)
+    return () => { on = false; removeEventListener('he:refresh', again) }
   }, [refresh])
 
   const doExport = async (kind) => {
