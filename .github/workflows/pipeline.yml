@@ -79,8 +79,13 @@ jobs:
           case "$JOB" in
             process_whatsapp)
               # Start the files lane first (Admin uploads, certificates): it runs
-              # beside this one and is done in minutes.
-              GH_TOKEN="${{ github.token }}" gh workflow run pipeline.yml --repo "${{ github.repository }}" --ref main -f job=uploads && python phase.py "$JOB" running "uploads lane started" || python phase.py "$JOB" failed "could not start the uploads lane"
+              # beside this one and is done in minutes. Apps Script's tickPipeline
+              # starts the same lane a few seconds before this run (Code.gs), so
+              # only start it when none is queued or running: with both, every
+              # half hour ran uploads twice, 16 s apart (seen 29 Oct 2026).
+              lanes=$(GH_TOKEN="${{ github.token }}" gh run list --repo "${{ github.repository }}" --workflow pipeline.yml --limit 30 --json displayTitle,status --jq '[.[] | select(.displayTitle == "uploads" and (.status == "queued" or .status == "in_progress" or .status == "waiting" or .status == "pending" or .status == "requested"))] | length' 2>/dev/null || echo 0)
+              if [ "${lanes:-0}" != 0 ]; then python phase.py "$JOB" running "uploads lane already running" || true
+              else GH_TOKEN="${{ github.token }}" gh workflow run pipeline.yml --repo "${{ github.repository }}" --ref main -f job=uploads && python phase.py "$JOB" running "uploads lane started" || python phase.py "$JOB" failed "could not start the uploads lane"; fi
               phase 24 "Read group messages" python process_raw.py --source whatsapp,telegram --attachments none --minutes 20
               phase 6  "Merge repeated FAQ" python dedupe_faq.py
               phase 4  "FHCB list from JAKIM MyIHAB" python seed_fhcb.py
