@@ -266,6 +266,12 @@ def run():
                 # shows on its card with the file; details can be re-read in Admin.
                 parts = [x.strip() for x in str(d.get("title") or "").split("–")]
                 holder = parts[1] if len(parts) > 1 and parts[1] and CERT_TITLE.search(parts[0]) else ""
+                # An explicitly uploaded certificate must not remain hidden in
+                # Admin merely because OCR and vision cannot read its holder.
+                # Keep the document public and mark the unknown identity for review;
+                # never invent a company name from a generic certificate title.
+                if not holder and d.get("kind") == "certificate":
+                    holder = "[SAHKAN]"
                 if not holder:
                     print(d["id"], "certificate text could not be read and the title names no holder; left for the admin"); continue
                 prev = next((c for c in certs if str(c.get("doc_id")) == str(d["id"])), None)
