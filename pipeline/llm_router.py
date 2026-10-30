@@ -216,7 +216,7 @@ def complete(messages, json_mode=False, **kw):
             if json_mode:
                 try:
                     out["json"] = parse_json(out["text"])
-                except (LLMError, ValueError) as e:
+                except (LLMError, ValueError):
                     # Some gateways ignore response_format: ask once more
                     # without it before handing the request on.
                     retry = _call(name, messages + [{"role": "user", "content": "Reply with the JSON object only, no other text."}], json_mode=False, **kw)

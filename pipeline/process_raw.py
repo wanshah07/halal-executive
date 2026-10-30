@@ -461,6 +461,25 @@ def run(sources, max_batches, dry, minutes=20, attachments=None):
                                  "drive_file_id": a["drive_file_id"], "drive_url": a.get("drive_url", ""), "content_hash": a.get("sha256", ""), "version": "",
                                  "supersedes_id": "", "source_msg_id": d.get("source_msg_id"), "received_at": next((r["ts"] for r in rows if r["id"] == d.get("source_msg_id")), ts),
                                  "updated_at": ts, "status": "inbox", "notes": origin(d.get("source_msg_id")) + "awaiting organiser"})
+            # The Admin upload type is authoritative: every explicitly selected
+            # certificate file enters the certificate organiser, even if the
+            # batch model misses it or OCR returns no text. It is not left as
+            # a skipped Raw row. Existing files are deduplicated below.
+            force_admin_certificate = {}
+            for m in msgs:
+                force_admin_certificate[str(m["id"])] = src_of.get(str(m["id"])) == "manual" and (m.get("text") or "").startswith(ADMIN_CERT)
+            for m in msgs:
+                if not force_admin_certificate.get(str(m["id"])):
+                    continue
+                for att in m.get("attachments", []):
+                    a = att_index.get((m["id"], att.get("name")))
+                    if not a or a["drive_file_id"] in seen_files or (a.get("sha256") and a["sha256"] in seen_hashes):
+                        continue
+                    seen_files.add(a["drive_file_id"]); seen_hashes.add(a.get("sha256") or a["drive_file_id"])
+                    doc_rows.append({"id": ids["DOC"](), "title": "Halal certificate", "kind": "certificate", "category": "halal",
+                                     "drive_file_id": a["drive_file_id"], "drive_url": a.get("drive_url", ""), "content_hash": a.get("sha256", ""), "version": "",
+                                     "supersedes_id": "", "source_msg_id": m["id"], "received_at": m.get("ts") or ts,
+                                     "updated_at": ts, "status": "inbox", "notes": "from:admin; explicit certificate upload; awaiting organiser"})
             # A halal certificate posted in the group is filed even when the model
             # did not list it: the text read from the picture or PDF decides.
             for m in msgs:
@@ -529,7 +548,6 @@ def run(sources, max_batches, dry, minutes=20, attachments=None):
                             continue  # closed already: never listed
                         seen_vacancies.add(vk)
                         poster, poster_file = poster_for(m["id"], rows, dry)
-                        manual = src_of.get(str(m["id"])) == "manual"
                         row = {k: ("\n".join(str(x) for x in v[k]) if isinstance(v.get(k), list) else str(v.get(k) or ""))[:4000 if k in ("description", "requirements") else 300] for k in VAC_KEYS}
                         row.update({"id": ids["VAC"](), "closing_date": cd if _day(cd) else "", "apply_link": safe_url(v.get("apply_link")),
                                     "category": v.get("category") if v.get("category") in ("halal", "food", "cosmetic") else "halal",
