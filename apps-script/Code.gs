@@ -1020,7 +1020,7 @@ function requeueFiles() {
       src = sh.getRange(2, C.indexOf('source') + 1, n, 1).getValues(), cells = [];
   var col = colLetter(C.indexOf('status') + 1);
   for (var i = 0; i < n; i++) {
-    if (src[i][0] === 'manual' || st[i][0] === 'new') continue;
+    if (st[i][0] === 'new') continue;
     if (String(at[i][0] || '').indexOf('"drive_file_id"') < 0) continue;
     cells.push(col + (i + 2));
   }
