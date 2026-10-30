@@ -49,8 +49,8 @@ var TABS = {
   FHCB:       ['id','no','country','name','kind','address','persons','tel','fax','email','website','logo_url','logo_file','note','source_ref','source_page','effective_date','status','updated_at','created_at','published_at'],
   Directory:  ['id','type','subtype','name','coverage','state','country','address','pic','phone','email','website','website2','accreditation','description','trainers','logo_url','logo_file','source_ref','status','updated_at','created_at','published_at'],
   // Halal job vacancies (Wan, 20 Oct 2026): from the WhatsApp and Telegram
-  // groups or typed in Admin. Deleted for good a day after closing_date (or 60
-  // days after they were added when the ad gives no closing date).
+  // groups or typed in Admin. Deleted for good 5 working days after they appeared
+  // (Wan, 25 Oct 2026), or a day after closing_date when that comes first.
   Vacancies:  ['id','title','title_bm','employer','location','state','job_type','salary','requirements','description','apply_link','apply_email','apply_phone','closing_date','category','poster_url','poster_file','status','source','created_at','published_at','updated_at'],
 };
 
@@ -891,10 +891,10 @@ function certFilesCheck(fresh) {
 var REVIEW_TABS = ['FAQ', 'Events', 'Documents', 'Certificates', 'Guidelines', 'Vacancies'];
 function reviewList() {
   var out = {};
-  // A published answer with points the references do not state yet goes back
-  // to drafts, so it is edited or confirmed before readers see it (Wan, 15 Oct 2026).
-  var unconfirmed = readTab('FAQ').filter(function (r) { return r.status === 'published' && String(r.verify_notes || '').length > 2 && String(r.verify_notes) !== '[]'; }).map(function (r) { return r.id; });
-  if (unconfirmed.length) updateByIds('FAQ', unconfirmed, { status: 'draft', updated_at: new Date().toISOString() });
+  // FAQ answers publish themselves (Wan, 23 Oct 2026, rule 45): a published answer with
+  // points still open is NOT sent back to drafts here any more. That 15 Oct rule made every
+  // Admin visit pull answers off the site until the next pipeline run published them again.
+  // The open points are listed in to_confirm below for the admin.
   var now = Date.now();
   REVIEW_TABS.forEach(function (t) { out[t] = readTab(t).filter(function (r) { return r.status === 'draft' && !(t === 'Documents' && String(r.kind).toLowerCase() === 'certificate') && !(t === 'Events' && eventPast(r, now)) && !(t === 'Vacancies' && vacancyOver(r, now)) && !(t === 'Certificates' && r.valid_to && eventOver({ date_start: r.valid_to }, now)); }); });
   // Points the pipeline could not confirm from the references library: they

@@ -537,6 +537,9 @@
     adds the citation itself ("MPPHM (Domestik) 2020, ms. 23") and substitutes. A gap that
     fails loses only its own sentence and goes to `verify_notes`. An entry with no marker
     but open notes still uses the whole-answer rewrite when a new reference arrives.
+    `reviewList()` in Code.gs no longer moves a published answer with open notes back to
+    drafts (that 15 Oct behaviour fought this rule: every Admin visit pulled answers off the
+    site until the next run republished them); the open notes are listed under `to_confirm`.
 46. **More than one Telegram bot** (Wan, 23 Oct 2026). `add-telegram.sh <name>`
     (letters only, e.g. `dua`) sets up another bot beside the first: its token,
     group and allowed users in `collectors/.env.<name>`, pm2 `he-telegram-<name>`,
