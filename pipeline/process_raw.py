@@ -463,9 +463,12 @@ def run(sources, max_batches, dry, minutes=20, attachments=None):
                 break  # the rest go in the next loop
             msgs.append(m); take.append(r); used += size
         rows = take
-        user = json.dumps({"existing": existing_faq_digest(faq), "messages": msgs}, ensure_ascii=False)
+        # The files lane does not send the digest of 400 existing questions (about 75,000 characters,
+        # most of the call): a file is a certificate, poster or document far more often than a new
+        # question, and match_faq below still stops a repeated question from becoming a twin.
+        user = json.dumps({"existing": [] if files_lane else existing_faq_digest(faq), "messages": msgs}, ensure_ascii=False)
         try:
-            out = llm_router.complete_json([{"role": "system", "content": SYSTEM}, {"role": "user", "content": user}], max_tokens=6000)
+            out = llm_router.complete_json([{"role": "system", "content": SYSTEM}, {"role": "user", "content": user}], max_tokens=3500 if files_lane else 6000)
         except llm_router.LLMError as e:
             last_err = str(e); fails += 1
             print("LLM failed on both providers:", last_err, file=sys.stderr)
