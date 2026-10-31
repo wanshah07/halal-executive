@@ -59,7 +59,7 @@ def admin_cfg():
         try:
             import he_api
             r = he_api.post("llm_config")
-            _cfg = {"mode": r.get("mode") or "auto", "strict": bool(r.get("strict")), "model": r.get("model") or {}}
+            _cfg = {"mode": r.get("mode") or "auto", "strict": bool(r.get("strict")), "model": r.get("model") or {}, "fast": r.get("fast") or {}}
         except Exception as e:  # noqa: BLE001
             print(f"[router] Admin choice not read ({str(e)[:120]}); automatic")
             _cfg = {}
@@ -182,13 +182,34 @@ def other_models(name, exclude, limit=2):
     return out[:limit]
 
 
-def _call(name, messages, json_mode=False, max_tokens=2000, temperature=0.2, model=None):
+FAST = ["glm-5.3-flash", "deepseek-v4.1-flash", "deepseek-v4-flash", "glm-5.3-flashx", "gpt-4.1-mini", "gpt-4o-mini", "claude-haiku"]
+
+
+def fast_model(name):
+    """The quick model of a gateway: Admin's choice, else the first of FAST the gateway lists, else any
+    flash / mini / lite / haiku / turbo chat model, else None (the caller then uses the main one). The
+    files lane asks for it (31 Oct 2026): the main reasoning models read-timed-out at 120 s on every call."""
+    chosen = str(((admin_cfg().get("fast") or {}).get(name)) or "").split(",")[0].strip()
+    if chosen:
+        return chosen
+    p = PROVIDERS[name]
+    try:
+        r = requests.get(f"{p['base']}/models", headers={"Authorization": f"Bearer {os.environ.get(p['key'])}"}, timeout=20)
+        ids = [m.get("id", "") for m in r.json().get("data", [])] if r.status_code < 300 else []
+    except (requests.RequestException, ValueError):
+        return None
+    chat = [i for i in ids if i and not NOT_CHAT.search(i)]
+    pick = next((i for f in FAST for i in chat if i.lower().startswith(f)), None)
+    return pick or next((i for i in chat if re.search(r"(flash|mini|lite|haiku|turbo)", i, re.I)), None)
+
+
+def _call(name, messages, json_mode=False, max_tokens=2000, temperature=0.2, model=None, fast=False):
     p = PROVIDERS[name]
     key = os.environ.get(p["key"])
     if not key:
         raise LLMError(f"{name}: no key")
     fixed = model is not None
-    model = model or resolve_model(name)
+    model = model or (fast and fast_model(name)) or resolve_model(name)
     r = _post(p, key, model, messages, json_mode, max_tokens, temperature)
     # Model withdrawn or renamed: re-read /models once and retry with the new pick.
     if r.status_code in (400, 404) and "model" in r.text.lower() and not fixed:

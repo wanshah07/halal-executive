@@ -468,7 +468,7 @@ def run(sources, max_batches, dry, minutes=20, attachments=None):
         # question, and match_faq below still stops a repeated question from becoming a twin.
         user = json.dumps({"existing": [] if files_lane else existing_faq_digest(faq), "messages": msgs}, ensure_ascii=False)
         try:
-            out = llm_router.complete_json([{"role": "system", "content": SYSTEM}, {"role": "user", "content": user}], max_tokens=3500 if files_lane else 6000)
+            out = llm_router.complete_json([{"role": "system", "content": SYSTEM}, {"role": "user", "content": user}], max_tokens=3500 if files_lane else 6000, fast=files_lane)
         except llm_router.LLMError as e:
             last_err = str(e); fails += 1
             print("LLM failed on both providers:", last_err, file=sys.stderr)

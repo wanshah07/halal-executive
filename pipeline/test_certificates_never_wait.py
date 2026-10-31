@@ -189,6 +189,21 @@ class RouterTest(unittest.TestCase):
         self.assertEqual(out["model"], "glm-5.3")
         self.assertEqual(calls, ["glm-5.3-flashx", "glm-5.3"])
 
+    def test_fast_asks_for_the_quick_model(self):
+        import llm_router as lr
+        seen = []
+        def resp(code, body):
+            m = MagicMock(); m.status_code = code; m.text = json.dumps(body); m.json.return_value = body; return m
+        def post(url, json=None, **kw):
+            seen.append(json["model"]); return resp(200, {"choices": [{"message": {"content": "ok"}}]})
+        def get(url, **kw):
+            return resp(200, {"data": [{"id": "glm-5.3"}, {"id": "glm-5.3-flash"}, {"id": "kimi-k3"}]})
+        with patch.dict("os.environ", {"AFIQ_API_KEY": "k"}), patch.object(lr.requests, "post", side_effect=post), patch.object(lr.requests, "get", side_effect=get), \
+             patch.object(lr, "admin_cfg", return_value={}), patch.object(lr, "resolve_model", return_value="glm-5.3"):
+            lr._call("AFIQ", [{"role": "user", "content": "x"}], fast=True)
+            lr._call("AFIQ", [{"role": "user", "content": "x"}])
+        self.assertEqual(seen, ["glm-5.3-flash", "glm-5.3"])
+
 
 if __name__ == "__main__":
     unittest.main()
