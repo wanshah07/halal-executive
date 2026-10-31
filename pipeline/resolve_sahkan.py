@@ -177,8 +177,8 @@ def open_points(row):
 
 
 def needs_pass(row, latest):
-    if row.get("status") == "hidden":
-        return False
+    if row.get("status") == "hidden" or row.get("approved_at"):
+        return False   # an answer an admin approved or edited is not rewritten by the sweep
     if any(has_marker(row.get(f)) for f in ANSWERS):
         return True
     has_open = len(str(row.get("verify_notes") or "")) > 2

@@ -131,6 +131,46 @@ def safe(s):
     return re.sub(r"[\\/:*?\"<>|]+", "-", s).strip()[:120]
 
 
+def file_missing(e):
+    """The Drive file behind a row is gone (deleted for good, or never shared with the script)."""
+    return bool(re.search(r"no item with the given id|file not found", str(e), re.I))
+
+
+def read_cert_safe(text):
+    """read_cert, but a model outage reads as 'could not read', so the certificate
+    still gets its card now and its details when the model is back (Wan, 31 Oct 2026)."""
+    try:
+        return read_cert(text)
+    except llm_router.LLMError as e:
+        print("  model unavailable for the certificate text:", str(e)[:100])
+        return None, "", ""
+
+
+def holder_of(d):
+    """The company named in a certificate document's title ("Sijil Halal – COMPANY"), else empty."""
+    parts = [x.strip() for x in str(d.get("title") or "").split("–")]
+    return parts[1] if len(parts) > 1 and parts[1] and CERT_TITLE.search(parts[0]) else ""
+
+
+def gone_file(d, certs, new_id):
+    """The file is not in Drive any more. A certificate keeps its card (the holder from its
+    title, or none: the page says the details are not read yet and Admin can type them); any
+    other document is hidden for the admin. Never an error: nothing here can be retried."""
+    if d.get("kind") == "certificate":
+        prev = next((c for c in certs if str(c.get("doc_id")) == str(d["id"])), None)
+        if not prev:
+            cid = new_id()
+            he_api.upsert("Certificates", [cert_row(cid, {"company": holder_of(d)}, d, d.get("drive_url", ""), "",
+                                                    "title-only: the file is not in Drive, upload it again in Admin; vision-tried", status="current")])
+            certs.append({"id": cid, "cert_no": "", "doc_id": d["id"], "notes": "title-only"})
+        he_api.upsert("Documents", [{**d, "status": "current", "notes": "file missing in Drive"}])
+        print(d["id"], "certificate file is not in Drive; its card stays")
+        return 1
+    he_api.upsert("Documents", [{**d, "status": "hidden", "notes": "file missing in Drive"}])
+    print(d["id"], "file is not in Drive; hidden")
+    return 1
+
+
 def run():
     _VISION.clear()
     docs = he_api.read("Documents")
@@ -151,7 +191,13 @@ def run():
 
     for d in inbox:
         try:
-            f = he_api.drive_get(d["drive_file_id"], text=True)
+            try:
+                f = he_api.drive_get(d["drive_file_id"], text=True)
+            except he_api.ApiError as e:
+                if not file_missing(e):
+                    raise
+                n += gone_file(d, certs, ids_cert)
+                continue
             h = f["sha256"]
             if h in by_hash and by_hash[h]["id"] != d["id"]:
                 he_api.upsert("Documents", [{**d, "content_hash": h, "status": "duplicate", "notes": f"same bytes as {by_hash[h]['id']}", "updated_at": f["modified"]}])
@@ -164,15 +210,23 @@ def run():
                 except he_api.ApiError:
                     t = ""
                 cand_text.append({"id": c["id"], "title": c["title"], "version": c.get("version"), "text": t})
-            out = llm_router.complete_json([{"role": "system", "content": CLASSIFY}, {"role": "user", "content": json.dumps({"new": {"name": f["name"], "text": f["text"][:6000]}, "current": cand_text}, ensure_ascii=False)}], max_tokens=800)
-            provider, model, j = out["provider"], out["model"], out["json"]
+            try:
+                out = llm_router.complete_json([{"role": "system", "content": CLASSIFY}, {"role": "user", "content": json.dumps({"new": {"name": f["name"], "text": f["text"][:6000]}, "current": cand_text}, ensure_ascii=False)}], max_tokens=800)
+                provider, model, j = out["provider"], out["model"], out["json"]
+            except llm_router.LLMError as e:
+                # A certificate never waits for the model: it is filed as it is and its card
+                # is made from the title, then read properly on a later run.
+                if not (d.get("kind") == "certificate" or CERT_TEXT.search(f["text"] or "")):
+                    raise
+                print(d["id"], "model unavailable; filing the certificate without it:", str(e)[:100])
+                j = {}
             j = j if isinstance(j, dict) else {}  # a list or text reply is treated as "no answer"
             title = safe(j.get("title") or d["title"] or f["name"])
             date = (j.get("doc_date") or d.get("received_at") or "")[:10] or dt.date.today().isoformat()
             ext = os.path.splitext(f["name"])[1] or ""
             cert = j.get("certificate") if isinstance(j.get("certificate"), dict) else None
             if not (cert and cert.get("company") and cert.get("issuer")) and (d.get("kind") == "certificate" or CERT_TEXT.search(f["text"] or "") or (cert and cert.get("company"))):
-                cert, p2, m2 = read_cert(f["text"])
+                cert, p2, m2 = read_cert_safe(f["text"])
                 provider, model = p2 or provider, m2 or model
                 if not (cert and cert.get("company")) and d.get("kind") == "certificate":
                     cert, p3, m3 = read_cert_image(d["drive_file_id"])  # OCR gave nothing usable: Wanshah 3 reads the picture
@@ -253,8 +307,14 @@ def run():
     have = {str(c.get("doc_id")) for c in certs if c.get("issuer") or "full-read" in str(c.get("notes") or "") or ("title-only" in str(c.get("notes") or "") and ("vision-tried" in str(c.get("notes") or "") or not kios))}
     for d in [x for x in he_api.read("Documents") if certs_ready and x.get("status") in ("current", "draft") and x.get("kind") == "certificate" and str(x["id"]) not in have]:
         try:
-            f = he_api.drive_get(d["drive_file_id"], text=True)
-            cert, p2, m2 = read_cert(f["text"])
+            try:
+                f = he_api.drive_get(d["drive_file_id"], text=True)
+            except he_api.ApiError as e:
+                if not file_missing(e):
+                    raise
+                n += gone_file(d, certs, ids_cert)
+                continue
+            cert, p2, m2 = read_cert_safe(f["text"])
             vision_failed = False
             if not (cert and cert.get("company")):
                 cert, p2, m2 = read_cert_image(d["drive_file_id"])  # Wanshah 3 reads the picture itself
@@ -264,16 +324,10 @@ def run():
             if not (cert and cert.get("company")):
                 # Unreadable scan: list it by the holder named in its title, so it
                 # shows on its card with the file; details can be re-read in Admin.
-                parts = [x.strip() for x in str(d.get("title") or "").split("–")]
-                holder = parts[1] if len(parts) > 1 and parts[1] and CERT_TITLE.search(parts[0]) else ""
-                # An explicitly uploaded certificate must not remain hidden in
-                # Admin merely because OCR and vision cannot read its holder.
-                # Keep the document public and mark the unknown identity for review;
-                # never invent a company name from a generic certificate title.
-                if not holder and d.get("kind") == "certificate":
-                    holder = "[SAHKAN]"
-                if not holder:
-                    print(d["id"], "certificate text could not be read and the title names no holder; left for the admin"); continue
+                # A certificate is never left off the site because it cannot be read (Wan,
+                # 31 Oct 2026): the holder is the one named in the title, or none, and the page
+                # then says the details are not read yet. Admin can type them; nothing is invented.
+                holder = holder_of(d)
                 prev = next((c for c in certs if str(c.get("doc_id")) == str(d["id"])), None)
                 cid = prev["id"] if prev else ids_cert()
                 he_api.upsert("Certificates", [cert_row(cid, {"company": holder}, d, d.get("drive_url", ""), f.get("modified", ""), "title-only: the file could not be read" + ("; vision-tried" if vision_failed else "") + "; re-read it in Admin",

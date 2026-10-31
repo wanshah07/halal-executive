@@ -70,8 +70,16 @@ def main():
         seen.add(key)
         if i + 1 not in same or a["id"] in gone or b["id"] in gone:
             continue
+        # An answer an admin approved or edited is never the one dropped (Wan, 31 Oct 2026); two
+        # approved answers are both his, so the pair is left alone.
+        if a.get("approved_at") and b.get("approved_at"):
+            continue
         keep, drop = (a, b)
-        if (b.get("status") == "published") > (a.get("status") == "published") or (b.get("status") == a.get("status") and fullness(b) > fullness(a)):
+        if b.get("approved_at") and not a.get("approved_at"):
+            keep, drop = b, a
+        elif a.get("approved_at"):
+            keep, drop = a, b
+        elif (b.get("status") == "published") > (a.get("status") == "published") or (b.get("status") == a.get("status") and fullness(b) > fullness(a)):
             keep, drop = b, a
         refs = sorted(set(filter(None, f"{keep.get('source_refs') or ''};{drop.get('source_refs') or ''}".split(";"))))
         he_api.upsert("FAQ", [dict(keep, source_refs=";".join(refs)[:500]), dict(drop, status="duplicate")])

@@ -372,8 +372,74 @@ def run(sources, max_batches, dry, minutes=20, attachments=None):
     seen_events = {(norm_title(e.get("title")), str(e.get("date_start", ""))[:10]) for e in events}
     seen_guidelines = {norm_title(g.get("title")) for g in gls}
     seen_vacancies = {(norm_title(v.get("title")), norm_title(v.get("employer"))) for v in (vacs or [])}
+    def certificate_docs(msgs, rows, ts, att_index, src_of):
+        """Documents rows (kind certificate, waiting for the organiser) for every halal certificate
+        in these messages. It needs no model: an Admin upload marked as a certificate always is
+        one, and a group file is one when the text read from its picture or PDF says so."""
+        def origin(mid):
+            # Admin uploads are published by the organiser; group files wait as drafts.
+            return "from:admin; " if src_of.get(str(mid)) == "manual" else "from:group; "
+        out = []
+        force_admin_certificate = {}
+        for m in msgs:
+            force_admin_certificate[str(m["id"])] = src_of.get(str(m["id"])) == "manual" and (m.get("text") or "").startswith(ADMIN_CERT)
+        for m in msgs:
+            if not force_admin_certificate.get(str(m["id"])):
+                continue
+            for att in m.get("attachments", []):
+                a = att_index.get((m["id"], att.get("name")))
+                if not a or a["drive_file_id"] in seen_files or (a.get("sha256") and a["sha256"] in seen_hashes):
+                    continue
+                seen_files.add(a["drive_file_id"]); seen_hashes.add(a.get("sha256") or a["drive_file_id"])
+                out.append({"id": ids["DOC"](), "title": "Halal certificate", "kind": "certificate", "category": "halal",
+                            "drive_file_id": a["drive_file_id"], "drive_url": a.get("drive_url", ""), "content_hash": a.get("sha256", ""), "version": "",
+                            "supersedes_id": "", "source_msg_id": m["id"], "received_at": m.get("ts") or ts,
+                            "updated_at": ts, "status": "inbox", "notes": "from:admin; explicit certificate upload; awaiting organiser"})
+        for m in msgs:
+            for att in m.get("attachments", []):
+                if not (CERT_TEXT.search(att.get("content") or "") or (m.get("text") or "").startswith(ADMIN_CERT)):
+                    continue
+                a = att_index.get((m["id"], att.get("name")))
+                if not a or a["drive_file_id"] in seen_files:
+                    continue
+                seen_files.add(a["drive_file_id"])
+                out.append({"id": ids["DOC"](), "title": "Halal certificate", "kind": "certificate", "category": "halal",
+                            "drive_file_id": a["drive_file_id"], "drive_url": a.get("drive_url", ""), "content_hash": a.get("sha256", ""), "version": "",
+                            "supersedes_id": "", "source_msg_id": m["id"], "received_at": m.get("ts") or ts,
+                            "updated_at": ts, "status": "inbox", "notes": origin(m["id"]) + "certificate text found; awaiting organiser"})
+        return out
+
+    def certificates_without_model(msgs, rows):
+        """Both models failed on this batch. A halal certificate does not wait for them (Wan,
+        31 Oct 2026: "make sure all halal certificate will appear ... without fail"): its document
+        row is made here, the organiser gives it a card, and the details are read when a model
+        answers again. Only those messages are marked; the rest stay for the next try."""
+        if dry:
+            return 0
+        ts = now()
+        src_of = {str(r["id"]): r.get("source", "") for r in rows}
+        att_index = {}
+        for r in rows:
+            for a in json.loads(r.get("attachments") or "[]"):
+                if a.get("drive_file_id"):
+                    att_index[(r["id"], a.get("name"))] = a
+        docs_ = certificate_docs(msgs, rows, ts, att_index, src_of)
+        if docs_:
+            he_api.upsert("Documents", docs_)
+            he_api.raw_update(sorted({str(d["source_msg_id"]) for d in docs_}), status="processed", processed_at=ts, model="no model: certificate filed without it")
+            print(f"{len(docs_)} certificate files filed without the model")
+        return len(docs_)
+
     total, batches, provider, model, err = 0, 0, "", "", ""
     stopped = ""
+    # The files lane sends long texts read out of pictures and PDFs: 25 of them in one call
+    # (40,000 characters) timed Wanshah 1 out at 120 s and left Wanshah 2 answering 503 on 31 Oct
+    # 2026, so the same batch failed every run and 60 files waited. Smaller calls, and a failed one
+    # is halved and tried again, one message at a time at the end, so one heavy message never
+    # holds the rest back.
+    files_lane = attachments is True
+    cap, budget = (10 if files_lane else BATCH), (16000 if files_lane else CHAR_BUDGET)
+    skip_ids, fails, last_err = set(), 0, ""
     note(f"started: {left0} messages waiting")
 
     while batches < max_batches:
@@ -382,10 +448,10 @@ def run(sources, max_batches, dry, minutes=20, attachments=None):
             break
         rows = []
         for s in sources:
-            rows += he_api.raw_list(status="new", source=s, limit=BATCH, attachments=None if s == "manual" else attachments)
+            rows += he_api.raw_list(status="new", source=s, limit=BATCH + len(skip_ids), attachments=None if s == "manual" else attachments)
         if attachments is not None:  # also here, in case Apps Script is an older version that ignores the filter
             rows = [r for r in rows if r.get("source") == "manual" or ('"name"' in str(r.get("attachments") or "")) == attachments]
-        rows = rows[:BATCH]
+        rows = [r for r in rows if r["id"] not in skip_ids][:cap]
         if not rows:
             break
         batches += 1
@@ -393,7 +459,7 @@ def run(sources, max_batches, dry, minutes=20, attachments=None):
         for r in rows:
             m = message_for_model(r)
             size = len(json.dumps(m, ensure_ascii=False))
-            if take and used + size > CHAR_BUDGET:
+            if take and used + size > budget:
                 break  # the rest go in the next loop
             msgs.append(m); take.append(r); used += size
         rows = take
@@ -401,9 +467,29 @@ def run(sources, max_batches, dry, minutes=20, attachments=None):
         try:
             out = llm_router.complete_json([{"role": "system", "content": SYSTEM}, {"role": "user", "content": user}], max_tokens=6000)
         except llm_router.LLMError as e:
-            err = str(e)
-            print("LLM failed on both providers; leaving batch for next run:", err, file=sys.stderr)
-            break
+            last_err = str(e); fails += 1
+            print("LLM failed on both providers:", last_err, file=sys.stderr)
+            try:
+                certificates_without_model(msgs, rows)
+            except Exception as ce:  # filing them is best effort here; the organiser sweep covers the rest
+                print("certificates not filed without the model:", ce, file=sys.stderr)
+            if fails >= 4:
+                err = last_err
+                print("four calls in a row failed; leaving the rest for the next run", file=sys.stderr)
+                break
+            if len(rows) > 1:
+                cap = max(1, len(rows) // 2)  # try again with half as many messages
+                continue
+            r0 = rows[0]  # one message on its own failed: set it aside this run, count the try
+            skip_ids.add(r0["id"])
+            if not dry:
+                tries = int((re.search(r"try (\d)", str(r0.get("notes") or "")) or [0, 0])[1]) + 1
+                try:
+                    he_api.raw_update([r0["id"]], status="new" if tries < 3 else "error", processed_at=now(), notes=f"try {tries}: model unavailable"[:200])
+                except he_api.ApiError as ue:
+                    print("try not counted:", ue, file=sys.stderr)
+            continue
+        fails = 0
         provider, model = out["provider"], out["model"]
         j = shape(out["json"])
         if out.get("fallback_from"):
@@ -429,6 +515,13 @@ def run(sources, max_batches, dry, minutes=20, attachments=None):
                     "status": "hidden" if old.get("status") == "hidden" else ("draft" if MARKER.search(" ".join(str(it.get(k, "")) for k in ("answer_formal_en", "answer_formal_bm", "answer_layman_en", "answer_layman_bm"))) else "published"),
                     "created_at": old.get("created_at") or ts, "updated_at": ts, "model": f"{provider}:{model}",
                 }
+                if old.get("approved_at"):
+                    # An admin approved or edited this answer (Wan, 31 Oct 2026: "I need to publish the
+                    # same FAQ I approve"): it is theirs. A new message only adds its id to the sources;
+                    # the words, the status and the dates stay exactly as they were approved.
+                    row = dict(old, source_refs=row["source_refs"])
+                    faq_rows.append(row); by_id[rid] = row
+                    continue
                 for k in ("answer_formal_en", "answer_layman_en", "answer_formal_bm", "answer_layman_bm"):
                     row[k] = PHONE.sub("", row[k]).strip()
                 faq_rows.append(row); by_id[rid] = row
@@ -465,35 +558,7 @@ def run(sources, max_batches, dry, minutes=20, attachments=None):
             # certificate file enters the certificate organiser, even if the
             # batch model misses it or OCR returns no text. It is not left as
             # a skipped Raw row. Existing files are deduplicated below.
-            force_admin_certificate = {}
-            for m in msgs:
-                force_admin_certificate[str(m["id"])] = src_of.get(str(m["id"])) == "manual" and (m.get("text") or "").startswith(ADMIN_CERT)
-            for m in msgs:
-                if not force_admin_certificate.get(str(m["id"])):
-                    continue
-                for att in m.get("attachments", []):
-                    a = att_index.get((m["id"], att.get("name")))
-                    if not a or a["drive_file_id"] in seen_files or (a.get("sha256") and a["sha256"] in seen_hashes):
-                        continue
-                    seen_files.add(a["drive_file_id"]); seen_hashes.add(a.get("sha256") or a["drive_file_id"])
-                    doc_rows.append({"id": ids["DOC"](), "title": "Halal certificate", "kind": "certificate", "category": "halal",
-                                     "drive_file_id": a["drive_file_id"], "drive_url": a.get("drive_url", ""), "content_hash": a.get("sha256", ""), "version": "",
-                                     "supersedes_id": "", "source_msg_id": m["id"], "received_at": m.get("ts") or ts,
-                                     "updated_at": ts, "status": "inbox", "notes": "from:admin; explicit certificate upload; awaiting organiser"})
-            # A halal certificate posted in the group is filed even when the model
-            # did not list it: the text read from the picture or PDF decides.
-            for m in msgs:
-                for att in m.get("attachments", []):
-                    if not (CERT_TEXT.search(att.get("content") or "") or (m.get("text") or "").startswith(ADMIN_CERT)):
-                        continue
-                    a = att_index.get((m["id"], att.get("name")))
-                    if not a or a["drive_file_id"] in seen_files:
-                        continue
-                    seen_files.add(a["drive_file_id"])
-                    doc_rows.append({"id": ids["DOC"](), "title": "Halal certificate", "kind": "certificate", "category": "halal",
-                                     "drive_file_id": a["drive_file_id"], "drive_url": a.get("drive_url", ""), "content_hash": a.get("sha256", ""), "version": "",
-                                     "supersedes_id": "", "source_msg_id": m["id"], "received_at": m.get("ts") or ts,
-                                     "updated_at": ts, "status": "inbox", "notes": origin(m["id"]) + "certificate text found; awaiting organiser"})
+            doc_rows += certificate_docs(msgs, rows, ts, att_index, src_of)
             msg_ts = {str(r["id"]): str(r.get("ts") or "") for r in rows}
             # An Admin upload marked "Event" always becomes an event, like a
             # certificate upload: when the batch reply did not list it, the

@@ -34,7 +34,7 @@
 
 var TABS = {
   Raw:        ['id','source','group','msg_id','sender_hash','ts','text','attachments','status','processed_at','model','notes','fp'],
-  FAQ:        ['id','category','subcategory','question_en','question_bm','answer_formal_en','answer_layman_en','answer_formal_bm','answer_layman_bm','source_refs','confidence','status','created_at','updated_at','model','verify_notes','verified_at','published_at'],
+  FAQ:        ['id','category','subcategory','question_en','question_bm','answer_formal_en','answer_layman_en','answer_formal_bm','answer_layman_bm','source_refs','confidence','status','created_at','updated_at','model','verify_notes','verified_at','published_at','approved_at'],
   Guidelines: ['id','category','title','title_bm','summary_en','summary_bm','link','issuer','effective_date','updated_at','status','source','created_at','published_at'],
   Documents:  ['id','title','kind','category','drive_file_id','drive_url','content_hash','version','supersedes_id','source_msg_id','received_at','updated_at','status','notes','published_at'],
   Certificates: ['id','company','cert_no','scheme','category','state','valid_from','valid_to','products','drive_url','doc_id','status','updated_at','notes','issuer','legal_authority','reg_no','issue_date','office_address','factory_address','scope','created_at','published_at'],
@@ -298,7 +298,7 @@ function publicData() {
     // Open points to confirm are for the admin only.
     // source_refs are WhatsApp message ids, which carry the group id (a phone
     // number): admin only, like the open points to confirm.
-    faq: noMarks(readTab('FAQ').filter(function (r) { return r.status === 'published'; }).map(function (r) { delete r.verify_notes; delete r.source_refs; return r; })),
+    faq: noMarks(readTab('FAQ').filter(function (r) { return r.status === 'published'; }).map(function (r) { delete r.verify_notes; delete r.source_refs; delete r.approved_at; return r; })),
     guidelines: noMarks(readTab('Guidelines').filter(function (r) { return r.status !== 'hidden' && r.status !== 'draft'; })),
     // Only what an admin published (or uploaded): group files wait as drafts,
     // expired certificates and unread inbox files never show.
@@ -915,7 +915,10 @@ function reviewSet(tab, id, status) {
   if (TABS[tab].indexOf('updated_at') >= 0) patch.updated_at = new Date().toISOString();
   // An admin publishing an answer confirms it: its open points are cleared,
   // or the next Drafts load would move it straight back.
-  if (tab === 'FAQ' && status === 'published') { patch.verify_notes = ''; patch.verified_at = new Date().toISOString(); }
+  if (tab === 'FAQ' && status === 'published') { patch.verify_notes = ''; patch.verified_at = new Date().toISOString(); patch.approved_at = new Date().toISOString(); }
+  // An answer an admin published is theirs: the pipeline never rewrites it, merges it away or sends it back to
+  // drafts (Wan, 31 Oct 2026: "I need to publish the same FAQ I approve"). Sending it back to drafts clears that.
+  if (tab === 'FAQ' && status !== 'published') patch.approved_at = '';
   var r = updateByIds(tab, [id], patch);
   // A certificate and its document are one item: publishing or hiding one does the other.
   try {
@@ -934,6 +937,7 @@ var EDITABLE = {
   Certificates: ['company', 'cert_no', 'scheme', 'state', 'category', 'valid_from', 'valid_to', 'products', 'issuer', 'legal_authority', 'reg_no', 'issue_date', 'office_address', 'factory_address', 'scope'],
   Guidelines: ['category', 'title', 'title_bm', 'issuer', 'summary_en', 'summary_bm', 'link', 'effective_date'],
   News: ['category', 'title', 'url', 'source', 'summary_en', 'summary_bm'],
+  References: ['title', 'issuer', 'edition', 'category', 'summary_en', 'summary_bm'],
   Vacancies: VACANCY_FIELDS,
 };
 // Admin adds a row by hand (Wan, 20 Oct 2026: "allow admin to delete/edit/add
@@ -949,7 +953,7 @@ function contentAdd(tab, fields) {
   if (TABS[tab].indexOf('updated_at') >= 0) row.updated_at = now.toISOString();
   if (tab === 'Guidelines') row.source = 'admin';
   if (tab === 'News') { row.fetched_at = now.toISOString(); row.published_at = now.toISOString(); row.expires_at = new Date(now.getTime() + 72 * 3600e3).toISOString(); delete row.status; }
-  if (tab === 'FAQ') { row.confidence = 'high'; row.model = 'admin'; }
+  if (tab === 'FAQ') { row.confidence = 'high'; row.model = 'admin'; row.approved_at = now.toISOString(); }
   upsert(tab, [row]);
   reviewSave(tab, id, fields);
   return { ok: true, id: id };
@@ -965,6 +969,7 @@ function reviewSave(tab, id, fields) {
   });
   if (tab === 'Events' && patch.poster_url) { var pl = posterFromLink(patch.poster_url); if (pl) { patch.poster_url = pl.url; patch.poster_file = pl.file; } }
   if (TABS[tab].indexOf('updated_at') >= 0) patch.updated_at = new Date().toISOString();
+  if (tab === 'FAQ') { var cur = readTab('FAQ').filter(function (x) { return String(x.id) === String(id); })[0]; if (cur && cur.status === 'published') patch.approved_at = new Date().toISOString(); }
   return updateByIds(tab, [id], patch);
 }
 
