@@ -169,5 +169,26 @@ class DedupeTest(unittest.TestCase):
         self.assertEqual(upserts, [])
 
 
+class RouterTest(unittest.TestCase):
+    def test_a_503_model_is_replaced_by_another_of_the_same_gateway(self):
+        import llm_router as lr
+        calls = []
+        def resp(code, body):
+            m = MagicMock(); m.status_code = code; m.text = json.dumps(body); m.json.return_value = body; return m
+        def post(url, json=None, **kw):
+            calls.append(json["model"])
+            if json["model"] == "glm-5.3-flashx":
+                return resp(503, {"error": {"message": "temporarily unavailable"}})
+            return resp(200, {"choices": [{"message": {"content": "ok"}}]})
+        def get(url, **kw):
+            return resp(200, {"data": [{"id": "glm-5.3-flashx"}, {"id": "glm-5.3"}, {"id": "text-embedding-3"}]})
+        with patch.dict("os.environ", {"MIRELD_API_KEY": "k"}), patch.object(lr.requests, "post", side_effect=post), patch.object(lr.requests, "get", side_effect=get), \
+             patch.object(lr, "resolve_model", return_value="glm-5.3-flashx"):
+            out = lr._call("MIRELD", [{"role": "user", "content": "x"}])
+        self.assertEqual(out["text"], "ok")
+        self.assertEqual(out["model"], "glm-5.3")
+        self.assertEqual(calls, ["glm-5.3-flashx", "glm-5.3"])
+
+
 if __name__ == "__main__":
     unittest.main()

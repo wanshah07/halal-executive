@@ -159,6 +159,29 @@ def _post(p, key, model, messages, json_mode, max_tokens, temperature):
     return requests.post(f"{p['base']}/chat/completions", json=payload, headers={"Authorization": f"Bearer {key}"}, timeout=p["timeout"])
 
 
+TEMP_DOWN = (429, 502, 503, 504)
+
+
+def other_models(name, exclude, limit=2):
+    """Other chat models of the same gateway, best first, for the moment the chosen one answers
+    503 "temporarily unavailable" (MIRELD's glm-5.3-flashx, 31 Oct 2026, while Wanshah 1 timed out:
+    every call of the files lane failed for hours). Empty when the gateway cannot be asked."""
+    p = PROVIDERS[name]
+    try:
+        r = requests.get(f"{p['base']}/models", headers={"Authorization": f"Bearer {os.environ.get(p['key'])}"}, timeout=20)
+        ids = [m.get("id", "") for m in r.json().get("data", [])] if r.status_code < 300 else []
+    except (requests.RequestException, ValueError):
+        return []
+    chat = [i for i in ids if i and i != exclude and not NOT_CHAT.search(i)]
+    ranked = [i for pre in PREFER for i in chat if i.lower().startswith(pre)]
+    ranked += [i for i in chat if i not in ranked]
+    seen, out = set(), []
+    for i in ranked:
+        if i not in seen:
+            seen.add(i); out.append(i)
+    return out[:limit]
+
+
 def _call(name, messages, json_mode=False, max_tokens=2000, temperature=0.2, model=None):
     p = PROVIDERS[name]
     key = os.environ.get(p["key"])
@@ -173,6 +196,15 @@ def _call(name, messages, json_mode=False, max_tokens=2000, temperature=0.2, mod
         if again != model:
             model = again
             r = _post(p, key, model, messages, json_mode, max_tokens, temperature)
+    if r.status_code in TEMP_DOWN and not fixed:
+        # The chosen model is down for the moment: another model of the same gateway answers
+        # before the request is handed to the other provider.
+        for alt in other_models(name, model):
+            print(f"[router] {name} {model} answered {r.status_code}; trying {alt}")
+            r2 = _post(p, key, alt, messages, json_mode, max_tokens, temperature)
+            if r2.status_code < 300:
+                r, model = r2, alt
+                break
     if r.status_code >= 300:
         raise LLMError(f"{name} HTTP {r.status_code}: {r.text[:200]}")
     j = r.json()
