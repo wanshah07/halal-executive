@@ -72,6 +72,7 @@ body { @apply bg-paper text-ink-900 antialiased; font-family: ui-sans-serif, sys
 
 /* News carousel: time left on the current slide */
 @keyframes he-progress { from { width: 0% } to { width: 100% } }
+@keyframes news-in { from { opacity: .0; transform: translateY(8px) } to { opacity: 1; transform: none } }
 
 /* The Earth card's no-WebGL fallback: the same picture, scrolled inside a circle. */
 .earth-flat { background-size: 200% 100%; background-repeat: repeat-x; animation: earth-spin 60s linear infinite; }

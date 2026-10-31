@@ -90,3 +90,17 @@ export const sectionOf = (subtype) => (subtype === 'jurusertu' ? 'sertu' : subty
 // Every type a row can have: the training categories, then Sertu and Laboratory.
 export const dirTypes = (settings) => [...dirCategories(settings), ...DIRECTORY_SECTIONS.filter((s) => s.id)]
 export const DIRECTORY_TYPES = dirTypes()
+
+// The flag of each country in the FHCB list (Wan, 31 Oct 2026: "add each flag country"): ISO 3166
+// codes for the names JAKIM uses on MyIHAB. The SVGs are in public/flags (flag-icons, MIT, 4x3);
+// they are pictures, not emoji, because Windows shows a flag emoji as two letters.
+export const COUNTRY_ISO = {
+  'Argentina': 'ar', 'Australia': 'au', 'Austria': 'at', 'Bangladesh': 'bd', 'Belarus': 'by', 'Bosnia and Herzegovina': 'ba', 'Brazil': 'br', 'Brunei': 'bn',
+  'Canada': 'ca', 'Chile': 'cl', 'China': 'cn', 'Egypt': 'eg', 'Germany': 'de', 'India': 'in', 'Indonesia': 'id', 'Iran': 'ir', 'Ireland': 'ie', 'Italy': 'it',
+  'Japan': 'jp', 'Jordan': 'jo', 'Kazakhstan': 'kz', 'Kenya': 'ke', 'Kingdom of Saudi Arabia': 'sa', 'Saudi Arabia': 'sa', 'Lithuania': 'lt', 'Malaysia': 'my',
+  'Maldives': 'mv', 'Mongolia': 'mn', 'Morocco': 'ma', 'Netherlands': 'nl', 'New Zealand': 'nz', 'Pakistan': 'pk', 'Palestine': 'ps', 'Philippines': 'ph',
+  'Poland': 'pl', 'Portugal': 'pt', 'Russia': 'ru', 'Singapore': 'sg', 'South Africa': 'za', 'South Korea': 'kr', 'Spain': 'es', 'Sri Lanka': 'lk',
+  'Switzerland': 'ch', 'Taiwan': 'tw', 'Thailand': 'th', 'Tunisia': 'tn', 'Turkiye': 'tr', 'Türkiye': 'tr', 'Turkey': 'tr', 'Uganda': 'ug', 'Ukraine': 'ua',
+  'United Kingdom': 'gb', 'United States of America': 'us', 'United States': 'us', 'Uruguay': 'uy', 'Vietnam': 'vn', 'Viet Nam': 'vn',
+}
+export const flagCode = (name) => COUNTRY_ISO[String(name || '').trim()] || COUNTRY_ISO[Object.keys(COUNTRY_ISO).find((k) => k.toLowerCase() === String(name || '').trim().toLowerCase())] || ''

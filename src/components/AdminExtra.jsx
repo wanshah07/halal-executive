@@ -168,6 +168,7 @@ const MANAGED = [['FAQ', 'faq', (r, lang) => (lang === 'bm' ? r.question_bm || r
   ['Guidelines', 'guidelines', (r, lang) => (lang === 'bm' ? r.title_bm || r.title : r.title)],
   ['Certificates', 'certificates', (r) => `${r.company || ''} · ${r.cert_no || ''}`],
   ['Documents', 'documents', (r) => r.title],
+  ['References', 'references', (r) => r.title],
   ['News', 'news', (r) => r.title]]
 // A halal certificate's own Documents row is managed under Halal Certificates.
 const listOf = (data, key) => (key === 'documents' ? filedDocs(data && data.documents) : (data && data[key]) || [])
@@ -179,6 +180,7 @@ const EDIT_FIELDS = {
   Guidelines: [D('category', 'Category (halal / food / cosmetic)'), D('title', 'Title'), D('title_bm', 'Tajuk (BM)'), D('issuer', 'Issuer'), D('effective_date', 'Effective date (YYYY-MM-DD)'), D('link', 'Link (https://…)'), D('summary_en', 'Summary (EN)', 1), D('summary_bm', 'Ringkasan (BM)', 1)],
   Certificates: [D('company', 'Company certified'), D('cert_no', 'Certificate number'), D('scheme', 'Scheme'), D('category', 'Category (halal / food / cosmetic)'), D('state', 'State'), D('issuer', 'Issuing body'), D('reg_no', 'Registration no.'), D('issue_date', 'Issue date (YYYY-MM-DD)'), D('valid_from', 'Valid from (YYYY-MM-DD)'), D('valid_to', 'Valid until (YYYY-MM-DD)'), D('legal_authority', 'Legal authority', 1), D('office_address', 'Office address', 1), D('factory_address', 'Factory address', 1), D('products', 'Products (separate with ;)', 1), D('scope', 'Scope', 1)],
   Documents: [D('title', 'Title'), D('kind', 'Kind (circular / form / guideline / standard / other)'), D('category', 'Category (halal / food / cosmetic)')],
+  References: [D('title', 'Title'), D('issuer', 'Issuer'), D('edition', 'Edition / year'), D('category', 'Category (halal / food / cosmetic)'), D('summary_en', 'Summary (EN)', 1), D('summary_bm', 'Ringkasan (BM)', 1)],
   News: [D('category', 'Category (halal / food / cosmetic)'), D('title', 'Title'), D('source', 'Source'), D('url', 'Link (https://…)'), D('summary_en', 'Summary (EN)', 1), D('summary_bm', 'Ringkasan (BM)', 1)],
 }
 const CAN_ADD = ['FAQ', 'Guidelines', 'Certificates', 'News']
@@ -273,6 +275,19 @@ export function CertAdmin({ lang, data, onChanged }) {
   const [err, setErr] = useState('')
   const [q, setQ] = useState('')
   const [only, setOnly] = useState('all')
+  // Edit any certificate's details by hand (Wan, 31 Oct 2026: "allow me to edit details ... including halal cert"):
+  // the same fields as Manage, filled from the public row, saved through review_save.
+  const [ed, setEd] = useState(null)
+  const dayOf = (v) => (/^\d{4}-\d{2}-\d{2}T/.test(String(v || '')) ? new Date(Date.parse(v) + 8 * 3600e3).toISOString().slice(0, 10) : v ?? '')
+  const startEdit = (r) => {
+    const full = ((data && data.certificates) || []).find((c) => String(c.id) === String(r.id)) || r, f = {}
+    EDIT_FIELDS.Certificates.forEach(([k]) => { f[k] = /date|valid_/.test(k) ? dayOf(full[k]) : full[k] ?? '' })
+    setEd({ id: r.id, fields: f })
+  }
+  async function saveEdit() {
+    setBusy(true); setErr('')
+    try { await adminPost('review_save', { tab: 'Certificates', id: ed.id, fields: ed.fields }); setEd(null); refreshAll(); onChanged && onChanged(); run(true, true) } catch (e) { setErr(e.message) } finally { setBusy(false) }
+  }
   const run = (fresh, keepErr) => {
     setBusy(true); if (!keepErr) setErr(''); setOld(false)
     adminPost('cert_files', fresh ? { fresh: true } : {}).then((r) => setRows(r.rows)).catch((e) => {
@@ -325,9 +340,24 @@ export function CertAdmin({ lang, data, onChanged }) {
                 <div className="flex flex-wrap gap-2 shrink-0">
                   {safeUrl(r.drive_url) && <a className="btn px-2.5" href={safeUrl(r.drive_url)} target="_blank" rel="noreferrer">{t(lang, 'ca_open')}</a>}
                   {r.status === 'hidden' && <button type="button" className="btn px-2.5" onClick={() => toggleHide(r)}>{t(lang, 'publish')}</button>}
+                  <button type="button" className="btn px-2.5" onClick={() => (ed && ed.id === r.id ? setEd(null) : startEdit(r))}>{t(lang, 'edit')}</button>
                   <button type="button" className="btn px-2.5 text-red-700" onClick={() => remove(r)}>{t(lang, 'delete')}</button>
                 </div>
               </div>
+              {ed && ed.id === r.id && (
+                <div className="mt-2 grid sm:grid-cols-2 gap-3 border border-brand-200 rounded-lg p-3 bg-brand-50/40">
+                  {EDIT_FIELDS.Certificates.map(([k, lab, long]) => (
+                    <div key={k} className={long ? 'sm:col-span-2' : ''}><label className="label" htmlFor={`ce-${r.id}-${k}`}>{lab}</label>
+                      {long ? <textarea id={`ce-${r.id}-${k}`} className="input" rows={3} value={ed.fields[k]} onChange={(e) => setEd({ ...ed, fields: { ...ed.fields, [k]: e.target.value } })} />
+                        : <input id={`ce-${r.id}-${k}`} className="input" value={ed.fields[k]} onChange={(e) => setEd({ ...ed, fields: { ...ed.fields, [k]: e.target.value } })} />}
+                    </div>
+                  ))}
+                  <div className="sm:col-span-2 flex flex-wrap gap-2">
+                    <button type="button" className="btn-brand" disabled={busy} onClick={saveEdit}>{busy ? '…' : t(lang, 'save_changes')}</button>
+                    <button type="button" className="btn" onClick={() => setEd(null)}>{t(lang, 'cancel')}</button>
+                  </div>
+                </div>
+              )}
             </li>)
         })}
         {rows && !list.length && <li className="py-3 text-sm text-ink-400">{t(lang, 'no_data')}</li>}

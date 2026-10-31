@@ -589,5 +589,37 @@
     training title. The logo is the Malaysian Halal Practitioners artwork Wan supplied on 25 Oct 2026 (`he-logo.png`, `he-favicon.png`, `favicon.ico`, `he-apple-touch-icon.png`, full lock-up `mhp-lockup.png`).
     The hero title no longer has to fit one line on phones and tablets (it wraps
     there; one line from 1024 px).
+51. **A halal certificate never waits for a model or for Drive** (Wan, 31 Oct 2026: "make sure
+    all halal certificate will appear ... without fail, even if it cannot read"). The files lane
+    (`uploads`) failed on every run: 25 long texts (40,000 characters) in one call timed Wanshah 1
+    out at 120 s while Wanshah 2 answered 503, the same batch came back each run and 60 files
+    waited; and 17 certificate documents whose Drive file is gone made `drive_organiser.py` exit 1
+    on every run. Now: the files lane reads 10 messages / 16,000 characters per call, a failed call
+    is halved and tried again down to one message, a message that fails alone is set aside and its
+    try counted (3 tries, then `error`); a halal certificate (an Admin upload marked as one, or text
+    that says so) gets its Documents row WITHOUT any model (`certificates_without_model`), and the
+    organiser files it and makes its card when the model is down or the file is gone
+    (`gone_file`: title only, note `vision-tried` so it is not looked for again; any other document
+    with a missing file is hidden). An unreadable certificate has an empty holder, never a
+    `[SAHKAN]` marker; the page says the details are not read yet and Admin → Halal certificates →
+    Edit (or Manage) types them. Admin can edit every segment: FAQ, Guidelines, Certificates
+    (also from Halal certificates), Documents, References, News in Manage; Events, Vacancies, FHCB
+    and Directory in their own boxes. `pipeline/test_certificates_never_wait.py`.
+52. **An answer an admin approved is theirs** (Wan, 31 Oct 2026: "I need to publish the same FAQ I
+    approve"). `FAQ.approved_at` (appended column) is stamped by Code.gs when an admin publishes,
+    edits a published answer or adds one by hand, and cleared when it goes back to drafts. A new
+    group message that matches such an answer only adds its id to `source_refs` (`process_raw.py`);
+    `resolve_sahkan.py` does not rewrite it; `dedupe_faq.py` never drops it (two approved answers
+    are left alone). The count dropping was `dedupe_faq` marking look-alikes `duplicate`, and
+    `process_raw` replacing an answer's words when a new message reused its id.
+53. **Overview and navigation** (Wan, 31 Oct 2026). Order everywhere: Overview, News, FAQ, References,
+    Halal certificates, ... (`NAV` in Sidebar.jsx, which the header reads too). The Overview puts the
+    news straight under the welcome (`NewsCarousel`: a lead story that turns every 7 s with story
+    bars, NEW badge under 12 h, the next headlines as links). Every event card is `EventCard`: a
+    fixed 3:4 poster frame, two lines of title, the Register button always at the bottom (a dimmed
+    one when there is no link), details shown on hover or with the Details button. FHCB shows each
+    country's flag (`Flag`, SVGs in `public/flags`, flag-icons MIT; Windows shows flag emoji as
+    letters, so they are pictures). With a mouse every sidebar group opens while the cursor is on it
+    and folds when it leaves; on touch the page you are on starts open and the arrow toggles.
 50. **Overview robots show only what works** (Wan, 25 Oct 2026: "remove red tab"):
     `Caps` with `onlyWorking` on the compact card; Admin keeps the red ✗ and grey ?.

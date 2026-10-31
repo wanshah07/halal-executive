@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { t } from '../lib/i18n'
 import { DIRECTORY_SECTIONS, CATEGORIES, EVENT_KINDS } from '../lib/config'
 import { ICON, LayoutDashboard, MessagesSquare, Library, BadgeCheck, ScrollText, FolderOpen, CalendarDays, Newspaper, Settings, Globe, MapPinned, Briefcase, ChevronDown } from './Icon'
@@ -7,8 +7,8 @@ import { ICON, LayoutDashboard, MessagesSquare, Library, BadgeCheck, ScrollText,
 // 15 Oct 2026: no hiding and unhiding there). On phones it is a drawer opened
 // from the header's menu button.
 export const NAV = [
-  ['overview', LayoutDashboard], ['faq', MessagesSquare], ['references', Library], ['certificates', BadgeCheck], ['guidelines', ScrollText],
-  ['fhcb', Globe], ['directory', MapPinned], ['vacancies', Briefcase], ['documents', FolderOpen], ['events', CalendarDays], ['news', Newspaper], ['admin', Settings],
+  ['overview', LayoutDashboard], ['news', Newspaper], ['faq', MessagesSquare], ['references', Library], ['certificates', BadgeCheck], ['guidelines', ScrollText],
+  ['fhcb', Globe], ['directory', MapPinned], ['vacancies', Briefcase], ['documents', FolderOpen], ['events', CalendarDays], ['admin', Settings],
 ]
 // Header and sidebar list every page but Admin; Admin is the black button
 // at the top right (Wan, 15 Oct 2026).
@@ -29,16 +29,26 @@ const current = (k, sub) => (k === 'directory' ? (sub === 'sertu' || sub === 'la
 
 export default function Sidebar({ lang, tab, sub, setTab, counts, mobileOpen, setMobileOpen }) {
   useEffect(() => { setMobileOpen(false) }, [tab, sub, setMobileOpen])
-  // Which sub-menus are open: the page you are on starts open, any can be toggled.
+  // Which sub-menus are open. With a mouse every one opens while the cursor is on it and
+  // folds when the cursor leaves (Wan, 31 Oct 2026: "all auto hide unhide when cursor
+  // there"), the page you are on included. A touch screen has no cursor: there the page you
+  // are on starts open and any can be toggled by its arrow.
   const [unfold, setUnfold] = useState({})
-  useEffect(() => { setUnfold((u) => ({ ...u, [tab]: true })) }, [tab])
+  const [hover, setHover] = useState(null)
+  const timer = useRef(null)
+  const canHover = typeof window !== 'undefined' && !!window.matchMedia && window.matchMedia('(hover: hover) and (pointer: fine)').matches
+  useEffect(() => { if (!canHover) setUnfold((u) => ({ ...u, [tab]: true })) }, [tab, canHover])
+  useEffect(() => () => clearTimeout(timer.current), [])
+  const enter = (k) => { clearTimeout(timer.current); setHover(k) }
+  const leave = (k) => { clearTimeout(timer.current); timer.current = setTimeout(() => setHover((h) => (h === k ? null : h)), 180) }
   const items = MENU.map(([k, Icon]) => {
-    const subs = SUBNAV[k], here = tab === k, open = !!subs && (unfold[k] ?? here)
+    const subs = SUBNAV[k], here = tab === k, open = !!subs && (canHover ? hover === k : (unfold[k] ?? here))
     const toggle = () => setUnfold((u) => ({ ...u, [k]: !open }))
     return (
-      <div key={k} className="group">
+      <div key={k} className="group" onMouseEnter={canHover && subs ? () => enter(k) : undefined} onMouseLeave={canHover && subs ? () => leave(k) : undefined}
+        onFocus={canHover && subs ? () => enter(k) : undefined} onBlur={canHover && subs ? (e) => { if (!e.currentTarget.contains(e.relatedTarget)) leave(k) } : undefined}>
         <div className={`flex items-center rounded-lg transition ${here ? 'bg-brand-600 text-white' : 'text-ink-600 hover:bg-paper hover:text-ink-900'}`}>
-        <a href={`#${k}`} onClick={(e) => { e.preventDefault(); if (here && subs) toggle(); else { setTab(k); setUnfold((u) => ({ ...u, [k]: true })) } }} title={t(lang, k)} aria-current={here ? 'page' : undefined} aria-expanded={subs ? open : undefined}
+        <a href={`#${k}`} onClick={(e) => { e.preventDefault(); if (here && subs && !canHover) toggle(); else { setTab(k); if (!canHover) setUnfold((u) => ({ ...u, [k]: true })) } }} title={t(lang, k)} aria-current={here ? 'page' : undefined} aria-expanded={subs ? open : undefined}
           className="flex flex-1 min-w-0 items-center gap-3 px-2.5 py-2 text-sm font-medium">
           <span className="w-6 flex justify-center shrink-0"><Icon {...ICON} size={19} /></span>
           <span className="flex-1 min-w-0 whitespace-nowrap overflow-hidden text-ellipsis">{t(lang, k === 'certificates' ? 'nav_certs' : k)}{counts && counts[k] != null && <span className="ml-1 text-xs opacity-70">({counts[k]})</span>}</span>

@@ -5,6 +5,7 @@ import { t } from '../lib/i18n'
 import { safeUrl } from '../lib/safe'
 import { fmtDate } from '../lib/util'
 import { countryCoords } from '../lib/config'
+import Flag from '../components/Flag'
 import seed from '../data/fhcb.json'
 import { fhcbRows } from '../lib/fhcb'
 import lists from '../data/fhcb_countries.json'
@@ -35,7 +36,7 @@ function CountryChips({ lang, all, countries, byCountry, value, onAll, onPick })
     if (value !== 'all' && countries.includes(value) && !t.includes(value)) t.unshift(value)
     return t
   }, [countries.join('|'), JSON.stringify(byCountry), value]) // eslint-disable-line react-hooks/exhaustive-deps
-  const item = (c) => <button key={c} className={chip(value === c)} onClick={() => onPick(c)}>{c} <b className="ml-1">{byCountry[c]}</b></button>
+  const item = (c) => <button key={c} className={`${chip(value === c)} inline-flex items-center gap-1.5`} onClick={() => onPick(c)}><Flag country={c} />{c} <b className="ml-0.5">{byCountry[c]}</b></button>
   return (
     <div className="mt-3">
       <div className="flex gap-1.5 overflow-x-auto snap-x pb-1 -mx-1 px-1">
@@ -125,7 +126,7 @@ export default function Fhcb({ lang, data, focusId, focusKey }) {
         columns={[
           { key: 'logo', label: '', render: (r) => logo(r, 'w-24 h-16') },
           { key: 'no', label: '#' },
-          { key: 'country', label: t(lang, 'country'), render: (r) => <span>{r.country}{isNewRow(r) && <span className="chip bg-gold-500 text-white ml-1 text-[10px]">NEW</span>}</span> },
+          { key: 'country', label: t(lang, 'country'), render: (r) => <span className="inline-flex items-center gap-1.5"><Flag country={r.country} />{r.country}{isNewRow(r) && <span className="chip bg-gold-500 text-white ml-1 text-[10px]">NEW</span>}</span> },
           { key: 'name', label: t(lang, 'name'), render: (r) => <span className="font-medium">{r.name}</span> },
           { key: 'kind', label: t(lang, 'fhcb_kind'), render: kindChip },
           { key: 'contact', label: t(lang, 'contact'), render: contacts },
@@ -136,7 +137,7 @@ export default function Fhcb({ lang, data, focusId, focusKey }) {
             <div className="flex items-start gap-3">
               {logo(r, 'w-28 h-20 shrink-0')}
               <div className="min-w-0">
-                <div className="text-xs text-ink-400">#{r.no} · {r.country}{isNewRow(r) && <span className="chip bg-gold-500 text-white ml-1 text-[10px]">NEW</span>}{pdfOf(r.country) && <> · <a className="text-brand-700 hover:underline" href={pdfOf(r.country)} target="_blank" rel="noreferrer">PDF</a></>}</div>
+                <div className="flex items-center gap-1.5 text-xs text-ink-400">#{r.no} · <Flag country={r.country} />{r.country}{isNewRow(r) && <span className="chip bg-gold-500 text-white ml-1 text-[10px]">NEW</span>}{pdfOf(r.country) && <> · <a className="text-brand-700 hover:underline" href={pdfOf(r.country)} target="_blank" rel="noreferrer">PDF</a></>}</div>
                 <div className="font-semibold leading-snug break-words">{r.name}</div>
                 <div className="mt-1">{kindChip(r)}</div>
               </div>
@@ -169,7 +170,7 @@ function NewFhcb({ lang, all, onPick }) {
           const rows = bodies.filter((r) => r.country === c.country)
           return (
             <div key={c.country} className="rounded-xl border border-line bg-white p-3 flex flex-col gap-1">
-              <div className="flex items-center justify-between gap-2"><button type="button" className="font-semibold hover:underline text-left" onClick={() => onPick(c.country)}>{c.country}</button><span className="chip bg-gold-500 text-white text-[10px]">NEW</span></div>
+              <div className="flex items-center justify-between gap-2"><button type="button" className="font-semibold hover:underline text-left" onClick={() => onPick(c.country)}><Flag country={c.country} className="mr-2 align-[-2px]" />{c.country}</button><span className="chip bg-gold-500 text-white text-[10px]">NEW</span></div>
               <ul className="text-sm text-ink-900 list-disc pl-5">{rows.map((r) => <li key={r.id}>{r.name}</li>)}</ul>
               <a className="btn self-start mt-1 px-2.5 py-1 text-xs" href={c.file} target="_blank" rel="noreferrer"><FileText {...ICON} size={14} /> {t(lang, 'fhcb_view_pdf')}</a>
             </div>
@@ -178,7 +179,7 @@ function NewFhcb({ lang, all, onPick }) {
       </div>
       <details className="mt-3 text-sm">
         <summary className="cursor-pointer text-brand-700">{t(lang, 'fhcb_all_pdf')} ({lists.countries.length})</summary>
-        <div className="mt-2 flex flex-wrap gap-1.5">{lists.countries.map((c) => <a key={c.country} className={`chip border ${c.new ? 'border-gold-500 bg-amber-50' : 'border-line bg-paper'} hover:bg-brand-50`} href={c.file} target="_blank" rel="noreferrer">{c.country} <FileText {...ICON} size={12} className="ml-1" /></a>)}</div>
+        <div className="mt-2 flex flex-wrap gap-1.5">{lists.countries.map((c) => <a key={c.country} className={`chip border ${c.new ? 'border-gold-500 bg-amber-50' : 'border-line bg-paper'} hover:bg-brand-50`} href={c.file} target="_blank" rel="noreferrer"><Flag country={c.country} className="mr-1.5" />{c.country} <FileText {...ICON} size={12} className="ml-1" /></a>)}</div>
       </details>
     </section>
   )

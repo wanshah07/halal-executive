@@ -55,11 +55,13 @@ export default function Overview({ lang, data, setTab }) {
   const page = Math.min(pg, pages - 1)
   const recentList = sorted.slice(page * PER, page * PER + PER)
 
-  // Order (Wan, 14 Oct 2026): hero → recently added FAQ → news → upcoming
+  // Order (Wan, 31 Oct 2026): hero → news → recently added FAQ → upcoming
   // events with posters → map → overview figures and charts → AI team.
   return (
     <div>
       <Hero lang={lang} settings={data.settings || {}} markers={globeMarkers} />
+
+      <NewsCarousel lang={lang} news={news} setTab={setTab} />
 
       <section className="card p-5 mb-4">
         <div className="flex items-center justify-between mb-3"><h3 className="font-semibold">{t(lang, 'recent_faq')}</h3><a href="#faq" onClick={() => setTab('faq')} className="text-sm text-brand-600 hover:underline">{t(lang, 'open_faq')}</a></div>
@@ -75,8 +77,6 @@ export default function Overview({ lang, data, setTab }) {
         </ul>
         <Pager lang={lang} page={page} pages={pages} onPage={setPg} label="FAQ pages" />
       </section>
-
-      <NewsCarousel lang={lang} news={news} />
 
       <UpcomingEvents lang={lang} events={events} posters={posters} setTab={setTab} />
 
