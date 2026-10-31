@@ -42,7 +42,7 @@ class OrganiserTest(unittest.TestCase):
         self.assertEqual(len(certs), 1)
         self.assertIn("title-only", certs[0]["notes"])
         self.assertIn("vision-tried", certs[0]["notes"], "or every run would look for the file again")
-        self.assertEqual(certs[0]["status"], "current")
+        self.assertEqual(certs[0]["status"], "nofile", "a certificate with no file is kept for Admin but not shown")
         docs = [r for tab, rows in written if tab == "Documents" for r in rows]
         self.assertTrue(any("file missing" in r["notes"] for r in docs))
 
@@ -65,6 +65,45 @@ class OrganiserTest(unittest.TestCase):
         certs = [r for tab, rows in written if tab == "Certificates" for r in rows]
         self.assertTrue(certs, "the card is made from the title while the models are down")
         self.assertIn("title-only", certs[0]["notes"])
+
+
+class NoFileTest(unittest.TestCase):
+    def test_certificates_without_a_file_leave_the_site_and_come_back_with_it(self):
+        certs = [
+            {"id": "CERT-0025", "status": "current", "notes": "title-only: the file is not in Drive, upload it again in Admin; vision-tried"},
+            {"id": "CERT-0030", "status": "current", "notes": "AFIQ full-read"},        # Drive says its file is missing
+            {"id": "CERT-M260101", "status": "current", "notes": ""},                       # typed in by hand: no file by design
+            {"id": "CERT-0031", "status": "current", "notes": "shown by admin"},
+            {"id": "CERT-0032", "status": "nofile", "notes": ""},                           # its file is back
+            {"id": "CERT-0033", "status": "current", "notes": "AFIQ full-read"},           # fine
+        ]
+        state = {"CERT-0025": "missing", "CERT-0030": "missing", "CERT-0031": "missing", "CERT-0032": "ok", "CERT-0033": "ok", "CERT-M260101": "nofile"}
+        written = []
+        with patch.object(organiser.he_api, "read", return_value=certs), \
+             patch.object(organiser.he_api, "post", return_value={"rows": [{"id": k, "state": v} for k, v in state.items()]}), \
+             patch.object(organiser.he_api, "upsert", side_effect=lambda t, r: written.append(r[0])):
+            n = organiser.hide_certificates_without_file()
+        by = {r["id"]: r["status"] for r in written}
+        self.assertEqual(by, {"CERT-0025": "nofile", "CERT-0030": "nofile", "CERT-0032": "current"})
+        self.assertEqual(n, 3)
+
+    def test_a_certificate_found_in_drive_becomes_a_document_for_the_organiser(self):
+        files = [{"id": "known", "name": "a.pdf", "mime": "application/pdf", "modified": "2026-10-30", "path": "00 Inbox/whatsapp"},
+                 {"id": "cert1", "name": "scan001.pdf", "mime": "application/pdf", "modified": "2026-10-31", "path": "00 Inbox/whatsapp"},
+                 {"id": "menu1", "name": "menu.jpg", "mime": "image/jpeg", "modified": "2026-10-31", "path": "00 Inbox/whatsapp"}]
+        texts = {"cert1": {"text": "SIJIL PENGESAHAN HALAL MALAYSIA ... syarikat", "sha256": "h1"}, "menu1": {"text": "nasi lemak RM5", "sha256": "h2"}}
+        up = []
+        import tempfile
+        state_dir = pathlib.Path(tempfile.mkdtemp())
+        counter = iter(range(60, 70))
+        with patch.object(organiser.he_api, "post", return_value={"files": files}), patch.object(organiser.he_api, "drive_get", side_effect=lambda fid, text=True, **k: texts[fid]), \
+             patch.object(organiser.he_api, "upsert", side_effect=lambda t, r: up.extend(r)), patch.object(organiser, "STATE", state_dir):
+            out = organiser.sweep_drive([{"id": "DOC-0001", "drive_file_id": "known"}], lambda: f"DOC-{next(counter):04d}")
+            again = organiser.sweep_drive([{"id": "DOC-0001", "drive_file_id": "known"}], lambda: f"DOC-{next(counter):04d}")
+        self.assertEqual([d["drive_file_id"] for d in out], ["cert1"])
+        self.assertEqual(out[0]["kind"], "certificate"); self.assertEqual(out[0]["status"], "inbox"); self.assertEqual(out[0]["id"], "DOC-0060")
+        self.assertEqual(again, [], "the menu is remembered as not a certificate, the certificate is now a Documents row")
+        self.assertEqual([d["id"] for d in up], ["DOC-0060"])
 
 
 class FilesLaneTest(unittest.TestCase):

@@ -126,6 +126,8 @@ export function markText(text, key) {
   return asks.length ? (clean + ' ' + asks.join(' ')).trim() : clean
 }
 export function stripMarks(data) {
+  // A certificate whose Drive file is gone is off the site (Wan, 31 Oct 2026); Admin still lists it. An older Code.gs still sends it, so the page drops it too.
+  if (Array.isArray(data.certificates)) data.certificates = data.certificates.filter((c) => c.status !== 'nofile')
   for (const k of ['faq', 'guidelines', 'events', 'documents', 'certificates', 'news']) {
     if (!Array.isArray(data[k])) continue
     data[k] = data[k].map((r) => {

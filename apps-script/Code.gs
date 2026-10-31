@@ -305,7 +305,7 @@ function publicData() {
     documents: noMarks(readTab('Documents').filter(function (r) { return ['hidden', 'duplicate', 'draft', 'expired', 'inbox'].indexOf(String(r.status)) < 0; })),
     // Every halal certificate is on the site (Wan, 20 Oct 2026: "do not make halal cert hidden"), until
     // it expires; then purgeExpiredCerts deletes it for good.
-    certificates: noMarks(readTab('Certificates').filter(function (r) { return r.status !== 'expired' && !(r.valid_to && eventOver({ date_start: r.valid_to }, now)); })),
+    certificates: noMarks(readTab('Certificates').filter(function (r) { return r.status !== 'expired' && r.status !== 'nofile' && !(r.valid_to && eventOver({ date_start: r.valid_to }, now)); })),
     events: noMarks(readTab('Events').filter(function (r) { return r.status !== 'hidden' && r.status !== 'draft' && !eventPast(r, now); })),
     news: readTab('News').filter(function (r) { return !r.expires_at || Date.parse(r.expires_at) > now; }),
     fhcb: readTab('FHCB').filter(function (r) { return r.status !== 'hidden' && r.status !== 'draft'; }),
@@ -349,6 +349,8 @@ function doPost(e) {
     if (a === 'raw_list')     return json({ ok: true, rows: rawList(body.status, body.source, Math.min(body.limit || 50, 500), body.attachments) });
     if (a === 'read')         { if (WRITABLE.indexOf(body.tab) < 0 && body.tab !== 'Raw') throw new Error('tab not readable'); return json({ ok: true, rows: readTab(body.tab) }); }
     if (a === 'drive_get')    return json(driveGet(body));
+    if (a === 'drive_list')   return json(driveList(body));                         // files in the app's own folders, for the certificate sweep (ingest token)
+    if (a === 'cert_state')   return json(certFilesCheck(!!body.fresh));                   // which certificates still have their file in Drive (ingest token)
     if (a === 'llm_next')     return json({ ok: true, provider: nextProvider() });
     if (a === 'llm_config')   return json(llmConfigGet());                         // the pipeline reads the same choice
     if (a === 'llm_models')   { needAdmin(); return json(llmModels(!!body.fresh)); }
@@ -880,7 +882,7 @@ function certFilesCheck(fresh) {
     }
     if (state !== 'ok' && seen === 'trash') state = 'trash';
     rows.push({ id: c.id, company: c.company, cert_no: c.cert_no, scheme: c.scheme, status: c.status, valid_to: c.valid_to, drive_url: c.drive_url, doc_id: c.doc_id || '',
-      created_at: c.created_at || '', published_at: c.published_at || '', updated_at: c.updated_at || '', state: state });
+      created_at: c.created_at || '', published_at: c.published_at || '', updated_at: c.updated_at || '', notes: c.notes || '', state: state });
   });
   var out = { ok: true, total: rows.length, rows: rows, missing: rows.filter(function (r) { return r.state !== 'ok' && r.status !== 'hidden'; }) };
   try { cache.put(ck, JSON.stringify(out), 300); } catch (e) { /* too large */ }
@@ -912,6 +914,8 @@ function reviewSet(tab, id, status) {
   if (['published', 'hidden', 'draft', 'current'].indexOf(status) < 0) throw new Error('unknown status');
   if ((tab === 'Certificates' || tab === 'Documents') && status === 'published') status = 'current';
   var patch = { status: status };
+  // A certificate the pipeline took off the site because its file is gone, and an admin shows again, stays shown.
+  if (tab === 'Certificates') { var cur0 = readTab('Certificates').filter(function (x) { return String(x.id) === String(id); })[0]; if (cur0 && cur0.status === 'nofile') patch.notes = 'shown by admin'; }
   if (TABS[tab].indexOf('updated_at') >= 0) patch.updated_at = new Date().toISOString();
   // An admin publishing an answer confirms it: its open points are cleared,
   // or the next Drafts load would move it straight back.
@@ -1121,6 +1125,34 @@ function ingest(rows) {
   if (lines.length) sh.getRange(sh.getLastRow() + 1, 1, lines.length, TABS.Raw.length).setValues(lines);
   if (filled) pubBust();
   return { ok: true, added: added, skipped: skipped, filled: filled };
+}
+
+// The files in the app's own folders, newest first, so the pipeline can find a halal certificate that is in
+// Drive but never reached the site (Wan, 31 Oct 2026: "check the drive for the cert with no appear"). Only
+// folders under DRIVE_ROOT_ID, found by name and never created here; pictures and PDFs only.
+function findFolder(path) {
+  var f = DriveApp.getFolderById(props().getProperty('DRIVE_ROOT_ID'));
+  var segs = String(path).split('/').filter(String);
+  for (var i = 0; i < segs.length; i++) { var it = f.getFoldersByName(segs[i]); if (!it.hasNext()) return null; f = it.next(); }
+  return f;
+}
+function driveList(b) {
+  var paths = (b.paths && b.paths.length ? b.paths : ['00 Inbox/whatsapp', '00 Inbox/telegram', '00 Inbox/manual', '10 Documents/halal', '10 Documents/food', '10 Documents/cosmetic']).slice(0, 12);
+  var limit = Math.max(1, Math.min(Number(b.limit) || 200, 400)), out = [];
+  paths.forEach(function (p) {
+    var f = findFolder(p); if (!f) return;
+    var tok = null, got = 0;
+    do {
+      var r = Drive.Files.list({ q: "'" + f.getId() + "' in parents and trashed = false and mimeType != 'application/vnd.google-apps.folder'", orderBy: 'modifiedTime desc', pageSize: 100,
+        fields: 'nextPageToken,files(id,name,mimeType,size,modifiedTime)', pageToken: tok || undefined });
+      (r.files || []).forEach(function (x) {
+        if (got >= limit || !/^(image\/|application\/pdf)/.test(x.mimeType || '')) return;
+        got++; out.push({ id: x.id, name: x.name, mime: x.mimeType, size: Number(x.size || 0), modified: x.modifiedTime, path: String(p) });
+      });
+      tok = r.nextPageToken;
+    } while (tok && got < limit);
+  });
+  return { ok: true, files: out };
 }
 
 function folder(path) {

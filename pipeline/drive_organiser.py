@@ -23,6 +23,7 @@ classified attachment):
 import datetime as dt
 import json
 import os
+import pathlib
 import re
 import sys
 
@@ -153,27 +154,126 @@ def holder_of(d):
 
 
 def gone_file(d, certs, new_id):
-    """The file is not in Drive any more. A certificate keeps its card (the holder from its
-    title, or none: the page says the details are not read yet and Admin can type them); any
-    other document is hidden for the admin. Never an error: nothing here can be retried."""
+    """The file is not in Drive any more. A certificate with no file is not shown on the site (Wan, 31 Oct 2026:
+    "if no file automatically remove to visible"): its row stays in the Sheet with status `nofile`, so Admin can
+    still edit it, type the details or delete it, and it comes back by itself when a file is found. Any other
+    document is hidden. Never an error: nothing here can be retried."""
     if d.get("kind") == "certificate":
         prev = next((c for c in certs if str(c.get("doc_id")) == str(d["id"])), None)
         if not prev:
             cid = new_id()
             he_api.upsert("Certificates", [cert_row(cid, {"company": holder_of(d)}, d, d.get("drive_url", ""), "",
-                                                    "title-only: the file is not in Drive, upload it again in Admin; vision-tried", status="current")])
-            certs.append({"id": cid, "cert_no": "", "doc_id": d["id"], "notes": "title-only"})
+                                                    "title-only: the file is not in Drive, upload it again in Admin; vision-tried", status="nofile")])
+            certs.append({"id": cid, "cert_no": "", "doc_id": d["id"], "notes": "title-only", "status": "nofile"})
         he_api.upsert("Documents", [{**d, "status": "current", "notes": "file missing in Drive"}])
-        print(d["id"], "certificate file is not in Drive; its card stays")
+        print(d["id"], "certificate file is not in Drive; not shown on the site")
         return 1
     he_api.upsert("Documents", [{**d, "status": "hidden", "notes": "file missing in Drive"}])
     print(d["id"], "file is not in Drive; hidden")
     return 1
 
 
+def hide_certificates_without_file():
+    """Every certificate whose file is gone leaves the site (status `nofile`), every one whose file is back returns.
+    Drive is asked once (Code.gs cert_state: each certificate's own file, then its document's); an older Code.gs
+    that does not know it is skipped, and rows the pipeline itself marked as having no file are hidden anyway.
+    A certificate an admin showed again by hand ("shown by admin") is left alone."""
+    certs = he_api.read("Certificates")
+    state = {}
+    try:
+        for r in he_api.post("cert_state", fresh=True).get("rows") or []:
+            state[str(r.get("id"))] = r.get("state")
+    except he_api.ApiError as e:
+        print("certificate files not checked (older Code.gs?):", str(e)[:100])
+    n = 0
+    for c in certs:
+        notes = str(c.get("notes") or "")
+        if "shown by admin" in notes or str(c.get("id")).startswith("CERT-M"):
+            continue   # shown by an admin on purpose, or typed in by hand: no file to look for
+        st, status = state.get(str(c.get("id"))), c.get("status")
+        lost = st in ("missing", "nofile") or "the file is not in Drive" in notes
+        if lost and status in ("current", "draft", "published", None, ""):
+            he_api.upsert("Certificates", [{**c, "status": "nofile"}])
+            print("certificate", c.get("id"), "has no file in Drive: taken off the site"); n += 1
+        elif status == "nofile" and st == "ok":
+            he_api.upsert("Certificates", [{**c, "status": "current"}])
+            print("certificate", c.get("id"), "has its file again: back on the site"); n += 1
+    return n
+
+
+CERT_NAME = re.compile(r"sijil|certificate|cert[-_ .0-9]|perakuan", re.I)
+STATE = pathlib.Path(os.environ.get("STATE_DIR", pathlib.Path(__file__).parent / ".state"))
+
+
+def sweep_drive(docs, new_doc_id, per_run=20):
+    """A halal certificate that is in Drive but never reached the site (Wan, 31 Oct 2026: "check the drive for the cert
+    with no appear"): the newest pictures and PDFs in the inbox and document folders that no Documents row names are
+    read (text first), and one that says it is a halal certificate, or is named like one, becomes a Documents row
+    (kind certificate, waiting for the organiser, which gives it its card). Twenty a run; a file that is not one is
+    remembered in STATE so it is not read again. An older Code.gs that cannot list Drive is skipped."""
+    try:
+        files = he_api.post("drive_list", limit=300).get("files") or []
+    except he_api.ApiError as e:
+        print("Drive not listed (older Code.gs?):", str(e)[:100])
+        return []
+    known = {str(d.get("drive_file_id")) for d in docs}
+    hashes = {str(d.get("content_hash")) for d in docs if d.get("content_hash")}
+    f_checked = STATE / "drive_checked.json"
+    try:
+        checked = set(json.loads(f_checked.read_text()))
+    except (OSError, ValueError):
+        checked = set()
+    out, looked = [], 0
+    for f in files:
+        fid = str(f.get("id"))
+        if fid in known or fid in checked:
+            continue
+        if looked >= per_run:
+            break
+        looked += 1
+        try:
+            g = he_api.drive_get(fid, text=True)
+        except he_api.ApiError:
+            checked.add(fid)
+            continue
+        h = str(g.get("sha256") or "")
+        text = g.get("text") or ""
+        if (h and h in hashes) or not (CERT_TEXT.search(text) or (not text.strip() and CERT_NAME.search(str(f.get("name") or "")))):
+            checked.add(fid)
+            continue
+        hashes.add(h)
+        out.append({"id": new_doc_id(), "title": "Halal certificate", "kind": "certificate", "category": "halal", "drive_file_id": fid,
+                    "drive_url": f"https://drive.google.com/file/d/{fid}/view", "content_hash": h, "version": "", "supersedes_id": "", "source_msg_id": "",
+                    "received_at": f.get("modified") or "", "updated_at": f.get("modified") or "", "status": "inbox",
+                    "notes": "from:drive sweep; halal certificate found in Drive; awaiting organiser"})
+        checked.add(fid)
+        print("certificate found in Drive:", f.get("name"), f.get("path"))
+    try:
+        STATE.mkdir(parents=True, exist_ok=True)
+        f_checked.write_text(json.dumps(sorted(checked)[-5000:]))
+    except OSError:
+        pass
+    if out:
+        he_api.upsert("Documents", out)
+    return out
+
+
 def run():
     _VISION.clear()
     docs = he_api.read("Documents")
+    _di = [0]
+    for d_ in docs:
+        try:
+            _di[0] = max(_di[0], int(str(d_["id"]).split("-")[1]))
+        except (IndexError, ValueError, KeyError):
+            pass
+    def new_doc_id():
+        _di[0] += 1
+        return f"DOC-{_di[0]:04d}"
+    try:
+        docs = docs + sweep_drive(docs, new_doc_id)
+    except Exception as e:  # the sweep is a bonus; the organiser must run whatever it does
+        print("Drive sweep failed:", str(e)[:160])
     inbox = [d for d in docs if d.get("status") == "inbox"]
     by_hash = {d["content_hash"]: d for d in docs if d.get("content_hash") and d.get("status") in ("current", "draft", "archived", "expired")}
     current = [d for d in docs if d.get("status") in ("current", "draft")]
@@ -350,6 +450,10 @@ def run():
         except (he_api.ApiError, llm_router.LLMError, KeyError) as e:
             errs.append(f"{d['id']}: {e}"); print("skip", d["id"], e, file=sys.stderr)
 
+    try:
+        n += hide_certificates_without_file()
+    except Exception as e:  # never stops the run
+        print("certificate files not checked:", str(e)[:160])
     he_api.run_log("drive_organiser", provider, model, n, not errs, "; ".join(errs)[:500])
     return 1 if errs else 0
 

@@ -297,7 +297,7 @@ export function CertAdmin({ lang, data, onChanged }) {
   useEffect(() => { run(false) }, [])
   const all = rows || []
   const bad = all.filter((r) => r.state !== 'ok' && r.state !== '?' && r.status !== 'hidden')
-  const list = all.filter((r) => (only === 'all' || (only === 'missing' ? r.state !== 'ok' && r.state !== '?' : r.status === 'hidden')) && (!q || JSON.stringify([r.company, r.cert_no, r.scheme, r.id]).toLowerCase().includes(q.toLowerCase())))
+  const list = all.filter((r) => (only === 'all' || (only === 'missing' ? (r.state !== 'ok' && r.state !== '?') || r.status === 'nofile' : r.status === 'hidden')) && (!q || JSON.stringify([r.company, r.cert_no, r.scheme, r.id]).toLowerCase().includes(q.toLowerCase())))
   async function toggleHide(r) {
     const hide = r.status !== 'hidden'
     setRows((rs) => rs.map((x) => (x.id === r.id ? { ...x, status: hide ? 'hidden' : 'current' } : x)))
@@ -313,7 +313,7 @@ export function CertAdmin({ lang, data, onChanged }) {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div><h3 className="font-semibold">{t(lang, 'ca_title')} {rows && <span className="text-ink-400 font-normal">({all.length})</span>}</h3>
           {/* The Hub shows the certificates that are not hidden, so the sidebar count is smaller than this one when some are hidden. */}
-          {rows && <p className="text-xs text-ink-600">{t(lang, 'certs_on_site').replace('{p}', all.filter((r) => r.status !== 'hidden' && r.status !== 'draft' && r.status !== 'expired').length).replace('{h}', all.length - all.filter((r) => r.status !== 'hidden' && r.status !== 'draft' && r.status !== 'expired').length)}</p>}<p className="text-xs text-ink-600">{t(lang, 'ca_sub')}</p></div>
+          {rows && <p className="text-xs text-ink-600">{t(lang, 'certs_on_site').replace('{p}', all.filter((r) => r.status !== 'hidden' && r.status !== 'draft' && r.status !== 'expired' && r.status !== 'nofile').length).replace('{h}', all.length - all.filter((r) => r.status !== 'hidden' && r.status !== 'draft' && r.status !== 'expired').length)}</p>}<p className="text-xs text-ink-600">{t(lang, 'ca_sub')}</p></div>
         <button type="button" className="btn" disabled={busy} onClick={() => run(true)}>{busy ? t(lang, 'cf_checking') : t(lang, 'cf_check')}</button>
       </div>
       {old && <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3">{t(lang, 'ca_old')}</p>}
@@ -333,7 +333,7 @@ export function CertAdmin({ lang, data, onChanged }) {
               <div className="flex flex-wrap items-start gap-3">
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2"><span className="text-xs text-ink-400">{r.id}</span><span className="font-medium">{r.company || <i className="text-ink-400 font-normal">{t(lang, 'untitled_cert')}</i>}</span>
-                    <span className={`chip ${CERT_TONE[st] || 'bg-paper border border-line'}`}>{t(lang, st)}</span>{r.status === 'hidden' && <span className="chip bg-paper border border-line text-ink-600">{t(lang, 'ca_f_hidden')}</span>}{stateChip(r)}</div>
+                    <span className={`chip ${CERT_TONE[st] || 'bg-paper border border-line'}`}>{t(lang, st)}</span>{r.status === 'hidden' && <span className="chip bg-paper border border-line text-ink-600">{t(lang, 'ca_f_hidden')}</span>}{r.status === 'nofile' && <span className="chip bg-red-100 text-red-700">{t(lang, 'ca_nofile')}</span>}{stateChip(r)}</div>
                   <div className="text-xs text-ink-600">{[r.scheme, r.cert_no].filter(Boolean).join(' · ')}{r.valid_to ? ` · ${t(lang, 'valid_to')} ${fmtDate(r.valid_to, lang)}` : ''}</div>
                   <Stamps r={r} lang={lang} className="text-xs text-ink-400" />
                 </div>

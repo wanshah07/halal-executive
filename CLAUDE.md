@@ -605,6 +605,19 @@
     Edit (or Manage) types them. Admin can edit every segment: FAQ, Guidelines, Certificates
     (also from Halal certificates), Documents, References, News in Manage; Events, Vacancies, FHCB
     and Directory in their own boxes. `pipeline/test_certificates_never_wait.py`.
+54. **A certificate with no file in Drive is not shown, and one that is in Drive but never appeared is
+    found** (Wan, 31 Oct 2026: "check the drive for the cert with no appear ... if no file automatically
+    remove to visible"; this changes rule 34's "never hidden" for the no-file case, and supersedes the
+    title-only cards rule 51 first made for lost files). A Certificates row with status `nofile` stays in
+    the Sheet and in Admin (chip "No file", Edit, Delete) but `publicData` and the page (`stripMarks`) leave
+    it out. `drive_organiser.py` sets it (`gone_file`; `hide_certificates_without_file`, which asks Code.gs
+    `cert_state` once per run: each certificate's own file, then its document's) and clears it by itself when
+    the file is back. Left alone: a certificate typed in by hand (`CERT-M...`) and one an admin showed again
+    (`reviewSet` writes notes `shown by admin`). `sweep_drive` (Code.gs `drive_list`: pictures and PDFs in
+    `00 Inbox/*` and `10 Documents/*`, newest first) reads 20 unknown files a run and makes a Documents row
+    (kind certificate, status inbox) for each whose text says it is a halal certificate or whose name says
+    certificate; the organiser then files it and makes its card. A file that is not one is remembered in
+    `.state/drive_checked.json`.
 52. **An answer an admin approved is theirs** (Wan, 31 Oct 2026: "I need to publish the same FAQ I
     approve"). `FAQ.approved_at` (appended column) is stamped by Code.gs when an admin publishes,
     edits a published answer or adds one by hand, and cleared when it goes back to drafts. A new
