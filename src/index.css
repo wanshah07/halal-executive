@@ -184,6 +184,8 @@ body { @apply bg-paper text-ink-900 antialiased; font-family: ui-sans-serif, sys
 .mo-input { position: absolute; inset: 0; display: flex; align-items: center; gap: 10px; padding: 0 8px 0 18px;
   opacity: var(--oInput); transform: scale(var(--inScale)); }
 .mo-input[inert] { pointer-events: none; }
+/* The field itself has no outline (it sits inside the pill), so the pill shows the keyboard focus. */
+.mo-input:focus-within { border-radius: 999px; box-shadow: 0 0 0 3px rgba(11, 107, 58, .28); }
 .mo-spark { width: 20px; height: 20px; flex: none; color: #0b6b3a; }
 .mo-field { flex: 1; min-width: 0; background: transparent; border: 0; outline: none; color: #0f172a; font-size: 16px; }
 .mo-field::placeholder { color: #94a3b8; }
