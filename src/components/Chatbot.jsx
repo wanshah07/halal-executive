@@ -47,7 +47,7 @@ export default function Chatbot({ lang, data, open, setOpen, seed }) {
             {busy && <div className="text-ink-400">…</div>}
           </div>
           <div className="p-3 border-t border-line flex gap-2">
-            <input className="input" value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && ask(q)} placeholder={t(lang, 'search_ph')} />
+            <input className="input" aria-label={t(lang, 'search_ph')} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && ask(q)} placeholder={t(lang, 'search_ph')} />
             <button className="btn-brand" onClick={() => ask(q)} disabled={busy}>{t(lang, 'ask')}</button>
           </div>
         </div>

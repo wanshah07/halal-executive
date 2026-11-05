@@ -11,7 +11,7 @@ export default function SearchBar({ lang, data, onOpen, onAsk }) {
   return (
     <div className="relative">
       <div className="flex gap-2">
-        <input className="input" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t(lang, 'search_ph')} onKeyDown={(e) => { if (e.key === 'Enter' && q.trim()) onAsk(q) }} />
+        <input className="input" type="search" aria-label={t(lang, 'search_ph')} value={q} onChange={(e) => setQ(e.target.value)} placeholder={t(lang, 'search_ph')} onKeyDown={(e) => { if (e.key === 'Enter' && q.trim()) onAsk(q) }} />
         <button className="btn-brand shrink-0" onClick={() => q.trim() && onAsk(q)}>{t(lang, 'ask')} <ArrowUpRight {...ICON} size={16} /></button>
       </div>
       {q && (

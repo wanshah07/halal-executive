@@ -161,6 +161,10 @@ export default function App() {
         <main className="w-full flex-1 max-w-7xl mx-auto px-4 sm:px-6 py-6">
           {err && <div className="card p-3 mb-4 text-sm bg-red-50 border-red-200">{err}</div>}
           <div className="mb-6"><SearchBar lang={lang} data={data} onOpen={(type, id) => setTab(type, id)} onAsk={(q) => setSeed({ q, n: Date.now() })} /></div>
+          {/* Every page but Overview opens on its toolbar, so the page name is
+              the document's one h1 for screen readers and outlines; Overview's
+              hero already carries a visible h1. */}
+          {tab !== 'overview' && <h1 className="sr-only">{t(lang, tab)}</h1>}
           <PageGuard lang={lang} tab={tab}>
           <Suspense fallback={<div className="text-sm text-ink-400 p-4">{t(lang, 'loading')}</div>}>
           {tab === 'overview' && <Overview lang={lang} data={data} setTab={setTab} />}
