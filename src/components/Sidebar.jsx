@@ -51,7 +51,8 @@ export default function Sidebar({ lang, tab, sub, setTab, counts, mobileOpen, se
         <a href={`#${k}`} onClick={(e) => { e.preventDefault(); if (here && subs && !canHover) toggle(); else { setTab(k); if (!canHover) setUnfold((u) => ({ ...u, [k]: true })) } }} title={t(lang, k)} aria-current={here ? 'page' : undefined} aria-expanded={subs ? open : undefined}
           className="flex flex-1 min-w-0 items-center gap-3 px-2.5 py-2 text-sm font-medium">
           <span className="w-6 flex justify-center shrink-0"><Icon {...ICON} size={19} /></span>
-          <span className="flex-1 min-w-0 whitespace-nowrap overflow-hidden text-ellipsis">{t(lang, k === 'certificates' ? 'nav_certs' : k)}{counts && counts[k] != null && <span className="ml-1 text-xs opacity-70">({counts[k]})</span>}</span>
+          {/* The name may shorten with an ellipsis; the count never does, so "(24)" is always readable (BM names are longer). */}
+          <span className="flex-1 min-w-0 flex items-baseline"><span className="min-w-0 truncate">{t(lang, k === 'certificates' ? 'nav_certs' : k)}</span>{counts && counts[k] != null && <span className="ml-1 shrink-0 text-xs opacity-70">({counts[k]})</span>}</span>
         </a>
         {subs && <button type="button" onClick={toggle} aria-label={t(lang, k)} aria-expanded={open} className="shrink-0 px-2 py-2 rounded-lg"><ChevronDown {...ICON} size={15} className={`transition-transform duration-200 ${open ? 'rotate-180' : ''}`} /></button>}
         </div>
