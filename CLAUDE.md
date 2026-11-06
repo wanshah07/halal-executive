@@ -667,3 +667,12 @@
     Dismiss only removes it. Nothing is reworded and the code adds no clause, page or number: the wording is the
     admin's own confirmation. Rule 45 still holds for the pipeline: it never puts an unconfirmed point into an answer
     by itself.
+57. **A certificate's file is guarded, healed, and only "lost" when Drive says not found** (Wan, 6 Nov 2026: "2 of 12 certificates
+    have lost their file ... fix and avoid in future"). Three parts in Code.gs: (1) `driveFileState` answers ok / trash / gone /
+    unsure, and only "gone" (a real not-found) counts as lost; Drive busy, over quota or a network error is `unsure` and
+    `certFilesCheck` shows `?`, so the pipeline (`hide_certificates_without_file`) never takes a good certificate off the site on a
+    bad minute. (2) `adminDelete` calls `fileInUse` before `Drive.Files.remove` (permanent): a file any other Documents,
+    Certificates, References, Events, Vacancies, FHCB or Directory row still names stays in Drive and only the row goes
+    (`file_kept`). (3) `certHeal` (30-minute timer, under the lock, and Admin's "Check again" = action `cert_heal`) takes a
+    file out of the Drive bin, or, when it is gone, points the certificate at another Documents row with the SAME `content_hash`
+    whose file is there; nothing else is guessed, so a truly gone file still needs the certificate uploaded again.

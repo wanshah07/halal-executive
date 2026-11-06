@@ -384,6 +384,7 @@ function doPost(e) {
       if (a === 'admins_set')    { needAdmin(); return json(setAdminEmails(body.emails || [])); }
       if (a === 'manual_upload') { needAdmin(); var mu = manualUpload(body, sessEmail || 'token'); mu.run = autoRun(mu.chat ? 'process_whatsapp' : 'uploads'); return json(mu); }
       if (a === 'review_set')    { needAdmin(); return json(reviewSet(body.tab, body.id, body.status)); }
+      if (a === 'cert_heal')     { needAdmin(); var ch = certHeal(); var cf = certFilesCheck(true); cf.healed = ch; return json(cf); }
       if (a === 'review_save')   { needAdmin(); return json(reviewSave(String(body.tab || ''), String(body.id || ''), body.fields || {})); }
       if (a === 'faq_points')    { needAdmin(); return json(faqPoints(String(body.id || ''), body.indexes, String(body.mode || 'add'))); }
       if (a === 'settings')      { needAdmin(); return json(writeSettings(stripLlm(body.settings || {}))); }
@@ -633,14 +634,16 @@ function adminDelete(tab, id) {
     // The certificate's document row and file go with it.
     if (row.doc_id) { var cd = readTab('Documents').filter(function (d) { return String(d.id) === String(row.doc_id); })[0]; if (cd) { file = cd.drive_file_id; deleteByIds('Documents', [cd.id]); } }
   }
-  var fileGone = file ? removeDriveFile(file) : false;
+  // A file another row still uses stays in Drive: only this row goes.
+  var shared = file ? fileInUse(file, tab, id) : false;
+  var fileGone = file && !shared ? removeDriveFile(file) : false;
   deleteByIds(tab, [id]);
   // A deleted FHCB or Directory row is remembered, so "Load" never brings it back.
   if (tab === 'FHCB' || tab === 'Directory') {
     var gone = seedDeleted(); gone[tab + ':' + id] = 1;
     writeSettings({ seed_deleted: JSON.stringify(Object.keys(gone)).slice(0, 45000) });
   }
-  return { ok: true, deleted: id, file_deleted: fileGone };
+  return { ok: true, deleted: id, file_deleted: fileGone, file_kept: shared };
 }
 
 // ---------- Progress: what is running now ----------
@@ -781,6 +784,7 @@ function tickPipeline() {
     try {
       try { purgePastEvents(); } catch (e) { console.error('purge: ' + e); }
       try { purgeExpiredCerts(); } catch (e) { console.error('cert purge: ' + e); }
+      try { certHeal(); } catch (e) { console.error('cert heal: ' + e); }
       try { purgeClosedVacancies(); } catch (e) { console.error('vacancy purge: ' + e); }
     } finally { lock.releaseLock(); }
   }
@@ -871,21 +875,71 @@ function fileThumb(fileId) {
 // Every certificate for Admin, with whether its file is still in Drive. A file
 // in Drive's trash can still be restored; one that is not found has to be
 // uploaded again. `missing` is the visible certificates that lost their file.
+
+// Is this Drive file there? 'ok', 'trash', 'gone' (Drive says not found) or 'unsure' (any other error: busy, quota, network).
+function driveNotFound(e) { return /not found|404|no item with the given id/i.test(String(e && e.message || e)); }
+function driveFileState(id) {
+  try { var m = Drive.Files.get(id, { fields: 'id,trashed' }); return m && m.trashed ? 'trash' : 'ok'; }
+  catch (e) { return driveNotFound(e) ? 'gone' : 'unsure'; }
+}
+// A Drive file other rows still point to must never be deleted with one of them (Wan, 6 Nov 2026: "avoid to happen in
+// future"). adminDelete asks this before Drive.Files.remove, which cannot be undone.
+var FILE_FIELDS = { Documents: ['drive_file_id', 'drive_url'], Certificates: ['drive_url'], References: ['drive_file_id', 'drive_url'], Events: ['poster_file', 'poster_url'], Vacancies: ['poster_file', 'poster_url'], FHCB: ['logo_file'], Directory: ['logo_file'] };
+function fileInUse(fileId, selfTab, selfId) {
+  var f = String(fileId || ''); if (f.length < 10) return false;
+  return Object.keys(FILE_FIELDS).some(function (tab) {
+    return readTab(tab).some(function (r) {
+      if (tab === selfTab && String(r.id) === String(selfId)) return false;
+      return FILE_FIELDS[tab].some(function (k) { return String(r[k] || '').indexOf(f) >= 0; });
+    });
+  });
+}
+// Heals a certificate whose file is not where its row says (Wan, 6 Nov 2026). Runs on the 30-minute timer and from
+// Admin's "Check again", under the script lock. (1) The file is in the Drive bin: take it out. (2) It is gone, but
+// another Documents row holds the SAME bytes (same content_hash) and that file is there: point the certificate at it.
+// Anything else (Drive busy, no twin) is left alone: an admin uploads it again.
+function certHeal() {
+  var certs = readTab('Certificates'), docs = readTab('Documents'), back = 0, relinked = 0;
+  certs.forEach(function (c) {
+    try {
+      var ids = certFileIds(c); if (!ids.length) return;
+      var st = ids.map(driveFileState);
+      if (st.indexOf('ok') >= 0 || st.indexOf('unsure') >= 0) return;
+      var patch = null, ti = st.indexOf('trash');
+      if (ti >= 0) { DriveApp.getFileById(ids[ti]).setTrashed(false); patch = {}; back++; }
+      else {
+        var mine = docs.filter(function (d) { return String(d.id) === String(c.doc_id); })[0], h = mine && String(mine.content_hash || '');
+        if (!h) return;
+        var twin = docs.filter(function (d) { return String(d.id) !== String(mine.id) && String(d.content_hash || '') === h && d.drive_file_id && driveFileState(d.drive_file_id) === 'ok'; })[0];
+        if (!twin) return;
+        patch = { doc_id: twin.id, drive_url: twin.drive_url || ('https://drive.google.com/file/d/' + twin.drive_file_id + '/view') }; relinked++;
+      }
+      if (/the file is not in Drive/i.test(String(c.notes || ''))) patch.notes = 'file found again';
+      if (c.status === 'nofile') patch.status = 'current';
+      patch.updated_at = new Date().toISOString();
+      updateByIds('Certificates', [c.id], patch);
+    } catch (e) { console.error('cert heal ' + c.id + ': ' + e); }
+  });
+  return { restored: back, relinked: relinked };
+}
 function certFilesCheck(fresh) {
   var cache = CacheService.getScriptCache(), ck = 'certfiles_' + (props().getProperty('pub_v') || '0');
   if (!fresh) { var hit = cache.get(ck); if (hit) { try { return JSON.parse(hit); } catch (e) { /* build again */ } } }
   var rows = [];
   readTab('Certificates').forEach(function (c) {
-    var ids = certFileIds(c), state = ids.length ? 'missing' : 'nofile', seen = '';
+    var ids = certFileIds(c), state = ids.length ? 'missing' : 'nofile', seen = '', unsure = false;
     for (var i = 0; i < ids.length && state === 'missing'; i++) {
-      try { var m = Drive.Files.get(ids[i], { fields: 'id,trashed' }); if (m && m.trashed) { seen = 'trash'; } else { state = 'ok'; } }
-      catch (e) { /* not found */ }
+      var fs = driveFileState(ids[i]);
+      if (fs === 'ok') state = 'ok'; else if (fs === 'trash') seen = 'trash'; else if (fs === 'unsure') unsure = true;
     }
     if (state !== 'ok' && seen === 'trash') state = 'trash';
+    // Drive busy, over quota or a network hiccup is NOT a lost file (Wan, 6 Nov 2026): only a real "not found" counts,
+    // or the pipeline would take a good certificate off the site on a bad minute.
+    if (state === 'missing' && unsure) state = '?';
     rows.push({ id: c.id, company: c.company, cert_no: c.cert_no, scheme: c.scheme, status: c.status, valid_to: c.valid_to, drive_url: c.drive_url, doc_id: c.doc_id || '',
       created_at: c.created_at || '', published_at: c.published_at || '', updated_at: c.updated_at || '', notes: c.notes || '', state: state });
   });
-  var out = { ok: true, total: rows.length, rows: rows, missing: rows.filter(function (r) { return r.state !== 'ok' && r.status !== 'hidden'; }) };
+  var out = { ok: true, total: rows.length, rows: rows, missing: rows.filter(function (r) { return r.state !== 'ok' && r.state !== '?' && r.status !== 'hidden'; }) };
   try { cache.put(ck, JSON.stringify(out), 300); } catch (e) { /* too large */ }
   return out;
 }

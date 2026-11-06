@@ -273,6 +273,7 @@ const CERT_TONE = { valid: 'bg-brand-100 text-brand-700', expiring: 'bg-amber-10
 export function CertAdmin({ lang, data, onChanged }) {
   const [rows, setRows] = useState(null)
   const [old, setOld] = useState(false)
+  const [healed, setHealed] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const [q, setQ] = useState('')
@@ -292,7 +293,9 @@ export function CertAdmin({ lang, data, onChanged }) {
   }
   const run = (fresh, keepErr) => {
     setBusy(true); if (!keepErr) setErr(''); setOld(false)
-    adminPost('cert_files', fresh ? { fresh: true } : {}).then((r) => setRows(r.rows)).catch((e) => {
+    // "Check again" also heals: a file in the Drive bin is taken out, a lost one is swapped for its identical twin (cert_heal).
+    const ask = fresh ? adminPost('cert_heal').catch((e) => (/unknown action/i.test(e.message) ? adminPost('cert_files', { fresh: true }) : Promise.reject(e))) : adminPost('cert_files')
+    ask.then((r) => { setRows(r.rows); const h = r.healed; setHealed(h && (h.restored || h.relinked) ? t(lang, 'cf_healed').replace('{n}', (h.restored || 0) + (h.relinked || 0)) : ''); if (h && (h.restored || h.relinked)) { refreshAll(); onChanged && onChanged() } }).catch((e) => {
       if (/unknown action/i.test(e.message)) { setOld(true); setRows(((data && data.certificates) || []).map((c) => ({ ...c, state: '?' }))) } else setErr(e.message)
     }).finally(() => setBusy(false))
   }
@@ -320,6 +323,7 @@ export function CertAdmin({ lang, data, onChanged }) {
       </div>
       {old && <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3">{t(lang, 'ca_old')}</p>}
       {err && <p className="text-sm text-red-700">{err}</p>}
+      {healed && <p className="text-sm text-brand-700">{healed}</p>}
       {rows && !old && (bad.length
         ? <p className="text-sm text-red-700">{t(lang, 'cf_bad').replace('{m}', bad.length).replace('{n}', all.length)} <span className="text-ink-600">{t(lang, 'cf_help')}</span></p>
         : <p className="text-sm text-brand-700">{t(lang, 'cf_ok').replace('{n}', all.length)}</p>)}
