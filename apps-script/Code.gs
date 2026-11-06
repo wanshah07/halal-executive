@@ -385,6 +385,7 @@ function doPost(e) {
       if (a === 'manual_upload') { needAdmin(); var mu = manualUpload(body, sessEmail || 'token'); mu.run = autoRun(mu.chat ? 'process_whatsapp' : 'uploads'); return json(mu); }
       if (a === 'review_set')    { needAdmin(); return json(reviewSet(body.tab, body.id, body.status)); }
       if (a === 'review_save')   { needAdmin(); return json(reviewSave(String(body.tab || ''), String(body.id || ''), body.fields || {})); }
+      if (a === 'faq_points')    { needAdmin(); return json(faqPoints(String(body.id || ''), body.indexes, String(body.mode || 'add'))); }
       if (a === 'settings')      { needAdmin(); return json(writeSettings(stripLlm(body.settings || {}))); }
       if (a === 'ref_upload')    { needAdmin(); var ru = refUpload(body, sessEmail || 'token'); ru.run = autoRun('references'); return json(ru); }
       if (a === 'ref_set')       { needAdmin(); var rs = refSet(body.id, body.status); if (body.status === 'pending') rs.run = autoRun('references'); return json(rs); }
@@ -975,6 +976,49 @@ function reviewSave(tab, id, fields) {
   if (TABS[tab].indexOf('updated_at') >= 0) patch.updated_at = new Date().toISOString();
   if (tab === 'FAQ') { var cur = readTab('FAQ').filter(function (x) { return String(x.id) === String(id); })[0]; if (cur && cur.status === 'published') patch.approved_at = new Date().toISOString(); }
   return updateByIds(tab, [id], patch);
+}
+
+// Points the references could not confirm (FAQ.verify_notes). The admin decides, point by point
+// (Wan, 6 Nov 2026: "masukkan dalam FAQ"): "add" writes the point into the published answers, in the
+// language it is written in, and stamps approved_at so the pipeline never rewrites or cuts it again;
+// "drop" only clears it. Either way the point leaves the to-confirm list. The wording is the admin's
+// own confirmation: nothing is reworded and no clause or number is added.
+var MS_WORDS = /\b(yang|dan|atau|untuk|adalah|dengan|tidak|perlu|boleh|dalam|bagi|oleh|daripada|kepada|mesti|hendaklah|sijil|syarikat|pihak|jika|semua|setiap)\b/gi;
+function noteIsMalay(t) { var m = String(t).match(MS_WORDS); return !!m && m.length >= 2; }
+function faqPoints(id, indexes, mode) {
+  if (mode !== 'add' && mode !== 'drop') throw new Error('unknown mode');
+  var row = readTab('FAQ').filter(function (x) { return String(x.id) === String(id); })[0];
+  if (!row) throw new Error('FAQ ' + id + ' not found');
+  var notes = []; try { notes = JSON.parse(row.verify_notes || '[]'); } catch (e) { notes = row.verify_notes ? [String(row.verify_notes)] : []; }
+  if (!Array.isArray(notes)) notes = [String(notes)];
+  var pick = {};
+  if (indexes === 'all' || indexes === undefined || indexes === null) notes.forEach(function (n, i) { pick[i] = 1; });
+  else [].concat(indexes).forEach(function (i) { i = parseInt(i, 10); if (i >= 0 && i < notes.length) pick[i] = 1; });
+  var patch = {}, rest = [], added = 0;
+  var add = { en: [], bm: [] };
+  notes.forEach(function (n, i) {
+    n = String(n || '').trim();
+    if (!n) return;
+    if (!pick[i]) { rest.push(n); return; }
+    if (mode === 'add') { add[noteIsMalay(n) ? 'bm' : 'en'].push(n.replace(/\s*\[?SAHKAN[^\]]*\]?\s*/g, ' ').replace(/\s+/g, ' ').trim()); added++; }
+  });
+  if (mode === 'add') {
+    var tail = function (list) { return list.map(function (x) { return /[.!?]$/.test(x) ? x : x + '.'; }).join(' '); };
+    var put = function (field, list) {
+      if (!list.length) return;
+      var cur = String(row[field] || '').trim();
+      patch[field] = (cur ? cur + ' ' : '') + tail(list);
+      if (patch[field].length > 6000) throw new Error(field + ' would be longer than 6000 characters');
+    };
+    put('answer_formal_en', add.en); put('answer_layman_en', add.en);
+    put('answer_formal_bm', add.bm); put('answer_layman_bm', add.bm);
+    patch.approved_at = new Date().toISOString();
+    patch.verified_at = new Date().toISOString();
+  }
+  patch.verify_notes = rest.length ? JSON.stringify(rest) : '';
+  patch.updated_at = new Date().toISOString();
+  var r = updateByIds('FAQ', [id], patch);
+  return { ok: true, updated: r.updated, added: added, left: rest.length };
 }
 
 function writeSettings(obj) {

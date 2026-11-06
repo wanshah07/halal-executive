@@ -414,6 +414,13 @@ function ReviewBox({ lang, onChanged }) {
   const [msg, setMsg] = useState('')
   const load = () => adminPost('review_list').then((r) => { setDrafts(r.drafts); setOpen(r.to_confirm || []) }).catch((e) => setMsg(e.message))
   useEffect(() => { load() }, [])
+  // One open point goes into the published answers (add) or is cleared (drop): the admin's own call (rule 55).
+  const [busy, setBusy] = useState('')
+  async function points(id, idx, mode) {
+    setBusy(id + (Array.isArray(idx) ? idx[0] : '')); setMsg('')
+    try { await adminPost('faq_points', { id, indexes: idx, mode }); await load(); onChanged && onChanged() } catch (e) { setMsg(e.message) }
+    setBusy('')
+  }
   // The row leaves the list at once; the server write follows.
   const without = (tab, id) => setDrafts((d) => (d ? { ...d, [tab]: (d[tab] || []).filter((r) => r.id !== id) } : d))
   const replace = (tab, row) => setDrafts((d) => (d ? { ...d, [tab]: (d[tab] || []).map((r) => (r.id === row.id ? row : r)) } : d))
@@ -451,7 +458,13 @@ function ReviewBox({ lang, onChanged }) {
           <ul className="space-y-2 text-sm">
             {open.map((r) => (
               <li key={r.id}><div className="font-medium">{lang === 'bm' ? r.question_bm || r.question_en : r.question_en || r.question_bm}</div>
-                <ul className="list-disc pl-5 text-ink-600">{r.notes.map((n, i) => <li key={i}>{n}</li>)}</ul></li>
+                <ul className="pl-0 text-ink-600 space-y-1 mt-1">{r.notes.map((n, i) => n && (
+                  <li key={i} className="flex flex-wrap items-start gap-2">
+                    <span className="flex-1 min-w-[12rem]">• {n}</span>
+                    <button className="btn" disabled={busy === r.id + i} onClick={() => points(r.id, [i], 'add')}>{t(lang, 'pt_add')}</button>
+                    <button className="btn" disabled={busy === r.id + i} onClick={() => points(r.id, [i], 'drop')}>{t(lang, 'pt_drop')}</button>
+                  </li>))}</ul>
+                {r.notes.filter(Boolean).length > 1 && <button className="btn mt-1" disabled={busy === r.id} onClick={() => points(r.id, 'all', 'add')}>{t(lang, 'pt_add_all')}</button>}</li>
             ))}
           </ul>
         </div>
