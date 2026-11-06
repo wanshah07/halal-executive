@@ -416,9 +416,13 @@ function ReviewBox({ lang, onChanged }) {
   useEffect(() => { load() }, [])
   // One open point goes into the published answers (add) or is cleared (drop): the admin's own call (rule 56).
   const [busy, setBusy] = useState('')
+  const [ptErr, setPtErr] = useState(null)
   async function points(id, idx, mode) {
-    setBusy(id + (Array.isArray(idx) ? idx[0] : '')); setMsg('')
-    try { await adminPost('faq_points', { id, indexes: idx, mode }); await load(); onChanged && onChanged() } catch (e) { setMsg(e.message) }
+    setBusy(id + (Array.isArray(idx) ? idx[0] : '')); setMsg(''); setPtErr(null)
+    try { await adminPost('faq_points', { id, indexes: idx, mode }); await load(); onChanged && onChanged() } catch (e) {
+      // Shown under the question itself: the box can be a long list and the error used to sit at its far end.
+      setPtErr({ id, text: /unknown action/i.test(e.message) ? t(lang, 'pt_old_gs') : e.message })
+    }
     setBusy('')
   }
   // The row leaves the list at once; the server write follows.
@@ -464,6 +468,7 @@ function ReviewBox({ lang, onChanged }) {
                     <button className="btn" disabled={busy === r.id + i} onClick={() => points(r.id, [i], 'add')}>{t(lang, 'pt_add')}</button>
                     <button className="btn" disabled={busy === r.id + i} onClick={() => points(r.id, [i], 'drop')}>{t(lang, 'pt_drop')}</button>
                   </li>))}</ul>
+                {ptErr && ptErr.id === r.id && <div className="text-sm text-red-600 mt-1" role="alert">{ptErr.text}</div>}
                 {r.notes.filter(Boolean).length > 1 && <button className="btn mt-1" disabled={busy === r.id} onClick={() => points(r.id, 'all', 'add')}>{t(lang, 'pt_add_all')}</button>}</li>
             ))}
           </ul>
