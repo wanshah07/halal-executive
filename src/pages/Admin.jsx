@@ -414,7 +414,7 @@ function ReviewBox({ lang, onChanged }) {
   const [msg, setMsg] = useState('')
   const load = () => adminPost('review_list').then((r) => { setDrafts(r.drafts); setOpen(r.to_confirm || []) }).catch((e) => setMsg(e.message))
   useEffect(() => { load() }, [])
-  // One open point goes into the published answers (add) or is cleared (drop): the admin's own call (rule 55).
+  // One open point goes into the published answers (add) or is cleared (drop): the admin's own call (rule 56).
   const [busy, setBusy] = useState('')
   async function points(id, idx, mode) {
     setBusy(id + (Array.isArray(idx) ? idx[0] : '')); setMsg('')

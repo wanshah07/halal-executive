@@ -659,4 +659,11 @@
     `feed/`, or a part that fails, falls back to the whole `data.json`. The motion library (popup
     notice, tablet tab pill), the FHCB seed and Overview are out of the main bundle. Measured with
     Playwright on the built site, gzip, phone, 1.6 Mbps / 150 ms, 4x CPU, cache off: before and after per route in the pull request that added this rule (6 Nov 2026).
-
+56. **Open points are the admin's call, one at a time** (Wan, 6 Nov 2026: "masukkan dalam FAQ"). Admin -> Manage ->
+    FAQ -> "Points not yet in your references" has Add to FAQ / Dismiss on every point, and Add all per question
+    (`faq_points` in Code.gs, needs the new Code.gs deployed). Add writes the point's own words into the published
+    answers in the language it is written in (a light Malay-word test, `noteIsMalay`; formal and layman both get it),
+    stamps `approved_at` so the pipeline never rewrites or cuts it (rule 52) and removes it from `verify_notes`;
+    Dismiss only removes it. Nothing is reworded and the code adds no clause, page or number: the wording is the
+    admin's own confirmation. Rule 45 still holds for the pipeline: it never puts an unconfirmed point into an answer
+    by itself.
