@@ -123,6 +123,11 @@ export function EventsAdmin({ lang, onChanged }) {
       setMsg(qr ? `${base} ${kept ? t(lang, 'qr_kept').replace('{u}', kept) : t(lang, 'qr_found').replace('{u}', qr)}` : base)
     } catch (er) { setMsg(er.message) } finally { setBusy(false); const i = document.getElementById('ev-poster'); if (i) i.value = '' }
   }
+  // A certificate with no file stays off the site until an admin shows it (or saves its details): see Code.gs reviewSave.
+  async function showNoFile(r) {
+    setRows((rs) => rs.map((x) => (x.id === r.id ? { ...x, status: 'current', drive_url: '' } : x)))
+    try { await adminPost('review_set', { tab: 'Certificates', id: r.id, status: 'current' }); refreshAll(); onChanged && onChanged() } catch (e) { setErr(e.message); run(true, true) }
+  }
   async function remove(r) { try { if (await deleteForGood(lang, 'Events', r.id, r.title, () => setRows((rs) => (rs || []).filter((x) => x.id !== r.id)))) onChanged && onChanged() } catch (er) { setMsg(er.message); load() } }
   async function hide(r) {
     setRows((rs) => (rs || []).filter((x) => x.id !== r.id)); dropLocal('Events', r.id)
@@ -346,6 +351,7 @@ export function CertAdmin({ lang, data, onChanged }) {
                 <div className="flex flex-wrap gap-2 shrink-0">
                   {safeUrl(r.drive_url) && <a className="btn px-2.5" href={safeUrl(r.drive_url)} target="_blank" rel="noreferrer">{t(lang, 'ca_open')}</a>}
                   {r.status === 'hidden' && <button type="button" className="btn px-2.5" onClick={() => toggleHide(r)}>{t(lang, 'publish')}</button>}
+                  {r.status === 'nofile' && <button type="button" className="btn px-2.5" onClick={() => showNoFile(r)}>{t(lang, 'ca_show')}</button>}
                   <button type="button" className="btn px-2.5" onClick={() => (ed && ed.id === r.id ? setEd(null) : startEdit(r))}>{t(lang, 'edit')}</button>
                   <button type="button" className="btn px-2.5 text-red-700" onClick={() => remove(r)}>{t(lang, 'delete')}</button>
                 </div>

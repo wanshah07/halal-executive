@@ -94,7 +94,7 @@ export default function Certificates({ lang, data, sub }) {
           <button className="mt-2 text-sm text-brand-600 hover:underline" onClick={() => toggle(c.id)}>{isOpen(c.id) ? <span className="inline-flex items-center gap-1"><ChevronDown {...ICON} size={16} />{t(lang, 'cd_hide')}</span> : <span className="inline-flex items-center gap-1"><ChevronRight {...ICON} size={16} />{t(lang, 'cd_show')}</span>}</button>
           {isOpen(c.id) && products(c)}
           <div className="mt-3 text-xs text-ink-400 flex justify-between">
-            <span>{safeUrl(c.drive_url) ? <a className="hover:underline" href={safeUrl(c.drive_url)} target="_blank" rel="noreferrer">Drive <ExternalLink {...ICON} size={12} className="inline -mt-0.5" /></a> : c.doc_id || ''}</span>
+            <span>{safeUrl(c.drive_url) ? <a className="hover:underline" href={safeUrl(c.drive_url)} target="_blank" rel="noreferrer">Drive <ExternalLink {...ICON} size={12} className="inline -mt-0.5" /></a> : ''}</span>
             <span>{t(lang, 'updated')} {fmtDateTime(c.updated_at, lang)}</span>
           </div>
         </article>

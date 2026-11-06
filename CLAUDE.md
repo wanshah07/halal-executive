@@ -676,3 +676,9 @@
     (`file_kept`). (3) `certHeal` (30-minute timer, under the lock, and Admin's "Check again" = action `cert_heal`) takes a
     file out of the Drive bin, or, when it is gone, points the certificate at another Documents row with the SAME `content_hash`
     whose file is there; nothing else is guessed, so a truly gone file still needs the certificate uploaded again.
+58. **A certificate with no file is shown once an admin fills it in or shows it** (Wan, 6 Nov 2026: "all certificates upload visible
+    and its details can be edited"; refines rule 54, which still keeps an empty no-file row off the site). In Admin -> Halal
+    certificates, a `nofile` row has Edit and Show on site. Saving its details with a company name (`reviewSave`), or Show on site
+    (`reviewSet`), sets status `current`, notes `shown by admin` (the pipeline then leaves it alone) and clears `drive_url`, so the
+    public card is a designed tile with the details and no link to a dead Drive file. Heinz Worcester Sauce (DOC-0057) and Ahaa
+    Flordia (DOC-0058) are such rows: their files were deleted on 18 Oct 2026 and need the certificate uploaded again for a preview.

@@ -914,6 +914,7 @@ function certHeal() {
         if (!twin) return;
         patch = { doc_id: twin.id, drive_url: twin.drive_url || ('https://drive.google.com/file/d/' + twin.drive_file_id + '/view') }; relinked++;
       }
+      if (!c.drive_url && !patch.drive_url) { var dd = docs.filter(function (d) { return String(d.id) === String(patch.doc_id || c.doc_id); })[0]; if (dd && dd.drive_url) patch.drive_url = dd.drive_url; }
       if (/the file is not in Drive/i.test(String(c.notes || ''))) patch.notes = 'file found again';
       if (c.status === 'nofile') patch.status = 'current';
       patch.updated_at = new Date().toISOString();
@@ -970,7 +971,7 @@ function reviewSet(tab, id, status) {
   if ((tab === 'Certificates' || tab === 'Documents') && status === 'published') status = 'current';
   var patch = { status: status };
   // A certificate the pipeline took off the site because its file is gone, and an admin shows again, stays shown.
-  if (tab === 'Certificates') { var cur0 = readTab('Certificates').filter(function (x) { return String(x.id) === String(id); })[0]; if (cur0 && cur0.status === 'nofile') patch.notes = 'shown by admin'; }
+  if (tab === 'Certificates') { var cur0 = readTab('Certificates').filter(function (x) { return String(x.id) === String(id); })[0]; if (cur0 && cur0.status === 'nofile') { patch.notes = 'shown by admin'; patch.drive_url = ''; } }
   if (TABS[tab].indexOf('updated_at') >= 0) patch.updated_at = new Date().toISOString();
   // An admin publishing an answer confirms it: its open points are cleared,
   // or the next Drafts load would move it straight back.
@@ -1029,6 +1030,12 @@ function reviewSave(tab, id, fields) {
   if (tab === 'Events' && patch.poster_url) { var pl = posterFromLink(patch.poster_url); if (pl) { patch.poster_url = pl.url; patch.poster_file = pl.file; } }
   if (TABS[tab].indexOf('updated_at') >= 0) patch.updated_at = new Date().toISOString();
   if (tab === 'FAQ') { var cur = readTab('FAQ').filter(function (x) { return String(x.id) === String(id); })[0]; if (cur && cur.status === 'published') patch.approved_at = new Date().toISOString(); }
+  // A certificate with no file that an admin fills in is shown (Wan, 6 Nov 2026: "all certificates visible and editable"):
+  // its details are the admin's own, the pipeline leaves it alone ("shown by admin") and the dead Drive link is dropped.
+  if (tab === 'Certificates') {
+    var cc = readTab('Certificates').filter(function (x) { return String(x.id) === String(id); })[0];
+    if (cc && cc.status === 'nofile' && String(patch.company !== undefined ? patch.company : cc.company || '').trim()) { patch.status = 'current'; patch.notes = 'shown by admin'; patch.drive_url = ''; }
+  }
   return updateByIds(tab, [id], patch);
 }
 
