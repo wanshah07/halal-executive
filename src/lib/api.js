@@ -1,7 +1,9 @@
 import { API_URL } from './config'
-import sample from '../data/sample.json'
 
 const CACHE_KEY = 'he:data:v1'
+// A small key beside the saved copy: boot.js (src/boot.js) reads it (not the 2 MB
+// copy) to skip the snapshot requests when this browser has a copy already.
+const SAVED_FLAG = 'he:data:saved'
 
 // Apps Script answers with Google's HTML "Page Not Found" (HTTP 404) or a 5xx
 // page when it is busy or when many calls arrive at once, and the Admin page
@@ -39,7 +41,7 @@ const READ_ACTIONS = new Set(['pipeline_status', 'llm_config', 'llm_models', 're
 // JSON body (see apps-script/Code.gs). With no API_URL the page runs on the
 // bundled sample so the layout can be reviewed before the Sheet exists.
 export async function loadData({ force = false } = {}) {
-  if (!API_URL) return { ...sample, _source: 'sample', _fetched: new Date().toISOString() }
+  if (!API_URL) { const sample = (await import('../data/sample.json')).default; return { ...sample, _source: 'sample', _fetched: new Date().toISOString() } }
   if (!force) {
     try {
       const c = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null')
@@ -58,7 +60,8 @@ export async function loadData({ force = false } = {}) {
   const data = stripMarks(raw)
   data._source = 'sheet'
   data._fetched = new Date().toISOString()
-  try { localStorage.setItem(CACHE_KEY, JSON.stringify(data)) } catch { /* ignore */ }
+  liveSaved = true
+  try { localStorage.setItem(CACHE_KEY, JSON.stringify(data)); localStorage.setItem(SAVED_FLAG, '1') } catch { /* ignore */ }
   return data
 }
 
@@ -90,19 +93,147 @@ export function savedData() {
 // an older one means the pipeline has stopped, and the live feed is asked.
 export const SNAPSHOT_FRESH_MS = 45 * 60 * 1000
 export const snapshotFresh = (d) => !!d && d._snapshot === true && Date.now() - Date.parse(d._fetched) < SNAPSHOT_FRESH_MS
-export async function snapshotData() {
-  if (!API_URL) return null
+
+// The snapshot comes split (Wan, 6 Nov 2026: "make faster to load";
+// .github/split_feed.py): feed/core.json is the settings and run stamps (a few
+// KB), every tab is a file of its own, and the FAQ answer texts (1.3 MB of the
+// 2.2 MB) are in chunks of 50 rows fetched only when they are shown. A route
+// waits only for the tabs it shows (ROUTE_PARTS; Admin and a route not listed
+// wait for every tab); `_missing` lists the tabs not here yet. A deploy without feed/ (or a part that fails) falls
+// back to the whole data.json, as before.
+export const ROUTE_PARTS = { overview: ['faq', 'news', 'events', 'certificates', 'documents', 'guidelines', 'fhcb'], faq: ['faq'], certificates: ['certificates'], guidelines: ['guidelines'], references: ['references'], documents: ['documents'], events: ['events'], fhcb: ['fhcb', 'documents'], directory: ['directory'], news: ['news'], vacancies: ['vacancies'] }
+export const routeParts = (route, all) => ROUTE_PARTS[route] || all
+const getJson = async (url) => { const r = await fetch(url); if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json() }
+const stamp = (d) => { d._source = 'sheet'; d._fetched = d.generated_at || new Date().toISOString(); d._stale = true; d._snapshot = true; return d }
+// Saved like a live copy, so the next visit asks the Sheet instead of
+// downloading the snapshot again; never over a live copy saved meanwhile.
+let liveSaved = false
+const saveSnapshot = (d) => { if (liveSaved) return; try { localStorage.setItem(CACHE_KEY, JSON.stringify(d)); localStorage.setItem(SAVED_FLAG, '1') } catch { /* ignore */ } }
+async function wholeSnapshot(v) {
   try {
-    const r = await fetch(`./data.json?t=${Math.floor(Date.now() / 60000)}`)
-    if (!r.ok) return null
-    const d = stripMarks(await r.json())
+    const d = stripMarks(await getJson(`./data.json?t=${v}`))
     if (!d || !Array.isArray(d.faq)) return null
-    d._source = 'sheet'; d._fetched = d.generated_at || new Date().toISOString(); d._stale = true; d._snapshot = true
-    // Saved like a live copy, so the next visit asks the Sheet instead of
-    // downloading the snapshot again.
-    try { localStorage.setItem(CACHE_KEY, JSON.stringify(d)) } catch { /* ignore */ }
+    stamp(d); saveSnapshot(d)
     return d
   } catch { return null }
+}
+// onData(d) is called with the snapshot so far each time a part lands; the
+// promise resolves with the whole (answer texts aside) or null.
+export async function snapshotData(route = 'overview', onData = () => {}) {
+  if (!API_URL) return null
+  // boot.js (src/boot.js) asked for the core and this route's parts already, while
+  // this code was downloading; take its requests over when they match.
+  const early = window.__heFeed && window.__heFeed.route === route ? window.__heFeed : null
+  window.__heFeed = null
+  const v = early ? early.v : Math.floor(Date.now() / 60000)
+  let want = ROUTE_PARTS[route] || []
+  const asked = {}
+  const part = (p) => (asked[p] = asked[p] || (early && early.parts[p]) || getJson(`./feed/${p}.json?t=${v}`)).catch(() => null)
+  want.forEach(part)
+  feedV = v
+  if (early && early.chunks[0]) takeChunk(0, early.chunks[0])
+  if (route === 'faq') loadChunk(0)
+  let core = null
+  try { core = await (early ? early.core : getJson(`./feed/core.json?t=${v}`)) } catch { /* no split on this deploy */ }
+  if (!core || !Array.isArray(core._parts) || !core._feed) { const d = await wholeSnapshot(v); if (d) onData(d); return d }
+  splitting = true
+  want = routeParts(route, core._parts)
+  let d = stamp(stripMarks(core))
+  d._missing = [...core._parts]
+  onData(d)
+  let failed = false
+  const take = async (p) => {
+    const rows = await part(p)
+    if (!Array.isArray(rows)) { failed = true; return }
+    d = { ...d, ...stripMarks({ [p]: rows }), _missing: d._missing.filter((x) => x !== p) }
+    if (!failed) onData(d)
+  }
+  // This route's parts first; the others once its first screen (pictures
+  // included) is drawn, so a phone's line carries what is on screen first.
+  await Promise.all(core._parts.filter((p) => want.includes(p)).map(take))
+  const rest = core._parts.filter((p) => !want.includes(p))
+  if (rest.length && !failed) { await firstScreen(); await Promise.all(rest.map(take)) }
+  if (failed) { const w = await wholeSnapshot(v); if (w) onData(w); wholeDone(w); return w }
+  d = { ...d }; delete d._missing
+  saveSnapshot(d)
+  wholeDone(d)
+  return d
+}
+// Resolves once the pictures on the first screen have loaded (at most 2.5 s
+// after the page's own data), or at once when something needs every part:
+// search, the Assistant and the export call wantEverything().
+let hurry = () => {}
+const hurried = new Promise((r) => { hurry = r })
+function firstScreen() {
+  const frame = () => new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)))
+  const pictures = async () => {
+    // The page draws once its code and data are in: wait for its placeholder to go.
+    for (let i = 0; i < 60 && (!document.querySelector('main') || document.querySelector('[data-skeleton]')); i++) await sleep(50)
+    await frame(); await frame()
+    const shown = [...document.querySelectorAll('main img')].filter((i) => !i.complete && i.getBoundingClientRect().top < innerHeight)
+    await Promise.all(shown.map((i) => new Promise((r) => { i.addEventListener('load', r, { once: true }); i.addEventListener('error', r, { once: true }) })))
+  }
+  return Promise.race([pictures(), sleep(2500), hurried])
+}
+let wholeDone = () => {}
+const whole = new Promise((r) => { wholeDone = r })
+let splitting = false
+// The whole snapshot (answer texts aside) when it is still arriving, else null:
+// the caller then has every part already.
+export function wantEverything(d) {
+  if (!d || !d._missing || !d._missing.length || !splitting) return Promise.resolve(null)
+  hurry()
+  return whole
+}
+
+// FAQ answer texts of a split snapshot, by FAQ id. Rows that lack them carry
+// `_ac`, the chunk that holds them; withAnswers() fills what has arrived and
+// "he:answers" tells the page more has.
+const EMPTY_ANSWERS = { answer_formal_en: '', answer_layman_en: '', answer_formal_bm: '', answer_layman_bm: '' }
+const answers = new Map()
+const chunks = new Map()
+let allAsked = null, allLoaded = false, notifyTimer = 0, feedV = ''
+const notify = () => { if (!notifyTimer) notifyTimer = setTimeout(() => { notifyTimer = 0; dispatchEvent(new Event('he:answers')) }, 60) }
+const hasAnswers = (r) => 'answer_formal_en' in r
+function loadChunk(n) {
+  if (!chunks.has(n)) takeChunk(n, getJson(`./feed/faq-a-${n}.json${feedV === '' ? '' : `?t=${feedV}`}`))
+  return chunks.get(n)
+}
+function takeChunk(n, request) {
+  if (!chunks.has(n)) {
+    chunks.set(n, request.then((c) => {
+      for (const id in c) answers.set(id, cleanRow(c[id]))
+      notify()
+      return true
+    }).catch(() => { chunks.delete(n); return false }))
+  }
+}
+const lite = (d) => !!d && Array.isArray(d.faq) && d.faq.some((r) => !hasAnswers(r))
+// Every chunk: search, the Assistant and the FAQ export read every answer.
+export function loadAllAnswers(d) {
+  if (!lite(d)) return Promise.resolve()
+  const n = (d._feed && d._feed.chunks) || Math.max(0, ...d.faq.map((r) => +r._ac || 0)) + 1
+  // Once every chunk is in, a row none of them holds (a copy saved before the
+  // last deploy) shows no answer rather than waiting for ever; the live feed
+  // that follows carries it.
+  if (!allAsked) allAsked = Promise.all(Array.from({ length: n }, (_, i) => loadChunk(i))).then((ok) => { if (ok.every(Boolean)) { allLoaded = true; notify() } else allAsked = null })
+  return allAsked
+}
+// The chunks the given rows need. A chunk that did not hold a row it should
+// have (a copy saved before the last deploy) means the numbering moved: then
+// every chunk is fetched, since they are keyed by id.
+export async function loadAnswers(d, rows) {
+  const need = [...new Set((rows || []).filter((r) => !hasAnswers(r) && !answers.has(String(r.id)) && r._ac != null).map((r) => +r._ac))]
+  if (!need.length) return
+  const ok = await Promise.all(need.map((n) => loadChunk(n)))
+  if (ok.every(Boolean) && rows.some((r) => !hasAnswers(r) && !answers.has(String(r.id)))) await loadAllAnswers(d)
+}
+export const answersPending = (d) => lite(withAnswers(d))
+export function withAnswers(d) {
+  if (!lite(d) || (!answers.size && !allLoaded)) return d
+  let changed = false
+  const faq = d.faq.map((r) => { if (hasAnswers(r)) return r; const a = answers.get(String(r.id)) || (allLoaded && EMPTY_ANSWERS); if (!a) return r; changed = true; return { ...r, ...a } })
+  return changed ? { ...d, faq } : d
 }
 
 // A [SAHKAN: …] marker is a note for the pipeline, not for readers: the
@@ -130,19 +261,20 @@ export function stripMarks(data) {
   if (Array.isArray(data.certificates)) data.certificates = data.certificates.filter((c) => c.status !== 'nofile')
   for (const k of ['faq', 'guidelines', 'events', 'documents', 'certificates', 'news']) {
     if (!Array.isArray(data[k])) continue
-    data[k] = data[k].map((r) => {
-      const o = { ...r }
-      // WhatsApp message ids carry the group id, which is a phone number.
-      delete o.source_refs; delete o.source_msg_id; delete o.sender_hash
-      for (const f in o) {
-        if (typeof o[f] !== 'string') continue
-        if (o[f].includes('[')) o[f] = markText(o[f], f)
-        if (/@(g|c)\.us|@lid\b/.test(o[f])) o[f] = ''
-      }
-      return o
-    })
+    data[k] = data[k].map(cleanRow)
   }
   return data
+}
+function cleanRow(r) {
+  const o = { ...r }
+  // WhatsApp message ids carry the group id, which is a phone number.
+  delete o.source_refs; delete o.source_msg_id; delete o.sender_hash
+  for (const f in o) {
+    if (typeof o[f] !== 'string') continue
+    if (o[f].includes('[')) o[f] = markText(o[f], f)
+    if (/@(g|c)\.us|@lid\b/.test(o[f])) o[f] = ''
+  }
+  return o
 }
 
 // Apps Script web apps only accept text/plain bodies without a CORS

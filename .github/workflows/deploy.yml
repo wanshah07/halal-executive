@@ -6,7 +6,7 @@ name: Deploy site
 on:
   push:
     branches: [main]
-    paths: ['src/**', 'public/**', 'index.html', 'package*.json', 'vite.config.js', '.github/workflows/deploy.yml']
+    paths: ['src/**', 'public/**', 'index.html', 'package*.json', 'vite.config.js', '.github/workflows/deploy.yml', '.github/*_feed.py']
   workflow_dispatch:
   # Refresh the data snapshot (dist/data.json) after every pipeline run.
   workflow_run:
@@ -41,6 +41,10 @@ jobs:
           [ -n "$VITE_API_URL" ] || exit 0
           if curl -sfL --max-time 60 "$VITE_API_URL?action=data" -o dist/data.json && python3 .github/scrub_feed.py dist/data.json; then
             echo "snapshot: $(wc -c < dist/data.json) bytes"
+            # The same snapshot split per tab, FAQ answer texts in chunks
+            # (dist/feed/, split_feed.py): each route fetches only what it
+            # shows. Without it the page reads data.json whole, as before.
+            python3 .github/split_feed.py dist/data.json dist/feed || { rm -rf dist/feed; echo "::warning::could not split the snapshot; the page will read data.json whole"; }
           else
             rm -f dist/data.json; echo "::warning::could not snapshot the feed; the page will wait for the live feed"
           fi

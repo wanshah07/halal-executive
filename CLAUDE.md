@@ -155,7 +155,8 @@
     or older than 45 minutes** (`snapshotFresh` in api.js, 29 Oct 2026: both are
     the same ~2 MB feed, 745 FAQ answers in four variants, and fetching both made
     every first visit download it twice; the snapshot is saved like a live copy,
-    so the second visit goes live). The popup reads `?action=settings` (a few KB)
+    so the second visit goes live; since 6 Nov 2026 the snapshot is split, rule 55).
+    The popup reads `?action=settings` (a few KB)
     first, waiting up to 8 s for fresh settings before falling back to the
     saved copy. Its text colour is picked by contrast ratio (dark on amber or
     gold, white on green, red or navy); posters are capped so the whole card
@@ -636,3 +637,26 @@
     and folds when it leaves; on touch the page you are on starts open and the arrow toggles.
 50. **Overview robots show only what works** (Wan, 25 Oct 2026: "remove red tab"):
     `Caps` with `onlyWorking` on the compact card; Admin keeps the red ✗ and grey ?.
+55. **Every route paints from its own small file** (Wan, 6 Nov 2026: "halal executive make faster
+    to load"; phone LCP on Slow 4G was 3.8 to 4.2 s on #faq, #fhcb, #events, #vacancies because the
+    first card of every route waited for the whole ~2 MB snapshot, 1.3 MB of it FAQ answer texts).
+    The deploy writes `dist/data.json` as before and then `.github/split_feed.py` splits it into
+    `dist/feed/`: `core.json` (settings, run stamps, a few KB), one file per tab (`faq.json` without
+    the four answer texts, `news.json`, `events.json`, ...) and the answer texts in chunks of 50 rows
+    (`faq-a-<n>.json`, keyed by FAQ id; each lite row carries `_ac`, its chunk). **No Code.gs change:**
+    the live `?action=data` feed keeps its shape and is still what a saved copy or a stale snapshot
+    asks for; only the deploy's snapshot is split. A route waits only for its own tabs (`ROUTE_PARTS`
+    in api.js, `PARTS` in `src/boot.js`: keep them the same; a page that starts reading another tab
+    must add it there, or it renders before that tab arrives), the others follow once the first
+    screen, pictures included, has loaded (2.5 s at most) or at once when search, the Assistant or an
+    export needs them (`wantEverything`). The FAQ fetches the answer chunks of the rows on screen
+    (`Segment onShown`) and the rest when idle; search, the Assistant, the FAQ export and Admin fetch
+    every chunk first (`loadAllAnswers`), and **Admin never opens a FAQ editor on a row without its
+    answer texts** (it would save blanks into the Sheet). `src/boot.js` (published as `boot.js`, the
+    build writes each page's files into it) starts the feed requests and preloads the route's page
+    code and its stylesheets while the main bundle downloads. The snapshot freshness rule (rule 25:
+    fresh under 45 minutes, else the live feed) reads `core.json`'s `generated_at`. A deploy without
+    `feed/`, or a part that fails, falls back to the whole `data.json`. The motion library (popup
+    notice, tablet tab pill), the FHCB seed and Overview are out of the main bundle. Measured with
+    Playwright on the built site, gzip, phone, 1.6 Mbps / 150 ms, 4x CPU, cache off: before and after per route in the pull request that added this rule (6 Nov 2026).
+

@@ -195,7 +195,9 @@ export function ContentManager({ lang, data, onChanged }) {
   const [patched, setPatched] = useState({})
   const FIELDS_OF = (tb) => (tb === 'FAQ' ? FAQ_EDIT : EDIT_FIELDS[tb] || [])
   const day = (v) => (/^\d{4}-\d{2}-\d{2}T/.test(String(v || '')) ? new Date(Date.parse(v) + 8 * 3600e3).toISOString().slice(0, 10) : v ?? '')
-  const startEdit = (r) => { const f = {}; FIELDS_OF(tab).forEach(([k]) => { f[k] = /date|valid_/.test(k) ? day(r[k]) : r[k] ?? '' }); setEdit({ id: r.id, fields: f }); setMsg('') }
+  // A FAQ row from the deploy's snapshot may not carry its answer texts yet
+  // (App waits for them on Admin); never open an editor that would save blanks.
+  const startEdit = (r) => { if (tab === 'FAQ' && !('answer_formal_en' in r)) { setMsg(t(lang, 'loading')); return } const f = {}; FIELDS_OF(tab).forEach(([k]) => { f[k] = /date|valid_/.test(k) ? day(r[k]) : r[k] ?? '' }); setEdit({ id: r.id, fields: f }); setMsg('') }
   const startAdd = () => { const f = {}; FIELDS_OF(tab).forEach(([k]) => { f[k] = k === 'category' ? 'halal' : '' }); setEdit({ id: '__new', fields: f }); setMsg('') }
   async function rephrase(r) {
     if (!edit || edit.id !== r.id) startEdit(r)

@@ -3,6 +3,7 @@ import Segment from '../components/Segment'
 import CategoryFilter, { catChip } from '../components/CategoryFilter'
 import { t } from '../lib/i18n'
 import { fmtDate } from '../lib/util'
+import { loadAnswers, loadAllAnswers } from '../lib/api'
 import Cover from '../components/Cover'
 import { MessagesSquare } from '../components/Icon'
 
@@ -29,6 +30,16 @@ export default function FAQ({ lang, data, focusId, focusKey, sub }) {
   const rows = (data.faq || []).filter((f) => f.status !== 'hidden' && (cat === 'all' || f.category === cat))
   const q = (f) => (lang === 'bm' ? f.question_bm || f.question_en : f.question_en || f.question_bm)
   const a = (f) => f[`answer_${mode}_${lang}`] || f[`answer_formal_${lang}`] || f.answer_formal_en
+  // Answer texts of the deploy's snapshot come in chunks (lib/api.js): fetch
+  // the ones the rows on screen need, then the rest while the reader reads, so
+  // paging and filtering do not wait. A row whose text is not here yet shows
+  // grey lines in its place.
+  const shown = (list) => loadAnswers(data, list).then(() => {
+    const later = window.requestIdleCallback || ((fn) => setTimeout(fn, 1500))
+    later(() => loadAllAnswers(data))
+  })
+  const pending = (f) => !('answer_formal_en' in f)
+  const ansLines = <span className="block space-y-1.5 mt-2.5" aria-hidden="true"><span className="block h-3 rounded bg-line/70 animate-pulse" /><span className="block h-3 w-4/5 rounded bg-line/70 animate-pulse" /></span>
   const filters = (
     <>
       <CategoryFilter lang={lang} value={cat} onChange={setCat} />
@@ -40,12 +51,12 @@ export default function FAQ({ lang, data, focusId, focusKey, sub }) {
   return (
     <div>
     <div className="card p-3 mb-4 text-xs text-ink-600 bg-amber-50 border-amber-200"><b>{t(lang, 'disclaimer_title')}.</b> {t(lang, 'disclaimer_faq')}</div>
-    <Segment id="faq" focusId={focusId} focusKey={focusKey} lang={lang} title={t(lang, 'faq')} rows={rows} filters={filters}
+    <Segment id="faq" onShown={shown} focusId={focusId} focusKey={focusKey} lang={lang} title={t(lang, 'faq')} rows={rows} filters={filters}
       columns={[
         { key: 'category', label: t(lang, 'category'), render: (f) => catChip(f.category, lang) },
         { key: 'subcategory', label: 'Topic' },
         { key: 'q', label: t(lang, 'question'), render: q },
-        { key: 'a', label: t(lang, 'answer'), render: (f) => <span className="whitespace-pre-wrap">{a(f)}</span> },
+        { key: 'a', label: t(lang, 'answer'), render: (f) => (pending(f) ? ansLines : <span className="whitespace-pre-wrap">{a(f)}</span>) },
         { key: 'updated_at', label: t(lang, 'updated'), render: (f) => fmtDate(f.updated_at, lang) },
       ]}
       renderCard={(f) => (
@@ -54,8 +65,9 @@ export default function FAQ({ lang, data, focusId, focusKey, sub }) {
           <div className="p-4">
           <div className="flex items-center justify-between gap-2 mb-2">{catChip(f.category, lang)}<span className="text-xs text-ink-400">{f.subcategory}</span></div>
           <button className="text-left font-semibold leading-snug" onClick={() => setOpen(open === f.id ? null : f.id)}>{q(f)}</button>
-          {(open === f.id) && <p className="mt-2 text-sm whitespace-pre-wrap text-ink-900">{a(f)}</p>}
-          {open !== f.id && <p className="mt-2 text-sm text-ink-600 line-clamp-3">{a(f)}</p>}
+          {pending(f) && ansLines}
+          {!pending(f) && (open === f.id) && <p className="mt-2 text-sm whitespace-pre-wrap text-ink-900">{a(f)}</p>}
+          {!pending(f) && open !== f.id && <p className="mt-2 text-sm text-ink-600 line-clamp-3">{a(f)}</p>}
           <div className="mt-1 text-xs text-ink-400 text-right">{t(lang, 'updated')} {fmtDate(f.updated_at, lang)}</div>
           </div>
         </article>

@@ -1,20 +1,18 @@
-import { Component, Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react'
+import { Component, Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Header from './components/Header'
 import Sidebar, { NAV } from './components/Sidebar'
 import BottomNav from './components/BottomNav'
-import Notice from './components/Notice'
 import SearchBar from './components/SearchBar'
 import Chatbot from './components/Chatbot'
-import Overview from './pages/Overview'
 import { certStatus, splitProducts, filedDocs } from './lib/certs'
-import { fhcbRows } from './lib/fhcb'
 import { eventPast, vacancyOver } from './lib/util'
-import { loadData, savedData, snapshotData, snapshotFresh, loadSettings } from './lib/api'
+import { loadData, savedData, snapshotData, snapshotFresh, loadSettings, routeParts, withAnswers, loadAllAnswers, answersPending, wantEverything } from './lib/api'
 // Admin upload queue: loaded with the app so it keeps sending on every page.
 import './lib/uploadQueue'
 import { t } from './lib/i18n'
 
-// Pages other than Overview load on first visit, so the first screen only
+// Every page, Overview too, loads on first visit (src/boot.js preloads the one
+// a link opens on while this code downloads), so the first screen only
 // downloads what it shows. After a new deploy, a page opened before it asks
 // for file names that no longer exist: reload once to pick up the new ones
 // instead of crashing to a blank screen.
@@ -24,17 +22,29 @@ const lazyPage = (load) => lazy(() => load().then((m) => { try { sessionStorage.
   if (again) { location.reload(); return new Promise(() => {}) }
   throw e
 }))
-const FAQ = lazyPage(() => import('./pages/FAQ'))
-const Certificates = lazyPage(() => import('./pages/Certificates'))
-const Guidelines = lazyPage(() => import('./pages/Guidelines'))
-const References = lazyPage(() => import('./pages/References'))
-const Documents = lazyPage(() => import('./pages/Documents'))
-const Events = lazyPage(() => import('./pages/Events'))
-const Fhcb = lazyPage(() => import('./pages/Fhcb'))
-const Directory = lazyPage(() => import('./pages/Directory'))
-const News = lazyPage(() => import('./pages/News'))
-const Vacancies = lazyPage(() => import('./pages/Vacancies'))
-const Admin = lazyPage(() => import('./pages/Admin'))
+const PAGES = {
+  overview: () => import('./pages/Overview'),
+  faq: () => import('./pages/FAQ'), certificates: () => import('./pages/Certificates'), guidelines: () => import('./pages/Guidelines'),
+  references: () => import('./pages/References'), documents: () => import('./pages/Documents'), events: () => import('./pages/Events'),
+  fhcb: () => import('./pages/Fhcb'), directory: () => import('./pages/Directory'), news: () => import('./pages/News'),
+  vacancies: () => import('./pages/Vacancies'), admin: () => import('./pages/Admin'),
+}
+// The page a link opens on starts downloading now, beside the feed, instead of
+// after the feed has arrived and the first render asks for it.
+{ const first = PAGES[location.hash.replace('#', '').split('/')[0] || 'overview']; if (first) first().catch(() => {}) }
+const Overview = lazyPage(PAGES.overview)
+const FAQ = lazyPage(PAGES.faq)
+const Certificates = lazyPage(PAGES.certificates)
+const Guidelines = lazyPage(PAGES.guidelines)
+const References = lazyPage(PAGES.references)
+const Documents = lazyPage(PAGES.documents)
+const Events = lazyPage(PAGES.events)
+const Fhcb = lazyPage(PAGES.fhcb)
+const Directory = lazyPage(PAGES.directory)
+const News = lazyPage(PAGES.news)
+const Vacancies = lazyPage(PAGES.vacancies)
+const Admin = lazyPage(PAGES.admin)
+const Notice = lazy(() => import('./components/Notice'))
 
 // Any error inside a page shows a message and a Reload button instead of
 // blanking the whole site.
@@ -53,13 +63,27 @@ class PageGuard extends Component {
   }
 }
 
+// Drawn while a page's code or its part of the feed is on the way: the page's
+// shape at once, so nothing jumps when the cards arrive.
+function PageSkeleton({ lang }) {
+  return (
+    <div role="status" aria-live="polite" data-skeleton>
+      <span className="sr-only">{t(lang, 'loading')}</span>
+      <div className="h-7 w-48 mb-4 rounded bg-line/70 animate-pulse" />
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {[0, 1, 2].map((i) => <div key={i} className="card h-56 animate-pulse bg-paper" />)}
+      </div>
+    </div>
+  )
+}
+
 const TABS = NAV.map(([k]) => k)
 const fromHash = () => { const h = location.hash.replace('#', '').split('/')[0]; return TABS.includes(h) ? h : 'overview' }
 const subFromHash = () => location.hash.replace('#', '').split('/')[1] || ''
 const ls = (k, d) => { try { return localStorage.getItem(k) ?? d } catch { return d } }
 
 // Export columns per segment: the same fields the table view shows.
-const EXPORT = (lang, data) => ({
+const EXPORT = (lang, data, fhcbRows) => ({
   faq: { title: t(lang, 'faq'), rows: data.faq || [], cols: ['id', 'category', 'subcategory', 'question_en', 'question_bm', 'answer_formal_en', 'answer_layman_en', 'answer_formal_bm', 'answer_layman_bm', 'confidence', 'status', 'updated_at', 'created_at', 'published_at'] },
   certificates: { title: t(lang, 'certificates'), rows: (data.certificates || []).map((c) => ({ ...c, validity: certStatus(c), products: splitProducts(c.products).join('; ') })), cols: ['id', 'validity', 'company', 'cert_no', 'scheme', 'category', 'state', 'valid_from', 'valid_to', 'products', 'drive_url', 'updated_at', 'created_at', 'published_at'] },
   guidelines: { title: t(lang, 'guidelines'), rows: data.guidelines || [], cols: ['id', 'category', 'title', 'title_bm', 'issuer', 'summary_en', 'summary_bm', 'link', 'effective_date', 'updated_at', 'created_at', 'published_at'] },
@@ -77,7 +101,12 @@ export default function App() {
   const [tab, setTabState] = useState(fromHash)
   const [focus, setFocus] = useState(null)
   const [sub, setSub] = useState(subFromHash)
-  const [data, setData] = useState(savedData)
+  const [raw, setData] = useState(savedData)
+  // FAQ answer texts of a split snapshot arrive in chunks (lib/api.js); every
+  // page reads the rows with whatever has arrived filled in.
+  const [ansVer, setAnsVer] = useState(0)
+  useEffect(() => { const h = () => setAnsVer((v) => v + 1); addEventListener('he:answers', h); return () => removeEventListener('he:answers', h) }, [])
+  const data = useMemo(() => withAnswers(raw), [raw, ansVer])
   const [err, setErr] = useState('')
   const [loading, setLoading] = useState(true)
   const [chatOpen, setChatOpen] = useState(false)
@@ -90,6 +119,10 @@ export default function App() {
     loadSettings().then((st) => st && setLiveSettings(st))
     const id = setTimeout(() => setWaited(true), 8000); return () => clearTimeout(id)
   }, [])
+  // The FHCB seed (101 bodies, lib/fhcb.js) only feeds the sidebar count here:
+  // it loads after the first screen instead of riding in the main bundle.
+  const [fhcbLib, setFhcbLib] = useState(null)
+  useEffect(() => { const id = setTimeout(() => import('./lib/fhcb').then(setFhcbLib).catch(() => {}), 1500); return () => clearTimeout(id) }, [])
   const [seed, setSeed] = useState(null)
   const [menu, setMenu] = useState(false)
 
@@ -126,9 +159,11 @@ export default function App() {
     let on = true
     const boot = async () => {
       if (savedData()) { refresh(true); return }
-      const snap = await snapshotData()
+      // Split snapshot (feed/, 6 Nov 2026, CLAUDE.md rule 55): the page is
+      // drawn as soon as the core lands and each route waits only for its tabs;
+      // a live copy that answered first is never replaced by the snapshot.
+      const snap = await snapshotData(fromHash(), (d) => { if (on) setData((cur) => (cur && !cur._snapshot ? cur : d)) })
       if (!on) return
-      if (snap) setData((cur) => cur || snap)
       if (snapshotFresh(snap)) setLoading(false); else refresh(true)
     }
     boot()
@@ -139,8 +174,12 @@ export default function App() {
 
   const doExport = async (kind) => {
     if (!data) return
-    const key = EXPORT(lang, data)[tab] ? tab : 'faq'
-    const { title, rows, cols } = EXPORT(lang, data)[key]
+    const key = EXPORT(lang, data, () => [])[tab] ? tab : 'faq'
+    // The FAQ export carries every answer text: fetch the chunks not here yet.
+    const all = (await wantEverything(raw)) || raw
+    if (key === 'faq') await loadAllAnswers(all)
+    const { fhcbRows } = await import('./lib/fhcb')
+    const { title, rows, cols } = EXPORT(lang, withAnswers(all), fhcbRows)[key]
     const columns = cols.map((c) => ({ key: c, label: t(lang, c) === c ? c.replace(/_/g, ' ') : t(lang, c) }))
     const ex = await import('./lib/export')
     if (kind === 'csv') ex.exportCSV(key, rows, columns)
@@ -148,9 +187,19 @@ export default function App() {
     else await ex.exportDOCX(key, title, rows, columns)
   }
 
+  // Admin edits FAQ rows (ContentManager): fetch every answer text first.
+  useEffect(() => { if (tab === 'admin' && raw) loadAllAnswers(raw) }, [tab, raw])
+
   if (!data) return <div className="p-8 text-ink-600">{err || t(lang, 'loading')}</div>
   const live = (n) => !n.expires_at || Date.parse(n.expires_at) > Date.now()
-  const counts = { references: (data.references || []).length, faq: (data.faq || []).length, certificates: (data.certificates || []).length, guidelines: (data.guidelines || []).length, documents: filedDocs(data.documents).filter((d) => d.status === 'current').length, events: (data.events || []).filter((e) => !eventPast(e)).length, fhcb: fhcbRows(data).length || undefined, directory: (data.directory || []).length || undefined, vacancies: (data.vacancies || []).filter((v) => v.status !== 'hidden' && v.status !== 'draft' && !vacancyOver(v)).length, news: (data.news || []).filter(live).length }
+  // A part of the split snapshot not here yet: its count is left out and its
+  // pages show a placeholder in place of an empty list. Admin also waits for
+  // every FAQ answer text, so an edit never starts from a row without them.
+  const missing = new Set(data._missing || [])
+  const waiting = routeParts(tab, [...missing]).some((p) => missing.has(p)) || (tab === 'admin' && answersPending(data))
+  const noticeSettings = (!data._stale ? data.settings : liveSettings || data.settings) || {}
+  const n = (k, f) => (missing.has(k) ? undefined : f())
+  const counts = { references: n('references', () => (data.references || []).length), faq: n('faq', () => (data.faq || []).length), certificates: n('certificates', () => (data.certificates || []).length), guidelines: n('guidelines', () => (data.guidelines || []).length), documents: n('documents', () => filedDocs(data.documents).filter((d) => d.status === 'current').length), events: n('events', () => (data.events || []).filter((e) => !eventPast(e)).length), fhcb: missing.has('fhcb') || !fhcbLib ? undefined : fhcbLib.fhcbRows(data).length || undefined, directory: n('directory', () => (data.directory || []).length || undefined), vacancies: n('vacancies', () => (data.vacancies || []).filter((v) => v.status !== 'hidden' && v.status !== 'draft' && !vacancyOver(v)).length), news: n('news', () => (data.news || []).filter(live).length) }
 
   return (
     <div className="min-h-screen">
@@ -166,7 +215,9 @@ export default function App() {
               hero already carries a visible h1. */}
           {tab !== 'overview' && <h1 className="sr-only">{t(lang, tab)}</h1>}
           <PageGuard lang={lang} tab={tab}>
-          <Suspense fallback={<div className="text-sm text-ink-400 p-4">{t(lang, 'loading')}</div>}>
+          <Suspense fallback={<PageSkeleton lang={lang} />}>
+          {waiting && <PageSkeleton lang={lang} />}
+          {!waiting && <>
           {tab === 'overview' && <Overview lang={lang} data={data} setTab={setTab} />}
           {tab === 'faq' && <FAQ lang={lang} data={data} sub={sub} focusId={focus && focus.id} focusKey={focus && focus.n} />}
           {tab === 'certificates' && <Certificates lang={lang} data={data} sub={sub} />}
@@ -179,6 +230,7 @@ export default function App() {
           {tab === 'news' && <News lang={lang} data={data} sub={sub} />}
           {tab === 'vacancies' && <Vacancies lang={lang} data={data} sub={sub} />}
           {tab === 'admin' && <Admin lang={lang} data={data} onSaved={() => refresh(true)} />}
+          </>}
           </Suspense>
           </PageGuard>
         </main>
@@ -195,7 +247,10 @@ export default function App() {
       </div>
       {/* Opens on fresh settings only (a saved copy may hold an old colour or
           posters); if the Sheet does not answer, the saved copy is used. */}
-      <Notice lang={lang} settings={(!data._stale ? data.settings : liveSettings || data.settings) || {}} active={tab === 'overview' && (!!liveSettings || !data._stale || !!err || !loading || waited)} />
+      {/* Its code (and the motion library) loads only when a notice is switched on. */}
+      {tab === 'overview' && String(noticeSettings.notice_enabled) === 'true' && <Suspense fallback={null}>
+        <Notice lang={lang} settings={noticeSettings} active={!!liveSettings || !data._stale || !!err || !loading || waited} />
+      </Suspense>}
       <Chatbot lang={lang} data={data} open={chatOpen} setOpen={setChatOpen} seed={seed} />
     </div>
   )
