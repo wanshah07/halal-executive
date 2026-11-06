@@ -3,7 +3,7 @@
 export const STRINGS = {
   en: {
     overview: 'Overview', faq: 'FAQ', guidelines: 'Guidelines', documents: 'Documents', events: 'Events', news: 'News', admin: 'Admin',
-    search_ph: 'Search FAQ, guidelines, documents, events, news…', ask: 'Ask', chatbot: 'Assistant',
+    search_ph: 'Search FAQ, guidelines, documents, events, news…', search_answers_loading: 'Loading the FAQ answer texts so they are searched too…', ask: 'Ask', chatbot: 'Assistant',
     cards: 'Cards', table: 'Table', formal: 'Formal', layman: 'Layman', all: 'All',
     updated: 'Updated', refresh: 'Refresh', export: 'Export', sheet: 'Sheet', drive: 'Drive',
     open_faq: 'Open the FAQ →', no_data: 'No data yet.', loading: 'Loading…',
@@ -64,7 +64,7 @@ export const STRINGS = {
   },
   bm: {
     overview: 'Ringkasan', faq: 'Soalan Lazim', guidelines: 'Garis Panduan', documents: 'Dokumen', events: 'Acara', news: 'Berita', admin: 'Pentadbir',
-    search_ph: 'Cari Soalan Lazim, garis panduan, dokumen, acara, berita…', ask: 'Tanya', chatbot: 'Pembantu',
+    search_ph: 'Cari Soalan Lazim, garis panduan, dokumen, acara, berita…', search_answers_loading: 'Memuatkan teks jawapan Soalan Lazim supaya turut dicari…', ask: 'Tanya', chatbot: 'Pembantu',
     cards: 'Kad', table: 'Jadual', formal: 'Formal', layman: 'Mudah', all: 'Semua',
     updated: 'Dikemas kini', refresh: 'Muat semula', export: 'Eksport', sheet: 'Helaian', drive: 'Drive',
     open_faq: 'Buka Soalan Lazim →', no_data: 'Tiada data lagi.', loading: 'Memuatkan…',

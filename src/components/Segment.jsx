@@ -9,7 +9,7 @@ import { t } from '../lib/i18n'
 // Long lists are shown 20 at a time with the shared page bar. A row the page
 // is asked to show (focusId, e.g. a question clicked on the Overview) opens
 // the page it is on.
-export default function Segment({ lang, title, rows, columns, renderCard, filters, defaultView = 'cards', empty, id, cardGrid = 'grid gap-4 md:grid-cols-2 xl:grid-cols-3', perPage = 20, focusId, focusKey }) {
+export default function Segment({ lang, title, rows, columns, renderCard, filters, defaultView = 'cards', empty, id, cardGrid = 'grid gap-4 md:grid-cols-2 xl:grid-cols-3', perPage = 20, focusId, focusKey, onShown }) {
   const [pg, setPg] = useState(0)
   const pages = Math.max(1, Math.ceil(rows.length / perPage))
   useEffect(() => { setPg(0) }, [rows.length]) // a filter changed the list
@@ -20,6 +20,9 @@ export default function Segment({ lang, title, rows, columns, renderCard, filter
   }, [focusId, focusKey, rows.length])
   const page = Math.min(pg, pages - 1)
   const shown = rows.slice(page * perPage, page * perPage + perPage)
+  // The page can fetch what the rows on screen need (FAQ answer texts).
+  const shownKey = shown.map((r) => r.id).join('|')
+  useEffect(() => { if (onShown && shown.length) onShown(shown) }, [shownKey]) // eslint-disable-line react-hooks/exhaustive-deps
   const turn = (p) => { setPg(p); document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }
   // Phones start on cards (tables need sideways scrolling there); a choice the
   // reader made before is kept.

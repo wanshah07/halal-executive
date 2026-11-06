@@ -1,12 +1,22 @@
-import { useEffect, useRef, useState } from 'react'
+import { Suspense, lazy, useEffect, useRef, useState } from 'react'
 import { SITE_NAME, SHEET_URL, DRIVE_FOLDER_URL, DIRECTORY_SECTIONS } from '../lib/config'
-import NavHeader from '@/components/ui/nav-header'
 import { t } from '../lib/i18n'
 import { MENU } from './Sidebar'
 import { ICON, Menu, ExternalLink, ChevronDown, RefreshCw, Lock } from './Icon'
 
+// The tab pill (and the motion library under it) is for tablets and desktops
+// only, so phones never download it.
+const NavHeader = lazy(() => import('@/components/ui/nav-header'))
+const WIDE = '(min-width: 768px)'
+function useWide() {
+  const [wide, setWide] = useState(() => typeof matchMedia === 'function' && matchMedia(WIDE).matches)
+  useEffect(() => { if (typeof matchMedia !== 'function') return; const m = matchMedia(WIDE), h = () => setWide(m.matches); m.addEventListener('change', h); return () => m.removeEventListener('change', h) }, [])
+  return wide
+}
+
 export const dirSection = (s) => (s === 'sertu' || s === 'lab' ? s : 'training')
 export default function Header({ lang, setLang, tab, sub, setTab, onRefresh, onExport, counts, loading, onMenu }) {
+  const wide = useWide()
   const [exp, setExp] = useState(false)
   const ref = useRef(null)
   // The header never hides; its height (it grows with the Directory row) is
@@ -61,7 +71,7 @@ export default function Header({ lang, setLang, tab, sub, setTab, onRefresh, onE
             the nav-header pill marks the open tab (Wan, 15 Oct 2026). Admin
             is only the black button above. */}
         <nav aria-label={t(lang, 'menu')} className="hidden md:block pb-3 -mx-1 px-1 overflow-x-auto">
-          <NavHeader items={MENU.map(([k]) => ({ value: k, label: t(lang, k) }))} value={tab} onChange={(k) => setTab(k)} />
+          {wide && <Suspense fallback={<div className="h-10" />}><NavHeader items={MENU.map(([k]) => ({ value: k, label: t(lang, k) }))} value={tab} onChange={(k) => setTab(k)} /></Suspense>}
         </nav>
         {/* Phones: the tabs are the bottom bar (BottomNav). */}
         {tab === 'directory' && (

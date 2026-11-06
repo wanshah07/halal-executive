@@ -38,8 +38,8 @@ export default function Events({ lang, data, sub }) {
           { key: 'venue', label: t(lang, 'venue') },
           { key: 'link', label: t(lang, 'register'), render: (e) => safeUrl(e.link) ? <a className="text-brand-600 hover:underline" href={safeUrl(e.link)} target="_blank" rel="noreferrer" aria-label={t(lang, 'register')}><ArrowUpRight {...ICON} size={16} /></a> : '—' },
         ]}
-        renderCard={(e) => (
-          <EventCard key={e.id} lang={lang} url={e.poster_url} file={e.poster_file} title={title(e)} chip={kindChip(e.kind, lang)}
+        renderCard={(e, i) => (
+          <EventCard key={e.id} priority={i === 0 && !posters.length} lang={lang} url={e.poster_url} file={e.poster_file} title={title(e)} chip={kindChip(e.kind, lang)}
             date={fmtDateTime(e.date_start, lang)} venue={e.venue} description={e.description} link={e.link} />
         )} />
     </div>

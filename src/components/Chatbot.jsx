@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import { askAssistant } from '../lib/api'
+import { useEffect, useState } from 'react'
+import { askAssistant, answersPending, loadAllAnswers, withAnswers, wantEverything } from '../lib/api'
 import { buildIndex, search } from '../lib/search'
 import { t } from '../lib/i18n'
 import { ICON, MessageCircle, X } from './Icon'
@@ -11,11 +11,14 @@ export default function Chatbot({ lang, data, open, setOpen, seed }) {
   const [msgs, setMsgs] = useState([])
   const [q, setQ] = useState('')
   const [busy, setBusy] = useState(false)
-  const index = useMemo(() => buildIndex(data), [data])
 
+  // The index is built when a question is asked, over every FAQ answer text
+  // (fetched first when the deploy's snapshot has not sent them all yet).
   async function ask(question) {
     if (!question.trim()) return
-    const hits = search(index, question, 6)
+    const all = (await wantEverything(data)) || data
+    if (answersPending(all)) await loadAllAnswers(all)
+    const hits = search(buildIndex(withAnswers(all)), question, 6)
     const context = hits.map((h) => ({ type: h.type, id: h.id, title: h.title, body: h.body.slice(0, 1200) }))
     setMsgs((m) => [...m, { role: 'user', text: question }, { role: 'hits', hits }])
     setQ(''); setBusy(true)
