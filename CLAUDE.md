@@ -682,3 +682,14 @@
     (`reviewSet`), sets status `current`, notes `shown by admin` (the pipeline then leaves it alone) and clears `drive_url`, so the
     public card is a designed tile with the details and no link to a dead Drive file. Heinz Worcester Sauce (DOC-0057) and Ahaa
     Flordia (DOC-0058) are such rows: their files were deleted on 18 Oct 2026 and need the certificate uploaded again for a preview.
+59. **WhatsApp collector: library pinned to a GitHub commit, and the relink steps** (Wan, 11 Nov 2026: "CHECK WHATSAPP CONNECTION").
+    The collector went silent at 08:56 UTC: WhatsApp ended the linked session (`Disconnected: LOGOUT`), pm2 restarted it, and with no
+    saved login it sat `online` printing a QR nobody saw, so no heartbeat for 8 hours. The npm release (`whatsapp-web.js` 1.34.7,
+    April) then failed to attach to the new WhatsApp Web (`Cannot read properties of null (reading 'Socket')`); the library's GitHub
+    main (fixes of 26 and 28 Sep) worked, so `collectors/whatsapp/package.json` pins commit `064a3d5`. Relink on the server
+    (Google Cloud project `halal-executive`, VM `he-whatsapp`, us-central1-a, browser SSH): `pm2 stop he-whatsapp`,
+    `pkill -9 -f chromium` (a failed run leaves a Chromium holding `.wwebjs_auth`: "browser is already running"),
+    `cd ~/halal-executive/collectors/whatsapp && rm -rf .wwebjs_auth .wwebjs_cache`, `node collect.js --backfill --listen`, scan the
+    QR (Linked devices), wait for "Listening for new messages", Ctrl+C, `pm2 start he-whatsapp && pm2 save`. A fresh link only holds
+    the group's recent messages (15 on 11 Nov), so an older gap needs a chat export (`import.js`). Admin -> Progress shows the
+    WhatsApp card and a red "no heartbeat" line until the next beat.
