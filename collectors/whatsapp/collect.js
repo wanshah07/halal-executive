@@ -151,10 +151,24 @@ client.on('qr', (qr) => {
   setPhase('QR', Date.now() - lastCodeAt < 170000 ? 'pairing code ready' : 'waiting for the QR to be scanned'); lastQr = qr; lastQrAt = Date.now()
   console.log('Scan with WhatsApp → Settings → Linked devices → Link a device (or in Admin → Progress → Link WhatsApp)'); qrcode.generate(qr, { small: true })
   if (SERVICE && Date.now() < wantUntil) beat()     // an admin has the link panel open: send each new code at once
+  if (/^\d{9,15}$/.test(PAIR_PHONE) && !pairAsked) {
+    pairAsked = true
+    client.requestPairingCode(PAIR_PHONE, true).catch((e) => { pairAsked = false; console.error('Pairing code failed:', String((e && e.message) || e).slice(0, 100)) })
+  }
 })
 // Link with a phone number instead of a QR (Wan, 16 Nov 2026: "still cannot link"): WhatsApp gives an 8-character code
 // that is typed on the phone (Linked devices, Link a device, Link with phone number instead). It renews every ~3 minutes.
-client.on('code', (c) => { lastCode = String(c); lastCodeAt = Date.now(); note = 'pairing code ready'; console.log('Pairing code received'); if (SERVICE) beat() })
+client.on('code', (c) => {
+  lastCode = String(c); lastCodeAt = Date.now(); note = 'pairing code ready'; console.log('Pairing code received')
+  // Printed on the terminal only (not through the log that goes to Admin): the code is typed on the phone within 3 minutes.
+  const shown = lastCode.length === 8 ? lastCode.slice(0, 4) + '-' + lastCode.slice(4) : lastCode
+  process.stdout.write(`\n  >>>  PAIRING CODE:  ${shown}   <<<\n  Phone: WhatsApp > Settings > Linked devices > Link a device > Link with phone number instead\n\n`)
+  if (SERVICE) beat()
+})
+// From a terminal: HE_PAIR_PHONE=60123456789 node collect.js ...  asks for a code as soon as WhatsApp wants a link, so no QR has
+// to be scanned (it renews every 20 seconds). The number is read from the environment only and never logged.
+const PAIR_PHONE = String(process.env.HE_PAIR_PHONE || '').replace(/\D/g, '')
+let pairAsked = false
 client.on('auth_failure', (m) => { console.error('Login failed:', m); quit(1, 'Login failed: the saved login is cleared, a new QR follows', true) })
 // WhatsApp logged this device out or the connection dropped: exit so pm2
 // restarts the collector, which reconnects with the saved session.

@@ -745,3 +745,6 @@
     `chromium --version` (`browserUA`; the library default when it cannot be read) and logs it ("User agent: ..."). This is one
     candidate cause and is NOT proved: a WhatsApp-side limit on new links after many attempts, or on automated clients, would look the
     same. Next evidence is the exact words the phone shows when the link fails.
+    **Terminal code, no QR** (Wan, 16 Nov 2026: "the QR changes so fast I cannot link"): `HE_PAIR_PHONE=<number with country code> node collect.js
+    --backfill --listen` asks WhatsApp for a pairing code as soon as it wants a link and prints it on the terminal only (not through the
+    log that goes to Admin). It does not depend on Code.gs. The number is read from the environment and never logged.
