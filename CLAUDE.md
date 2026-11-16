@@ -711,3 +711,14 @@
     takes one SSH visit (the command is shown in the panel). An always-on machine is still needed: WhatsApp has no API for a
     community group joined by a personal number. Tested against a fake library and a fake Apps Script (9 scenarios) and the panel
     in Chromium (the drawn QR decodes to the same text); not yet run on the real server.
+    **Catch-up and last message** (Wan, 16 Nov 2026: "check if all live and can extract the chat from the specific group"): after the
+    relink of 16 Nov the collector was CONNECTED but nothing had been read since 11 Nov 17:00 UTC, because a service run listens only
+    and the 4.5-day gap is never delivered to a freshly linked session. `catchUp` (collect.js) re-reads the group's history from
+    WhatsApp Web (`loadHistory`, newest 1000) and sends every message newer than 10 minutes before the last one the Sheet got
+    (`state.lastSeen`, the newest message time; falls back to `lastTs`): automatically on a start after more than 15 minutes of
+    silence, and from Admin -> Progress -> Manage -> "Catch up missed messages" (`wa_cmd` `catchup`). The Sheet skips ids it has,
+    so overlap is harmless. Messages are taken only from the one group (`HE_GROUP_ID`, matched on the chat id of each message).
+    The check-in's `last_msg` is now that real message time, sent within a minute of each live message, and the card shows it.
+    The red watchdog line in Progress is `watch` state rewritten every 10 minutes: Admin hides its WhatsApp entry while the live
+    card is healthy. Limit: only what WhatsApp Web still holds for the group (a linked device may hold few messages); anything
+    older needs a chat export (`import.js`).

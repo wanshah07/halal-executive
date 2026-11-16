@@ -260,6 +260,7 @@ function WaLink({ lang }) {
         {(sent || r.pending) && <p className="text-xs text-ink-600">{t(lang, 'wa_sent').replace('{c}', sent || r.pending.cmd)}</p>}
         <div className="flex flex-wrap gap-2">
           <button type="button" className="btn" onClick={() => cmd('restart')}>{t(lang, 'wa_restart')}</button>
+          <button type="button" className="btn" onClick={() => cmd('catchup')}>{t(lang, 'wa_catchup')}</button>
           <button type="button" className="btn" onClick={() => cmd('update')}>{t(lang, 'wa_update')}</button>
           <button type="button" className="btn" onClick={() => cmd('relink')}>{t(lang, 'wa_relink')}</button>
         </div>
@@ -285,7 +286,9 @@ function ProgressBox({ lang }) {
   const runs = (st && st.github && st.github.runs) || []
   const running = runs.find((r) => r.status === 'in_progress')
   const queued = runs.filter((r) => r.status === 'queued' || r.status === 'pending' || r.status === 'waiting').length
-  const watch = (st && st.watch) || {}
+  // The watchdog alert is rewritten every 10 minutes; while the live card above is healthy, a WhatsApp alert is stale and is not shown.
+  const watch = { ...((st && st.watch) || {}) }
+  if (waOk) delete watch.whatsapp
   const badge = (r) => r.status !== 'completed' ? (r.status === 'in_progress' ? ['bg-amber-100 text-amber-800', t(lang, 'p_running')] : ['bg-muted text-ink-600', t(lang, 'p_queued')])
     : r.conclusion === 'success' ? ['bg-brand-50 text-brand-700', t(lang, 'p_ok')] : r.conclusion === 'cancelled' ? ['bg-muted text-ink-600', t(lang, 'p_cancelled')] : ['bg-red-50 text-red-700', t(lang, 'p_failed')]
   return (
@@ -300,6 +303,7 @@ function ProgressBox({ lang }) {
             <div className="text-xs text-ink-400">WhatsApp</div>
             <div className="font-semibold">{waOk ? t(lang, 'p_wa_ok') : t(lang, 'p_wa_bad')}</div>
             <div className="text-xs text-ink-600">{wa ? `${t(lang, 'p_heartbeat')} ${ago(wa.ts, lang)}${wa.state ? ` · ${wa.state}` : ''}` : t(lang, 'p_never')}</div>
+            {wa && wa.last_msg && <div className="text-xs text-ink-600">{t(lang, 'wa_last_msg')} {fmtDateTime(wa.last_msg, lang)} · {ago(wa.last_msg, lang)}</div>}
             <button type="button" className="btn mt-2" aria-expanded={link} onClick={() => setLink(!link)}>{t(lang, waOk ? 'wa_manage' : 'wa_link_btn')}</button>
           </div>
           <div className="rounded-lg border border-line p-3">

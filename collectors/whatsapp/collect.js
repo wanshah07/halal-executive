@@ -144,7 +144,7 @@ async function listGroups() {
 // only holds what the phone has synced, and each request pulls the next
 // page from the phone, so this keeps asking (with a pause) and stops after
 // three empty answers in a row.
-async function loadHistory(id) {
+async function loadHistory(id, max = BACKFILL_LIMIT) {
   const total = await client.pupPage.evaluate(async (id, limit) => {
     const chat = await window.WWebJS.getChat(id, { getAsModel: false })
     if (!chat) return -1
@@ -156,7 +156,7 @@ async function loadHistory(id) {
       if (got && got.length) empty = 0; else { empty++; await new Promise((r) => setTimeout(r, 2500)) }
     }
     return chat.msgs.getModelsArray().length
-  }, id, BACKFILL_LIMIT).catch((e) => { console.warn('History load stopped:', e.message); return null })
+  }, id, max).catch((e) => { console.warn('History load stopped:', e.message); return null })
   if (total !== null) console.log(`WhatsApp Web now holds ${total} messages for this group.`)
 }
 
@@ -175,6 +175,36 @@ async function toRow(m) {
 }
 
 let groupId = GROUP_ID
+
+// Catch-up (Wan, 16 Nov 2026: "extract the chat from the group"): messages sent while the collector was down are
+// read again from WhatsApp Web's own history, newest first, from 10 minutes before the last one the Sheet got.
+// It runs on every start that follows a silence, and when an admin presses Catch up in Admin -> Progress. The
+// Sheet skips message ids it already has, so overlap costs time only, never duplicates.
+let catching = false
+const lastMsgMs = () => state.lastSeen || state.lastTs || 0
+async function catchUp(why) {
+  if (catching || !groupId || quitting) return
+  catching = true
+  const since = lastMsgMs() ? lastMsgMs() - 10 * 60000 : 0
+  try {
+    note = `catching up (${why})…`
+    const chat = new Chat(client, { id: { _serialized: groupId }, formattedTitle: GROUP, isGroup: true })
+    await loadHistory(groupId, 1000)
+    const all = await chat.fetchMessages({ limit: 1000 })
+    const msgs = all.filter((m) => m.timestamp * 1000 >= since)
+    let added = 0, failed = 0
+    for (let i = 0; i < msgs.length; i += 10) {
+      const rows = []
+      for (const m of msgs.slice(i, i + 10)) { try { rows.push(await toRow(m)) } catch (e) { failed++ } }
+      try { const r = await ingest(rows); added += r.added } catch (e) { failed += rows.length; console.error('  catch-up batch failed:', e.message) }
+    }
+    for (const m of msgs) state.lastSeen = Math.max(state.lastSeen || 0, m.timestamp * 1000)
+    save()
+    note = `catch-up ${new Date().toISOString().slice(0, 16)}Z (${why}): ${msgs.length} messages read, ${added} new${failed ? `, ${failed} failed` : ''}`
+    console.log(note)
+  } catch (e) { note = 'catch-up failed: ' + String((e && e.message) || e).slice(0, 100); console.error(note) }
+  finally { catching = false; beat() }
+}
 
 client.on('ready', async () => {
   try {
@@ -225,13 +255,15 @@ client.on('ready', async () => {
         try { const r = await ingest(rows); added += r.added; skipped += r.skipped; filled += r.filled || 0 } catch (e) { failed += rows.length; console.error('  batch failed:', e.message) }
         console.log(`  ${Math.min(i + STEP, msgs.length)}/${msgs.length}  added ${added}  files added to existing ${filled}  already there ${skipped}  file not downloadable ${nofile}  failed ${failed}`)
       }
-      state.lastTs = Date.now(); save()
+      state.lastTs = Date.now(); for (const m of msgs) state.lastSeen = Math.max(state.lastSeen || 0, m.timestamp * 1000); save()
       console.log(`Backfill done: ${added} new rows, ${filled} files added to rows already in the Raw tab.`)
       if (nofile) console.log(`${nofile} files could not be downloaded (WhatsApp no longer holds old media for linked devices). Get them from the phone: Export chat → Include media, then npm run import-files -- <zip>.`)
       if (!process.argv.includes('--listen')) { await client.destroy(); process.exit(failed ? 1 : 0) }
     }
     if (SERVICE) beat()
     console.log('Listening for new messages… (Ctrl+C to stop)')
+    // A start after a silence reads what was missed (a quiet group needs no catch-up: nothing newer than 15 minutes).
+    if (SERVICE && !BACKFILL && Date.now() - lastMsgMs() > 15 * 60000) catchUp('start')
   } catch (e) {
     console.error('Stopped:', e && (e.message || e)); await quit(1)
   }
@@ -249,7 +281,7 @@ async function beat() {
       try { st = String(await Promise.race([client.getState(), new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 30000))]) || 'UNKNOWN') } catch (e) { st = 'UNKNOWN' }
       bad = st === 'CONNECTED' ? 0 : bad + 1
     }
-    const body = { source: 'whatsapp', group: GROUP, last_msg: state.lastTs ? new Date(state.lastTs).toISOString() : '', version: 'collector-4', state: st, note }
+    const body = { source: 'whatsapp', group: GROUP, last_msg: lastMsgMs() ? new Date(lastMsgMs()).toISOString() : '', version: 'collector-4', state: st, note }
     if (!ready && phase === 'QR' && lastQr && Date.now() - lastQrAt < 60000) body.qr = lastQr
     const r = await post('heartbeat', body).catch((e) => { console.error('heartbeat failed:', e.message || e); return null })
     lastBeat = Date.now()
@@ -271,6 +303,7 @@ function tick() {
 async function command(cmd) {
   console.log(new Date().toISOString(), 'Admin command:', cmd)
   if (cmd === 'restart') return quit(0, 'Restart asked from Admin')
+  if (cmd === 'catchup') { await catchUp('Admin'); return }
   if (cmd === 'relink') return quit(0, 'Relink asked from Admin: the saved login is cleared, a new QR follows', true)
   if (cmd === 'update') {
     quitting = true
@@ -282,7 +315,7 @@ async function command(cmd) {
       out = 'updated: ' + out
     } catch (e) { out = 'update failed: ' + String((e && e.message) || e).replace(/\s+/g, ' ').slice(0, 100) }
     console.log(out)
-    await post('heartbeat', { source: 'whatsapp', group: GROUP, last_msg: state.lastTs ? new Date(state.lastTs).toISOString() : '', version: 'collector-4', state: 'STARTING', note: out.slice(0, 140) }).catch(() => {})
+    await post('heartbeat', { source: 'whatsapp', group: GROUP, last_msg: lastMsgMs() ? new Date(lastMsgMs()).toISOString() : '', version: 'collector-4', state: 'STARTING', note: out.slice(0, 140) }).catch(() => {})
     process.exit(0)
   }
 }
@@ -293,8 +326,9 @@ client.on('message_create', async (m) => {
   try {
     if (!groupId || remoteOf(m) !== groupId) return
     const r = await ingest([await toRow(m)])
-    state.lastTs = Date.now(); save()
+    state.lastTs = Date.now(); state.lastSeen = Math.max(state.lastSeen || 0, m.timestamp * 1000); save()
     console.log(new Date().toISOString(), 'saved', r.added ? 'new' : 'already there')
+    if (SERVICE && Date.now() - lastBeat > 60000) beat()   // Admin shows the new "last message" within a minute
   } catch (e) { console.error('ingest failed', e.message || e) }
 })
 

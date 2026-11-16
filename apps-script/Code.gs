@@ -2275,7 +2275,7 @@ function heartbeat(b) {
 // Admin -> Progress -> WhatsApp. wa_link: the collector's state and, while it waits for a scan, the QR code (asking
 // also tells the collector an admin is watching, so it sends every new code at once). wa_cmd: one fixed command the
 // collector picks up with its next check-in (within a minute while it is not connected, 5 minutes when it is).
-var WA_CMDS = ['restart', 'update', 'relink'];
+var WA_CMDS = ['restart', 'update', 'relink', 'catchup'];
 function waLink() {
   var cache = CacheService.getScriptCache(), q = null, pend = null;
   cache.put('wawant_whatsapp', '1', 180);
