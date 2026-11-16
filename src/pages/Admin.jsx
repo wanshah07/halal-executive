@@ -213,9 +213,64 @@ const ago = (iso, lang) => {
   const h = Math.floor(m / 60)
   return lang === 'bm' ? `${h} jam lalu` : `${h} h ago`
 }
+// WhatsApp runs by itself (Wan, 16 Nov 2026): the collector on the server reports its state every minute while it is
+// not connected and sends the QR code it wants scanned, so a relink happens here, not in a terminal. Restart, Update
+// and New QR are fixed commands the collector picks up with its next check-in (Code.gs wa_link / wa_cmd, rule 60).
+function QrPicture({ text }) {
+  const [qr, setQr] = useState(null)
+  useEffect(() => {
+    let live = true
+    import('qrcode-generator').then((m) => {
+      const q = (m.default || m)(0, 'L'); q.addData(text); q.make()
+      const n = q.getModuleCount(); let d = ''
+      for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (q.isDark(r, c)) d += `M${c} ${r}h1v1h-1z`
+      if (live) setQr({ n, d })
+    }).catch(() => live && setQr(null))
+    return () => { live = false }
+  }, [text])
+  if (!qr) return null
+  return <svg viewBox={`-4 -4 ${qr.n + 8} ${qr.n + 8}`} className="w-64 h-64 max-w-full bg-white rounded-lg border border-line" role="img" aria-label="WhatsApp QR" shapeRendering="crispEdges"><rect x="-4" y="-4" width={qr.n + 8} height={qr.n + 8} fill="#fff" /><path d={qr.d} fill="#000" /></svg>
+}
+function WaLink({ lang }) {
+  const [r, setR] = useState(null)
+  const [err, setErr] = useState('')
+  const [sent, setSent] = useState('')
+  const load = () => adminPost('wa_link').then((x) => { setR(x); setErr('') }).catch((e) => setErr(/unknown action/i.test(e.message) ? t(lang, 'wa_old_gs') : e.message))
+  useEffect(() => { load(); const id = setInterval(() => { if (document.visibilityState === 'visible') load() }, 4000); return () => clearInterval(id) }, [])
+  async function cmd(c) {
+    if (c === 'relink' && !window.confirm(t(lang, 'wa_relink_confirm'))) return
+    setErr('')
+    try { await adminPost('wa_cmd', { cmd: c }); setSent(c); load() } catch (e) { setErr(/unknown action/i.test(e.message) ? t(lang, 'wa_old_gs') : e.message) }
+  }
+  const hb = r && r.hb, now = r ? Date.parse(r.now) : Date.now()
+  const silent = !hb || now - Date.parse(hb.ts) > 4 * 60000
+  const fresh = r && r.qr && now - Date.parse(r.qr.ts) < 50000 && hb && hb.state === 'QR'
+  const stateText = !hb ? t(lang, 'p_never') : silent ? t(lang, 'wa_silent') : (['starting', 'qr', 'linked', 'connected', 'unknown'].includes(String(hb.state || '').toLowerCase()) ? t(lang, 'wa_st_' + String(hb.state).toLowerCase()) : String(hb.state || ''))
+  return (
+    <div className="rounded-lg border border-line p-3 space-y-2 text-sm">
+      <div className="font-semibold">{t(lang, 'wa_title')}</div>
+      {err && <div className="text-red-600" role="alert">{err}</div>}
+      {!r && !err && <div className="text-ink-400">{t(lang, 'loading')}</div>}
+      {r && <>
+        <div className={silent || (hb && hb.state !== 'CONNECTED') ? 'text-amber-800' : 'text-brand-700'}>{stateText}{hb && !silent && hb.version ? ` · ${hb.version}` : ''}</div>
+        {hb && hb.note && !silent && <div className="text-xs text-ink-600 [overflow-wrap:anywhere]">{hb.note}</div>}
+        {fresh && <div className="space-y-2"><QrPicture text={r.qr.qr} /><p className="text-ink-600">{t(lang, 'wa_scan')}</p></div>}
+        {!fresh && !silent && hb && hb.state !== 'CONNECTED' && <p className="text-ink-600">{t(lang, 'wa_wait_qr')}</p>}
+        {silent && <p className="text-ink-600">{t(lang, 'wa_silent_help')} <code className="text-xs [overflow-wrap:anywhere]">cd ~/halal-executive && git pull && cd collectors/whatsapp && npm install --omit=dev && pm2 restart he-whatsapp</code></p>}
+        {(sent || r.pending) && <p className="text-xs text-ink-600">{t(lang, 'wa_sent').replace('{c}', sent || r.pending.cmd)}</p>}
+        <div className="flex flex-wrap gap-2">
+          <button type="button" className="btn" onClick={() => cmd('restart')}>{t(lang, 'wa_restart')}</button>
+          <button type="button" className="btn" onClick={() => cmd('update')}>{t(lang, 'wa_update')}</button>
+          <button type="button" className="btn" onClick={() => cmd('relink')}>{t(lang, 'wa_relink')}</button>
+        </div>
+      </>}
+    </div>
+  )
+}
 function ProgressBox({ lang }) {
   const [st, setSt] = useState(null)
   const [err, setErr] = useState('')
+  const [link, setLink] = useState(false)
   const load = () => adminPost('pipeline_status').then((r) => { setSt(r); setErr('') }).catch((e) => setErr(e.message))
   useEffect(() => {
     load()
@@ -245,6 +300,7 @@ function ProgressBox({ lang }) {
             <div className="text-xs text-ink-400">WhatsApp</div>
             <div className="font-semibold">{waOk ? t(lang, 'p_wa_ok') : t(lang, 'p_wa_bad')}</div>
             <div className="text-xs text-ink-600">{wa ? `${t(lang, 'p_heartbeat')} ${ago(wa.ts, lang)}${wa.state ? ` · ${wa.state}` : ''}` : t(lang, 'p_never')}</div>
+            <button type="button" className="btn mt-2" aria-expanded={link} onClick={() => setLink(!link)}>{t(lang, waOk ? 'wa_manage' : 'wa_link_btn')}</button>
           </div>
           <div className="rounded-lg border border-line p-3">
             <div className="text-xs text-ink-400">{t(lang, 'p_now')}</div>
@@ -259,6 +315,7 @@ function ProgressBox({ lang }) {
             {raw.files_waiting !== undefined && <div className={`text-xs mt-1 ${raw.files_waiting ? 'text-amber-700' : 'text-brand-700'}`}>{raw.files_waiting ? `${raw.files_waiting.toLocaleString()} ${t(lang, 'p_files_waiting')}` : t(lang, 'p_files_done')}</div>}
           </div>
         </div>
+        {link && <WaLink lang={lang} />}
         {st.llm_speed && (st.llm_speed.MIRELD || st.llm_speed.AFIQ) && (() => {
           const sp = st.llm_speed, both = sp.MIRELD && sp.AFIQ && sp.MIRELD.n >= 3 && sp.AFIQ.n >= 3
           const lead = both ? (sp.MIRELD.ms <= sp.AFIQ.ms ? 'MIRELD' : 'AFIQ') : ''

@@ -267,7 +267,8 @@ function cachedPublicData() {
       try { cache.remove(base + 'building'); } catch (e) { /* expires by itself */ }
     }
   }
-  body.collectors = collectorStatus();
+  // The collector's own note (an update result can name a server path) is for admins only.
+  body.collectors = collectorStatus(); Object.keys(body.collectors).forEach(function (k) { delete body.collectors[k].note; });
   var now = Date.now();
   body.news = (body.news || []).filter(function (r) { return !r.expires_at || Date.parse(r.expires_at) > now; });
   return body;
@@ -366,6 +367,8 @@ function doPost(e) {
     if (a === 'poster_from_drive') return json(posterFromDrive(body.id));
     if (a === 'raw_stats')    { var rs0 = rawStats(); rs0.ok = true; return json(rs0); }
     if (a === 'pipeline_status') { needAdmin(); return json(pipelineStatus()); }
+    if (a === 'wa_link')      { needAdmin(); return json(waLink()); }                // the QR and state of the WhatsApp collector
+    if (a === 'wa_cmd')       { needAdmin(); return json(waCmd(String(body.cmd || ''))); }
     if (a === 'requeue_files') { needAdmin(); return json(requeueFiles()); } // writes only status cells, no lock
     if (a === 'event_from_poster') { needAdmin(); return json(eventFromPoster(body)); } // stores the poster and reads it; no Sheet write
     if (a === 'faq_rephrase')  { needAdmin(); return json(faqRephrase(body)); } // model call, no Sheet write
@@ -698,8 +701,11 @@ function tickWatch() {
   if (!hb) problems.whatsapp = 'The WhatsApp collector has never sent a heartbeat.';
   else {
     var age = Math.round((now - Date.parse(hb.ts)) / 60000);
-    if (age > WATCH_MIN) problems.whatsapp = 'No WhatsApp heartbeat for ' + age + ' minutes. The VM, pm2 or the WhatsApp link is down. Check: gcloud compute ssh he-whatsapp, then pm2 logs he-whatsapp.';
-    else if (hb.state && hb.state !== 'CONNECTED') problems.whatsapp = 'WhatsApp reports state ' + hb.state + ' (not CONNECTED). The phone may have unlinked this device: Linked devices on the phone, then a new QR on the VM.';
+    var stuck = hb.state_since ? Math.round((now - Date.parse(hb.state_since)) / 60000) : WATCH_MIN + 1;
+    if (age > WATCH_MIN) problems.whatsapp = 'No WhatsApp check-in for ' + age + ' minutes: the server or the collector on it is down. Open the server (Google Cloud, VM he-whatsapp, SSH) and run: pm2 restart he-whatsapp.';
+    else if (hb.state === 'QR') problems.whatsapp = 'WhatsApp ended the linked session and waits for a new QR scan. Open Admin, Progress, Link WhatsApp, and scan the code with the phone (WhatsApp, Linked devices, Link a device).';
+    // Starting or loading is not a problem by itself: the collector restarts itself when stuck. Only 15 minutes of it is.
+    else if (hb.state && hb.state !== 'CONNECTED' && stuck > WATCH_MIN) problems.whatsapp = 'WhatsApp has reported ' + hb.state + ' (not CONNECTED) for ' + stuck + ' minutes. Admin, Progress, WhatsApp: press Restart, and Link WhatsApp if it asks for a QR.';
   }
   // Telegram is watched once it has checked in for the first time: until then
   // there is nothing to be late, so no mail about a collector nobody set up.
@@ -2246,8 +2252,41 @@ function kiosGenerate(b) {
 function heartbeat(b) {
   var src = String(b.source || '').replace(/[^a-z]/g, '').slice(0, 20);
   if (!src) throw new Error('source required');
-  props().setProperty('hb_' + src, JSON.stringify({ ts: new Date().toISOString(), group: String(b.group || '').slice(0, 80), last_msg: b.last_msg || '', version: String(b.version || '').slice(0, 20), state: String(b.state || '').slice(0, 20) }));
-  return { ok: true };
+  var P = props(), prev = null, now = new Date().toISOString(), st = String(b.state || '').slice(0, 20);
+  try { prev = JSON.parse(P.getProperty('hb_' + src) || 'null'); } catch (e) { prev = null; }
+  // state_since: how long the collector has reported this same state, so the watchdog can tell a
+  // collector that is starting from one that has been stuck starting for 15 minutes.
+  P.setProperty('hb_' + src, JSON.stringify({ ts: now, group: String(b.group || '').slice(0, 80), last_msg: b.last_msg || '', version: String(b.version || '').slice(0, 20), state: st,
+    state_since: prev && prev.state === st && prev.state_since ? prev.state_since : now, note: String(b.note || '').slice(0, 140) }));
+  // The collector runs by itself (Wan, 16 Nov 2026): its check-in carries the QR code when WhatsApp wants one (kept
+  // 2 minutes, admins only, never in the public feed), and the answer carries whether an admin is waiting for a code
+  // and one fixed command (restart / update / relink) an admin pressed in Admin -> Progress.
+  var out = { ok: true }, cache = CacheService.getScriptCache();
+  if (b.qr) cache.put('waqr_' + src, JSON.stringify({ qr: String(b.qr).slice(0, 700), ts: now }), 120);
+  else if (st === 'CONNECTED') cache.remove('waqr_' + src);
+  if (cache.get('wawant_' + src)) out.want_qr = true;
+  var ck = 'wacmd_' + src, cmd = P.getProperty(ck);
+  if (cmd) {
+    P.deleteProperty(ck);
+    try { var c = JSON.parse(cmd); if (WA_CMDS.indexOf(c.cmd) >= 0 && Date.now() - Date.parse(c.at) < 30 * 60000) out.cmd = c.cmd; } catch (e) { /* ignore */ }
+  }
+  return out;
+}
+// Admin -> Progress -> WhatsApp. wa_link: the collector's state and, while it waits for a scan, the QR code (asking
+// also tells the collector an admin is watching, so it sends every new code at once). wa_cmd: one fixed command the
+// collector picks up with its next check-in (within a minute while it is not connected, 5 minutes when it is).
+var WA_CMDS = ['restart', 'update', 'relink'];
+function waLink() {
+  var cache = CacheService.getScriptCache(), q = null, pend = null;
+  cache.put('wawant_whatsapp', '1', 180);
+  try { q = JSON.parse(cache.get('waqr_whatsapp') || 'null'); } catch (e) { q = null; }
+  try { pend = JSON.parse(props().getProperty('wacmd_whatsapp') || 'null'); } catch (e) { pend = null; }
+  return { ok: true, now: new Date().toISOString(), hb: collectorStatus().whatsapp || null, qr: q, pending: pend };
+}
+function waCmd(cmd) {
+  if (WA_CMDS.indexOf(cmd) < 0) throw new Error('unknown command');
+  props().setProperty('wacmd_whatsapp', JSON.stringify({ cmd: cmd, at: new Date().toISOString() }));
+  return { ok: true, cmd: cmd };
 }
 
 function collectorStatus() {

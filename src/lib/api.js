@@ -35,7 +35,7 @@ async function fetchJson(url, init, delays) {
   }
   throw last || busy(0)
 }
-const READ_ACTIONS = new Set(['pipeline_status', 'llm_config', 'llm_models', 'review_list', 'ref_list', 'event_list', 'vacancy_list', 'rows_list', 'cert_files', 'admins_get', 'whoami', 'raw_stats', 'img_config'])
+const READ_ACTIONS = new Set(['pipeline_status', 'wa_link', 'llm_config', 'llm_models', 'review_list', 'ref_list', 'event_list', 'vacancy_list', 'rows_list', 'cert_files', 'admins_get', 'whoami', 'raw_stats', 'img_config'])
 
 // Public read. GET <API_URL>?action=data returns every published tab in one
 // JSON body (see apps-script/Code.gs). With no API_URL the page runs on the

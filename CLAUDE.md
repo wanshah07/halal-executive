@@ -693,3 +693,21 @@
     QR (Linked devices), wait for "Listening for new messages", Ctrl+C, `pm2 start he-whatsapp && pm2 save`. A fresh link only holds
     the group's recent messages (15 on 11 Nov), so an older gap needs a chat export (`import.js`). Admin -> Progress shows the
     WhatsApp card and a red "no heartbeat" line until the next beat.
+60. **The WhatsApp collector runs by itself and is relinked from Admin** (Wan, 16 Nov 2026: "make whatsapp always run"). It went
+    silent a second time at 17:12 UTC on 11 Nov, minutes after the relink of rule 59: the copy pm2 started could not open the login
+    folder ("browser is already running", most likely a Chromium left by the hand-run copy), the error was only logged, and pm2
+    showed `online` for 108 hours. `collectors/whatsapp/collect.js` (`collector-4`), service runs only (no flags, or `--listen`):
+    (1) `freeProfile` kills any Chromium on `.wwebjs_auth` and removes its lock files before starting and when leaving; (2) it checks
+    in from the first second with its real state (STARTING, QR, LINKED, CONNECTED): every 5 minutes when connected, 60 s otherwise,
+    30 s while it waits for a scan; (3) the check-in carries the QR, which Code.gs keeps 2 minutes in the cache for admins only
+    (`wa_link`; never in the public feed, and the collector's `note` is stripped from it too); (4) it exits, and pm2 starts it
+    again, when the start fails, when it is stuck 10 minutes, when a QR is unscanned for 30 minutes, when the state is not
+    CONNECTED twice (second check after a minute), or when WhatsApp ends the session, which also clears the dead login so the next
+    start shows a QR; (5) the check-in's answer carries one fixed command an admin pressed (`wa_cmd`: `restart`, `update` = git pull
+    --ff-only + npm install of this repo then restart, `relink` = clear the login): fixed words only, valid 30 minutes, nothing typed
+    in Admin is ever run on the server. Admin -> Progress -> WhatsApp card -> Link WhatsApp / Manage (`WaLink`, QR drawn with
+    `qrcode-generator`). The watchdog mail now says what to do in Admin; STARTING or LINKED is a problem only after 15 minutes
+    (`state_since`). **What it cannot do:** a server that is switched off, or one still on `collector-3`, does not check in, so it
+    takes one SSH visit (the command is shown in the panel). An always-on machine is still needed: WhatsApp has no API for a
+    community group joined by a personal number. Tested against a fake library and a fake Apps Script (9 scenarios) and the panel
+    in Chromium (the drawn QR decodes to the same text); not yet run on the real server.

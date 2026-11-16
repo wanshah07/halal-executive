@@ -120,6 +120,13 @@ Stop the PC copy afterwards (`pm2 delete he-whatsapp` on the PC): two linked
 sessions send every message twice (the Sheet de-duplicates by message id, but
 there is no reason to run both).
 
+Once it runs, it looks after itself (`collector-4`, 16 Nov 2026): it restarts when stuck, and when WhatsApp ends the
+linked session the new QR code appears in **Admin → Progress → WhatsApp → Link WhatsApp**, to be scanned with the phone.
+The same panel has Restart, Update and restart (pulls this repo on the server) and New QR. The server's SSH window is
+only needed when the server itself is off, or to move from an older collector:
+
+    cd ~/halal-executive && git pull && cd collectors/whatsapp && npm install --omit=dev && pm2 restart he-whatsapp
+
 The official WhatsApp Cloud API cannot do this job: it works for a business
 number's own conversations, not for a community group joined by a personal
 number.

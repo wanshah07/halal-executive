@@ -21,6 +21,9 @@ import pkg from 'whatsapp-web.js'
 import qrcode from 'qrcode-terminal'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
+import path from 'node:path'
+import { execFileSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
 import { ingest, post, browserPath } from '../lib.js'
 
 const { Client, LocalAuth, Chat } = pkg
@@ -53,6 +56,34 @@ const norm = (s) => String(s || '').normalize('NFKC').replace(/\s+/g, ' ').trim(
 const exe = browserPath()
 if (!exe) console.warn('No Chrome or Edge found. Install Google Chrome, or set HE_BROWSER in collectors/.env to a chrome.exe / msedge.exe path.')
 else console.log('Browser:', exe)
+// ---- Runs by itself (Wan, 16 Nov 2026: "make whatsapp always run") ----------------------
+// Twice in a week the collector sat `online` in pm2 doing nothing: once waiting on a QR
+// nobody could see, once after a start that failed ("browser is already running") and was
+// only logged. A service run (no flags, or --listen) now:
+//   1. frees the login folder before it starts: a browser left by an earlier run is killed
+//      and its lock files removed;
+//   2. checks in from the first second with its real state (STARTING, QR, LINKED,
+//      CONNECTED), not only once WhatsApp is ready, so Admin always knows what it is doing;
+//   3. sends the QR code with that check-in, so it is scanned in Admin -> Progress, with no
+//      terminal;
+//   4. exits (pm2 starts it again) when the start fails, when it is stuck for 10 minutes,
+//      when a QR went unscanned for 30 minutes, or when WhatsApp ends the session, clearing
+//      the dead login so the next start shows a new QR;
+//   5. takes three fixed commands from Admin with the check-in's answer: restart, update
+//      (git pull + npm install of this repo, then restart) and relink (clear the login).
+const HERE = path.dirname(fileURLToPath(import.meta.url))
+const AUTH = path.resolve('.wwebjs_auth')            // where LocalAuth keeps the login (the folder pm2 starts in)
+const SERVICE = !LIST && (!BACKFILL || process.argv.includes('--listen'))
+function freeProfile() {
+  if (process.platform === 'win32') return
+  for (let i = 0; i < 2; i++) {
+    try { execFileSync('pkill', ['-9', '-f', '--', '--user-data-dir=' + AUTH], { stdio: 'ignore' }) } catch (e) { /* none running */ }
+    try { execFileSync('sleep', ['1']) } catch (e) { /* no sleep binary */ }
+  }
+  for (const f of ['SingletonLock', 'SingletonCookie', 'SingletonSocket']) { try { fs.rmSync(path.join(AUTH, 'session', f), { force: true }) } catch (e) { /* not there */ } }
+}
+if (SERVICE) freeProfile()
+
 // A small cloud server (1 GB) loads WhatsApp Web slowly; give the login and
 // the first sync time instead of the library's short defaults.
 const client = new Client({
@@ -61,17 +92,35 @@ const client = new Client({
   puppeteer: { headless: true, executablePath: exe, protocolTimeout: 300000, args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu'] },
 })
 // Progress after the QR is scanned, so a stall or a logout shows where it happened.
-client.on('authenticated', () => console.log('Linked. Loading chats (a small server can take a few minutes)…'))
+let phase = 'STARTING', phaseAt = Date.now(), note = '', ready = false, lastQr = '', lastQrAt = 0, wantUntil = 0
+let quitting = false, beating = false, lastBeat = 0, bad = 0
+const setPhase = (p, n = '') => { if (phase !== p) phaseAt = Date.now(); phase = p; note = n }
+// Leave cleanly: close the browser (8 s at most), free the login folder, optionally clear a
+// dead login, then exit so pm2 starts a fresh copy.
+async function quit(code, why, wipe) {
+  if (quitting) return
+  quitting = true
+  if (why) console.error(new Date().toISOString(), why)
+  await Promise.race([client.destroy().catch(() => {}), sleep(8000)])
+  if (SERVICE) freeProfile()
+  if (wipe) { for (const d of [AUTH, path.resolve('.wwebjs_cache')]) { try { fs.rmSync(d, { recursive: true, force: true }) } catch (e) { /* in use */ } } }
+  process.exit(code)
+}
+client.on('authenticated', () => { setPhase('LINKED', 'linked, loading chats'); lastQr = ''; console.log('Linked. Loading chats (a small server can take a few minutes)…') })
 client.on('loading_screen', (pct, msg) => console.log(`Loading ${pct}% ${msg || ''}`))
 client.on('change_state', (st) => console.log('State:', st))
-client.on('qr', (qr) => { console.log('Scan with WhatsApp → Settings → Linked devices → Link a device'); qrcode.generate(qr, { small: true }) })
-client.on('auth_failure', (m) => { console.error('Login failed:', m, '\nDelete the .wwebjs_auth folder and run again to get a new QR.'); process.exit(1) })
+client.on('qr', (qr) => {
+  setPhase('QR', 'waiting for the QR to be scanned'); lastQr = qr; lastQrAt = Date.now()
+  console.log('Scan with WhatsApp → Settings → Linked devices → Link a device (or in Admin → Progress → Link WhatsApp)'); qrcode.generate(qr, { small: true })
+  if (SERVICE && Date.now() < wantUntil) beat()     // an admin has the link panel open: send each new code at once
+})
+client.on('auth_failure', (m) => { console.error('Login failed:', m); quit(1, 'Login failed: the saved login is cleared, a new QR follows', true) })
 // WhatsApp logged this device out or the connection dropped: exit so pm2
 // restarts the collector, which reconnects with the saved session.
 client.on('disconnected', (reason) => {
   console.error('Disconnected:', reason)
-  if (reason === 'LOGOUT') console.error('WhatsApp ended this linked session. On the phone, check Linked devices, then run again for a new QR.')
-  process.exit(1)
+  if (reason === 'LOGOUT') console.error('WhatsApp ended this linked session. A new QR follows: scan it in Admin → Progress → Link WhatsApp.')
+  quit(1, '', reason === 'LOGOUT')
 })
 process.on('unhandledRejection', (e) => console.error('Error:', e && (e.message || e)))
 
@@ -129,6 +178,7 @@ let groupId = GROUP_ID
 
 client.on('ready', async () => {
   try {
+    ready = true; setPhase('CONNECTED'); lastQr = ''
     console.log('WhatsApp ready, reading your groups…')
     const groups = await listGroups()
     if (LIST) {
@@ -180,28 +230,62 @@ client.on('ready', async () => {
       if (nofile) console.log(`${nofile} files could not be downloaded (WhatsApp no longer holds old media for linked devices). Get them from the phone: Export chat → Include media, then npm run import-files -- <zip>.`)
       if (!process.argv.includes('--listen')) { await client.destroy(); process.exit(failed ? 1 : 0) }
     }
-    // Heartbeat every 5 minutes: the site's Overview shows "WhatsApp: live"
-    // while these arrive and "offline" when they stop.
-    // Each beat also asks WhatsApp whether this device is still linked. Two
-    // checks in a row that are not CONNECTED: exit, and pm2 restarts the
-    // collector, which reconnects with the saved session (or prints a QR in
-    // `pm2 logs` if the phone unlinked it). Apps Script's watchdog emails the
-    // admins when beats stop or the state is wrong for 15 minutes.
-    let bad = 0
-    const beat = async () => {
-      let st = 'UNKNOWN'
-      try { st = String(await Promise.race([client.getState(), new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 30000))]) || 'UNKNOWN') } catch (e) { st = 'UNKNOWN' }
-      bad = st === 'CONNECTED' ? 0 : bad + 1
-      await post('heartbeat', { source: 'whatsapp', group: GROUP, last_msg: state.lastTs ? new Date(state.lastTs).toISOString() : '', version: 'collector-3', state: st })
-        .catch((e) => console.error('heartbeat failed:', e.message || e))
-      if (bad >= 2) { console.error(new Date().toISOString(), `WhatsApp state ${st} twice in a row; restarting`); await client.destroy().catch(() => {}); process.exit(1) }
-    }
-    beat(); setInterval(beat, 5 * 60 * 1000)
+    if (SERVICE) beat()
     console.log('Listening for new messages… (Ctrl+C to stop)')
   } catch (e) {
-    console.error('Stopped:', e && (e.message || e)); await client.destroy().catch(() => {}); process.exit(1)
+    console.error('Stopped:', e && (e.message || e)); await quit(1)
   }
 })
+
+// ---- Check-in: every 5 minutes when connected, every 30 to 60 seconds while it is not ----
+// The answer can carry `want_qr` (an admin has the link panel open) and one command.
+async function beat() {
+  if (beating || quitting) return
+  beating = true
+  try {
+    let st = phase
+    if (ready) {
+      st = 'UNKNOWN'
+      try { st = String(await Promise.race([client.getState(), new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 30000))]) || 'UNKNOWN') } catch (e) { st = 'UNKNOWN' }
+      bad = st === 'CONNECTED' ? 0 : bad + 1
+    }
+    const body = { source: 'whatsapp', group: GROUP, last_msg: state.lastTs ? new Date(state.lastTs).toISOString() : '', version: 'collector-4', state: st, note }
+    if (!ready && phase === 'QR' && lastQr && Date.now() - lastQrAt < 60000) body.qr = lastQr
+    const r = await post('heartbeat', body).catch((e) => { console.error('heartbeat failed:', e.message || e); return null })
+    lastBeat = Date.now()
+    if (r && r.want_qr) wantUntil = Date.now() + 180000
+    if (r && r.cmd) { beating = false; return await command(String(r.cmd)) }
+    // Two checks in a row that are not CONNECTED: start again with the saved login.
+    if (ready && bad >= 2) await quit(1, `WhatsApp state ${st} twice in a row; restarting`)
+  } finally { beating = false }
+}
+function tick() {
+  if (quitting) return
+  const now = Date.now()
+  if (ready) { if (now - lastBeat >= (bad ? 60000 : 5 * 60000 - 5000)) beat(); return }   // a doubtful state is checked again after a minute
+  if (phase !== 'QR' && now - phaseAt > 10 * 60000) return quit(1, `Stuck in ${phase} for 10 minutes; restarting`)
+  if (phase === 'QR' && now - phaseAt > 30 * 60000 && now > wantUntil) return quit(1, 'The QR was not scanned for 30 minutes; restarting for a fresh one')
+  if (now - lastBeat >= (phase === 'QR' ? 30000 : 60000)) beat()
+}
+// Commands an admin sends from Admin → Progress. Fixed words only: nothing typed in Admin is ever run here.
+async function command(cmd) {
+  console.log(new Date().toISOString(), 'Admin command:', cmd)
+  if (cmd === 'restart') return quit(0, 'Restart asked from Admin')
+  if (cmd === 'relink') return quit(0, 'Relink asked from Admin: the saved login is cleared, a new QR follows', true)
+  if (cmd === 'update') {
+    quitting = true
+    await Promise.race([client.destroy().catch(() => {}), sleep(8000)]); freeProfile()   // the browser's memory is needed for npm
+    let out = ''
+    try {
+      out = execFileSync('git', ['-C', path.resolve(HERE, '../..'), 'pull', '--ff-only'], { timeout: 120000 }).toString().trim().split('\n').pop()
+      execFileSync('npm', ['install', '--omit=dev', '--no-audit', '--no-fund'], { cwd: HERE, timeout: 600000, stdio: 'ignore' })
+      out = 'updated: ' + out
+    } catch (e) { out = 'update failed: ' + String((e && e.message) || e).replace(/\s+/g, ' ').slice(0, 100) }
+    console.log(out)
+    await post('heartbeat', { source: 'whatsapp', group: GROUP, last_msg: state.lastTs ? new Date(state.lastTs).toISOString() : '', version: 'collector-4', state: 'STARTING', note: out.slice(0, 140) }).catch(() => {})
+    process.exit(0)
+  }
+}
 
 // Live messages: matched on the chat id carried by the message itself
 // (m.id.remote), so no chat lookup is needed.
@@ -214,4 +298,7 @@ client.on('message_create', async (m) => {
   } catch (e) { console.error('ingest failed', e.message || e) }
 })
 
-client.initialize()
+// A start that fails (no browser, the login folder in use) must end the process: logged only,
+// it used to leave a copy that pm2 showed as online and that never read a message.
+client.initialize().catch((e) => quit(1, 'Start failed: ' + ((e && e.message) || e)))
+if (SERVICE) { beat(); setInterval(tick, 15000) }
