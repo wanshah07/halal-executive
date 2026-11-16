@@ -106,8 +106,24 @@ if (SERVICE) freeProfile()
 
 // A small cloud server (1 GB) loads WhatsApp Web slowly; give the login and
 // the first sync time instead of the library's short defaults.
+// The library's default user agent is Chrome 101 on a Mac (April 2022). The browser here is far newer, and WhatsApp ended
+// the linked session seconds after a scan (16 Nov 2026, log: "Disconnected: LOGOUT" 16 s after the last QR). A user agent
+// that matches the installed browser is the one thing in our control that can look like an automated old client; it is
+// built from `chromium --version`, and the library default is kept when that cannot be read.
+function browserUA() {
+  try {
+    if (!exe) return undefined
+    const m = /(\d+)\.\d+\.\d+\.\d+/.exec(execFileSync(exe, ['--version'], { timeout: 10000 }).toString())
+    if (!m) return undefined
+    const os = process.platform === 'win32' ? 'Windows NT 10.0; Win64; x64' : process.platform === 'darwin' ? 'Macintosh; Intel Mac OS X 10_15_7' : 'X11; Linux x86_64'
+    return `Mozilla/5.0 (${os}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${m[1]}.0.0.0 Safari/537.36`
+  } catch (e) { return undefined }
+}
+const UA = browserUA()
+console.log('User agent:', UA || 'library default')
 const client = new Client({
   authStrategy: new LocalAuth(),
+  ...(UA ? { userAgent: UA } : {}),
   authTimeoutMs: 180000,
   puppeteer: { headless: true, executablePath: exe, protocolTimeout: 300000, args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu'] },
 })

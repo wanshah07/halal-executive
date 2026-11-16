@@ -738,3 +738,10 @@
     QR (`wacode_` cache, 200 s, admin only) and is typed on the phone under Link a device > Link with phone number instead. The
     number is held in a Script Property only until the collector takes the command (30 minutes at most), is never logged (masked in
     the collector log) and is never in the public feed. Tested against a fake library only: the real WhatsApp pairing is untested.
+    **What the log showed** (16 Nov 2026, 07:51 UTC): after a scan the collector reported `Disconnected: LOGOUT` 16 s after its last QR
+    check-in, 355 s into the run, so WhatsApp Web itself ended the new link at once (the library fires LOGOUT on the page's own
+    `logout` command and then deletes the login folder). It is therefore WhatsApp's side, not a crash or a hand-run copy. The library's
+    default user agent is Chrome 101 on a Mac (2022) against a far newer Chromium here, so `collector-5` builds the user agent from
+    `chromium --version` (`browserUA`; the library default when it cannot be read) and logs it ("User agent: ..."). This is one
+    candidate cause and is NOT proved: a WhatsApp-side limit on new links after many attempts, or on automated clients, would look the
+    same. Next evidence is the exact words the phone shows when the link fails.
