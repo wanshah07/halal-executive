@@ -268,7 +268,7 @@ function cachedPublicData() {
     }
   }
   // The collector's own note (an update result can name a server path) is for admins only.
-  body.collectors = collectorStatus(); Object.keys(body.collectors).forEach(function (k) { delete body.collectors[k].note; });
+  body.collectors = collectorStatus(); Object.keys(body.collectors).forEach(function (k) { delete body.collectors[k].note; delete body.collectors[k].log; });
   var now = Date.now();
   body.news = (body.news || []).filter(function (r) { return !r.expires_at || Date.parse(r.expires_at) > now; });
   return body;
@@ -718,6 +718,8 @@ function tickWatch() {
   var gh = {}; try { gh = githubRuns(); } catch (e) { gh = {}; }
   var done = (gh.runs || []).filter(function (r) { return r.status === 'completed'; }).slice(0, 3);
   if (done.length === 3 && done.every(function (r) { return r.conclusion === 'failure'; })) problems.pipeline = 'The last 3 Pipeline runs failed (#' + done.map(function (r) { return r.n; }).join(', #') + '). ' + done[0].url;
+  // A WhatsApp problem mail carries the collector's last log lines, so the cause is in the mail.
+  if (problems.whatsapp && hb && hb.log) problems.whatsapp += '\n\nLast lines of the collector log (UTC):\n' + String(hb.log).split('\n').slice(-12).join('\n');
   var mail = [];
   ['whatsapp', 'telegram', 'pipeline'].forEach(function (k) {
     var was = w[k] || null;
@@ -2257,7 +2259,7 @@ function heartbeat(b) {
   // state_since: how long the collector has reported this same state, so the watchdog can tell a
   // collector that is starting from one that has been stuck starting for 15 minutes.
   P.setProperty('hb_' + src, JSON.stringify({ ts: now, group: String(b.group || '').slice(0, 80), last_msg: b.last_msg || '', version: String(b.version || '').slice(0, 20), state: st,
-    state_since: prev && prev.state === st && prev.state_since ? prev.state_since : now, note: String(b.note || '').slice(0, 140) }));
+    state_since: prev && prev.state === st && prev.state_since ? prev.state_since : now, note: String(b.note || '').slice(0, 140), log: String(b.log || '').slice(-2400) }));
   // The collector runs by itself (Wan, 16 Nov 2026): its check-in carries the QR code when WhatsApp wants one (kept
   // 2 minutes, admins only, never in the public feed), and the answer carries whether an admin is waiting for a code
   // and one fixed command (restart / update / relink) an admin pressed in Admin -> Progress.

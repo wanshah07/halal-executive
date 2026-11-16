@@ -722,3 +722,13 @@
     The red watchdog line in Progress is `watch` state rewritten every 10 minutes: Admin hides its WhatsApp entry while the live
     card is healthy. Limit: only what WhatsApp Web still holds for the group (a linked device may hold few messages); anything
     older needs a chat export (`import.js`).
+    **Why it logs out, and what is recorded now** (Wan, 16 Nov 2026: "make sure whatsapp always connect"): the relinked session was
+    logged out again about 90 minutes later (state QR at 07:21 UTC, last group message 06:38 UTC) and nothing recorded why. No code
+    can promise a link that WhatsApp may end at any time (phone side, another web session, an automated-client check), so the aim is
+    fewer self-inflicted logouts, the cause on record, and a quick relink. `collector-5`: the last 25 log lines travel with every
+    check-in (`log`, admin only, stripped from the public feed with `note`) and show in Admin -> Progress -> WhatsApp -> Collector
+    log, and in the watchdog mail; the reason a run ended is kept in `collectors/whatsapp/.last-exit.json` and the next start
+    reports it as its note ("previous run ended ... Disconnected: LOGOUT"). The library itself deletes the login on a logout page
+    (`post_logout=1`), and a state outside its accepted list (`UNPAIRED`, `CONFLICT`...) ends the run, so the reason is in the log.
+    `freeProfile` sends TERM and waits before KILL (a hard kill mid-write may corrupt the saved login); a doubtful state needs 3 checks
+    (60 s apart, 60 s timeout) and a loading phase 20 minutes before the collector restarts itself.

@@ -254,6 +254,7 @@ function WaLink({ lang }) {
       {r && <>
         <div className={silent || (hb && hb.state !== 'CONNECTED') ? 'text-amber-800' : 'text-brand-700'}>{stateText}{hb && !silent && hb.version ? ` · ${hb.version}` : ''}</div>
         {hb && hb.note && !silent && <div className="text-xs text-ink-600 [overflow-wrap:anywhere]">{hb.note}</div>}
+        {hb && hb.log && <details className="text-xs"><summary className="cursor-pointer text-ink-600">{t(lang, 'wa_log')}</summary><pre className="mt-1 p-2 bg-muted rounded max-h-56 overflow-auto whitespace-pre-wrap [overflow-wrap:anywhere]">{hb.log}</pre></details>}
         {fresh && <div className="space-y-2"><QrPicture text={r.qr.qr} /><p className="text-ink-600">{t(lang, 'wa_scan')}</p></div>}
         {!fresh && !silent && hb && hb.state !== 'CONNECTED' && <p className="text-ink-600">{t(lang, 'wa_wait_qr')}</p>}
         {silent && <p className="text-ink-600">{t(lang, 'wa_silent_help')} <code className="text-xs [overflow-wrap:anywhere]">cd ~/halal-executive && git pull && cd collectors/whatsapp && npm install --omit=dev && pm2 restart he-whatsapp</code></p>}

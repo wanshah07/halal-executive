@@ -74,11 +74,31 @@ else console.log('Browser:', exe)
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const AUTH = path.resolve('.wwebjs_auth')            // where LocalAuth keeps the login (the folder pm2 starts in)
 const SERVICE = !LIST && (!BACKFILL || process.argv.includes('--listen'))
+// What happened, for Admin (Wan, 16 Nov 2026: it was logged out again within two hours and nothing said why): the last
+// log lines travel with every check-in, and the reason a run ended is kept in a file the next start reports. The QR's
+// ASCII art is left out. Nothing secret is logged here: no token, no message text.
+const LOG = []
+for (const k of ['log', 'warn', 'error']) {
+  const orig = console[k].bind(console)
+  console[k] = (...a) => {
+    orig(...a)
+    const t = a.map((x) => (typeof x === 'string' ? x : x && x.message ? x.message : String(x))).join(' ')
+    for (const line of t.split('\n')) if (line.trim() && !/[█▄▀]/.test(line)) LOG.push(new Date().toISOString().slice(11, 19) + ' ' + line.slice(0, 150))
+    while (LOG.length > 40) LOG.shift()
+  }
+}
+const EXIT_FILE = path.join(HERE, '.last-exit.json')
+let lastExit = null
+try { lastExit = JSON.parse(fs.readFileSync(EXIT_FILE, 'utf8')) } catch (e) { /* first start */ }
+const logText = () => LOG.slice(-25).join('\n').slice(-2400)
 function freeProfile() {
   if (process.platform === 'win32') return
-  for (let i = 0; i < 2; i++) {
-    try { execFileSync('pkill', ['-9', '-f', '--', '--user-data-dir=' + AUTH], { stdio: 'ignore' }) } catch (e) { /* none running */ }
-    try { execFileSync('sleep', ['1']) } catch (e) { /* no sleep binary */ }
+  const stuckDone = () => { for (const f of ['SingletonLock', 'SingletonCookie', 'SingletonSocket']) { try { fs.rmSync(path.join(AUTH, 'session', f), { force: true }) } catch (e) { /* not there */ } } }
+  // TERM first and a few seconds to finish writing the login, then KILL: a hard kill in the middle of a write can
+  // corrupt the saved WhatsApp session and force a new QR.
+  for (const sig of ['-TERM', '-TERM', '-9', '-9']) {
+    try { execFileSync('pkill', [sig, '-f', '--', '--user-data-dir=' + AUTH], { stdio: 'ignore' }) } catch (e) { return stuckDone() }
+    try { execFileSync('sleep', [sig === '-TERM' ? '2' : '1']) } catch (e) { /* no sleep binary */ }
   }
   for (const f of ['SingletonLock', 'SingletonCookie', 'SingletonSocket']) { try { fs.rmSync(path.join(AUTH, 'session', f), { force: true }) } catch (e) { /* not there */ } }
 }
@@ -94,6 +114,7 @@ const client = new Client({
 // Progress after the QR is scanned, so a stall or a logout shows where it happened.
 let phase = 'STARTING', phaseAt = Date.now(), note = '', ready = false, lastQr = '', lastQrAt = 0, wantUntil = 0
 let quitting = false, beating = false, lastBeat = 0, bad = 0
+if (lastExit) { note = `previous run ended ${String(lastExit.at).slice(0, 16)}Z after ${lastExit.ran_s}s: ${lastExit.why}`.slice(0, 140); console.log('Previous run:', JSON.stringify(lastExit)) }
 const setPhase = (p, n = '') => { if (phase !== p) phaseAt = Date.now(); phase = p; note = n }
 // Leave cleanly: close the browser (8 s at most), free the login folder, optionally clear a
 // dead login, then exit so pm2 starts a fresh copy.
@@ -101,6 +122,7 @@ async function quit(code, why, wipe) {
   if (quitting) return
   quitting = true
   if (why) console.error(new Date().toISOString(), why)
+  try { fs.writeFileSync(EXIT_FILE, JSON.stringify({ at: new Date().toISOString(), why: why || (wipe ? 'login cleared' : 'exit ' + code), code, wipe: !!wipe, ran_s: Math.round(process.uptime()) })) } catch (e) { /* read-only folder */ }
   await Promise.race([client.destroy().catch(() => {}), sleep(8000)])
   if (SERVICE) freeProfile()
   if (wipe) { for (const d of [AUTH, path.resolve('.wwebjs_cache')]) { try { fs.rmSync(d, { recursive: true, force: true }) } catch (e) { /* in use */ } } }
@@ -120,7 +142,7 @@ client.on('auth_failure', (m) => { console.error('Login failed:', m); quit(1, 'L
 client.on('disconnected', (reason) => {
   console.error('Disconnected:', reason)
   if (reason === 'LOGOUT') console.error('WhatsApp ended this linked session. A new QR follows: scan it in Admin → Progress → Link WhatsApp.')
-  quit(1, '', reason === 'LOGOUT')
+  quit(1, 'Disconnected: ' + reason, reason === 'LOGOUT')
 })
 process.on('unhandledRejection', (e) => console.error('Error:', e && (e.message || e)))
 
@@ -278,24 +300,24 @@ async function beat() {
     let st = phase
     if (ready) {
       st = 'UNKNOWN'
-      try { st = String(await Promise.race([client.getState(), new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 30000))]) || 'UNKNOWN') } catch (e) { st = 'UNKNOWN' }
+      try { st = String(await Promise.race([client.getState(), new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 60000))]) || 'UNKNOWN') } catch (e) { st = 'UNKNOWN' }
       bad = st === 'CONNECTED' ? 0 : bad + 1
     }
-    const body = { source: 'whatsapp', group: GROUP, last_msg: lastMsgMs() ? new Date(lastMsgMs()).toISOString() : '', version: 'collector-4', state: st, note }
+    const body = { source: 'whatsapp', group: GROUP, last_msg: lastMsgMs() ? new Date(lastMsgMs()).toISOString() : '', version: 'collector-5', state: st, note, log: logText() }
     if (!ready && phase === 'QR' && lastQr && Date.now() - lastQrAt < 60000) body.qr = lastQr
     const r = await post('heartbeat', body).catch((e) => { console.error('heartbeat failed:', e.message || e); return null })
     lastBeat = Date.now()
     if (r && r.want_qr) wantUntil = Date.now() + 180000
     if (r && r.cmd) { beating = false; return await command(String(r.cmd)) }
     // Two checks in a row that are not CONNECTED: start again with the saved login.
-    if (ready && bad >= 2) await quit(1, `WhatsApp state ${st} twice in a row; restarting`)
+    if (ready && bad >= 3) await quit(1, `WhatsApp state ${st} three times in a row; restarting`)
   } finally { beating = false }
 }
 function tick() {
   if (quitting) return
   const now = Date.now()
   if (ready) { if (now - lastBeat >= (bad ? 60000 : 5 * 60000 - 5000)) beat(); return }   // a doubtful state is checked again after a minute
-  if (phase !== 'QR' && now - phaseAt > 10 * 60000) return quit(1, `Stuck in ${phase} for 10 minutes; restarting`)
+  if (phase !== 'QR' && now - phaseAt > 20 * 60000) return quit(1, `Stuck in ${phase} for 20 minutes; restarting`)
   if (phase === 'QR' && now - phaseAt > 30 * 60000 && now > wantUntil) return quit(1, 'The QR was not scanned for 30 minutes; restarting for a fresh one')
   if (now - lastBeat >= (phase === 'QR' ? 30000 : 60000)) beat()
 }
@@ -315,7 +337,7 @@ async function command(cmd) {
       out = 'updated: ' + out
     } catch (e) { out = 'update failed: ' + String((e && e.message) || e).replace(/\s+/g, ' ').slice(0, 100) }
     console.log(out)
-    await post('heartbeat', { source: 'whatsapp', group: GROUP, last_msg: lastMsgMs() ? new Date(lastMsgMs()).toISOString() : '', version: 'collector-4', state: 'STARTING', note: out.slice(0, 140) }).catch(() => {})
+    await post('heartbeat', { source: 'whatsapp', group: GROUP, last_msg: lastMsgMs() ? new Date(lastMsgMs()).toISOString() : '', version: 'collector-5', state: 'STARTING', note: out.slice(0, 140), log: logText() }).catch(() => {})
     process.exit(0)
   }
 }

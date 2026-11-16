@@ -9,3 +9,4 @@ collectors/**/state.json
 pipeline/__pycache__/
 pipeline/.state/
 *.log
+collectors/whatsapp/.last-exit.json
