@@ -732,3 +732,9 @@
     (`post_logout=1`), and a state outside its accepted list (`UNPAIRED`, `CONFLICT`...) ends the run, so the reason is in the log.
     `freeProfile` sends TERM and waits before KILL (a hard kill mid-write may corrupt the saved login); a doubtful state needs 3 checks
     (60 s apart, 60 s timeout) and a loading phase 20 minutes before the collector restarts itself.
+    **Link with a code instead of a QR** (Wan, 16 Nov 2026: "still cannot link the device"): Admin -> Progress -> WhatsApp -> "Cannot
+    scan? Link with a code instead" takes the WhatsApp number (digits, country code, 9 to 15) and sends `wa_cmd` `pair`; the collector
+    (`collector-5`, after Update) calls the library's `requestPairingCode`, the 8-character code travels with the check-in like the
+    QR (`wacode_` cache, 200 s, admin only) and is typed on the phone under Link a device > Link with phone number instead. The
+    number is held in a Script Property only until the collector takes the command (30 minutes at most), is never logged (masked in
+    the collector log) and is never in the public feed. Tested against a fake library only: the real WhatsApp pairing is untested.

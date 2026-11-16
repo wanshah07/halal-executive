@@ -368,7 +368,7 @@ function doPost(e) {
     if (a === 'raw_stats')    { var rs0 = rawStats(); rs0.ok = true; return json(rs0); }
     if (a === 'pipeline_status') { needAdmin(); return json(pipelineStatus()); }
     if (a === 'wa_link')      { needAdmin(); return json(waLink()); }                // the QR and state of the WhatsApp collector
-    if (a === 'wa_cmd')       { needAdmin(); return json(waCmd(String(body.cmd || ''))); }
+    if (a === 'wa_cmd')       { needAdmin(); return json(waCmd(String(body.cmd || ''), body.phone)); }
     if (a === 'requeue_files') { needAdmin(); return json(requeueFiles()); } // writes only status cells, no lock
     if (a === 'event_from_poster') { needAdmin(); return json(eventFromPoster(body)); } // stores the poster and reads it; no Sheet write
     if (a === 'faq_rephrase')  { needAdmin(); return json(faqRephrase(body)); } // model call, no Sheet write
@@ -2265,29 +2265,34 @@ function heartbeat(b) {
   // and one fixed command (restart / update / relink) an admin pressed in Admin -> Progress.
   var out = { ok: true }, cache = CacheService.getScriptCache();
   if (b.qr) cache.put('waqr_' + src, JSON.stringify({ qr: String(b.qr).slice(0, 700), ts: now }), 120);
-  else if (st === 'CONNECTED') cache.remove('waqr_' + src);
+  else if (st === 'CONNECTED') { cache.remove('waqr_' + src); cache.remove('wacode_' + src); }
+  if (b.code) cache.put('wacode_' + src, JSON.stringify({ code: String(b.code).replace(/[^A-Za-z0-9-]/g, '').slice(0, 12), ts: now }), 200);
   if (cache.get('wawant_' + src)) out.want_qr = true;
   var ck = 'wacmd_' + src, cmd = P.getProperty(ck);
   if (cmd) {
     P.deleteProperty(ck);
-    try { var c = JSON.parse(cmd); if (WA_CMDS.indexOf(c.cmd) >= 0 && Date.now() - Date.parse(c.at) < 30 * 60000) out.cmd = c.cmd; } catch (e) { /* ignore */ }
+    try { var c = JSON.parse(cmd); if (WA_CMDS.indexOf(c.cmd) >= 0 && Date.now() - Date.parse(c.at) < 30 * 60000) out.cmd = c.cmd === 'pair' ? 'pair:' + String(c.phone || '').replace(/\D/g, '') : c.cmd; } catch (e) { /* ignore */ }
   }
   return out;
 }
 // Admin -> Progress -> WhatsApp. wa_link: the collector's state and, while it waits for a scan, the QR code (asking
 // also tells the collector an admin is watching, so it sends every new code at once). wa_cmd: one fixed command the
 // collector picks up with its next check-in (within a minute while it is not connected, 5 minutes when it is).
-var WA_CMDS = ['restart', 'update', 'relink', 'catchup'];
+var WA_CMDS = ['restart', 'update', 'relink', 'catchup', 'pair'];
 function waLink() {
-  var cache = CacheService.getScriptCache(), q = null, pend = null;
+  var cache = CacheService.getScriptCache(), q = null, pend = null, pc = null;
   cache.put('wawant_whatsapp', '1', 180);
   try { q = JSON.parse(cache.get('waqr_whatsapp') || 'null'); } catch (e) { q = null; }
+  try { pc = JSON.parse(cache.get('wacode_whatsapp') || 'null'); } catch (e) { pc = null; }
   try { pend = JSON.parse(props().getProperty('wacmd_whatsapp') || 'null'); } catch (e) { pend = null; }
-  return { ok: true, now: new Date().toISOString(), hb: collectorStatus().whatsapp || null, qr: q, pending: pend };
+  return { ok: true, now: new Date().toISOString(), hb: collectorStatus().whatsapp || null, qr: q, code: pc, pending: pend ? { cmd: pend.cmd, at: pend.at } : null };
 }
-function waCmd(cmd) {
+function waCmd(cmd, phone) {
   if (WA_CMDS.indexOf(cmd) < 0) throw new Error('unknown command');
-  props().setProperty('wacmd_whatsapp', JSON.stringify({ cmd: cmd, at: new Date().toISOString() }));
+  var rec = { cmd: cmd, at: new Date().toISOString() };
+  // The phone number is digits only (9 to 15), held until the collector takes the command (at most 30 minutes), never logged.
+  if (cmd === 'pair') { phone = String(phone || '').replace(/\D/g, ''); if (!/^\d{9,15}$/.test(phone)) throw new Error('Type the WhatsApp number with its country code, digits only, for example 60123456789.'); rec.phone = phone; }
+  props().setProperty('wacmd_whatsapp', JSON.stringify(rec));
   return { ok: true, cmd: cmd };
 }
 

@@ -112,7 +112,7 @@ const client = new Client({
   puppeteer: { headless: true, executablePath: exe, protocolTimeout: 300000, args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu'] },
 })
 // Progress after the QR is scanned, so a stall or a logout shows where it happened.
-let phase = 'STARTING', phaseAt = Date.now(), note = '', ready = false, lastQr = '', lastQrAt = 0, wantUntil = 0
+let phase = 'STARTING', phaseAt = Date.now(), note = '', ready = false, lastQr = '', lastQrAt = 0, wantUntil = 0, lastCode = '', lastCodeAt = 0
 let quitting = false, beating = false, lastBeat = 0, bad = 0
 if (lastExit) { note = `previous run ended ${String(lastExit.at).slice(0, 16)}Z after ${lastExit.ran_s}s: ${lastExit.why}`.slice(0, 140); console.log('Previous run:', JSON.stringify(lastExit)) }
 const setPhase = (p, n = '') => { if (phase !== p) phaseAt = Date.now(); phase = p; note = n }
@@ -132,10 +132,13 @@ client.on('authenticated', () => { setPhase('LINKED', 'linked, loading chats'); 
 client.on('loading_screen', (pct, msg) => console.log(`Loading ${pct}% ${msg || ''}`))
 client.on('change_state', (st) => console.log('State:', st))
 client.on('qr', (qr) => {
-  setPhase('QR', 'waiting for the QR to be scanned'); lastQr = qr; lastQrAt = Date.now()
+  setPhase('QR', Date.now() - lastCodeAt < 170000 ? 'pairing code ready' : 'waiting for the QR to be scanned'); lastQr = qr; lastQrAt = Date.now()
   console.log('Scan with WhatsApp → Settings → Linked devices → Link a device (or in Admin → Progress → Link WhatsApp)'); qrcode.generate(qr, { small: true })
   if (SERVICE && Date.now() < wantUntil) beat()     // an admin has the link panel open: send each new code at once
 })
+// Link with a phone number instead of a QR (Wan, 16 Nov 2026: "still cannot link"): WhatsApp gives an 8-character code
+// that is typed on the phone (Linked devices, Link a device, Link with phone number instead). It renews every ~3 minutes.
+client.on('code', (c) => { lastCode = String(c); lastCodeAt = Date.now(); note = 'pairing code ready'; console.log('Pairing code received'); if (SERVICE) beat() })
 client.on('auth_failure', (m) => { console.error('Login failed:', m); quit(1, 'Login failed: the saved login is cleared, a new QR follows', true) })
 // WhatsApp logged this device out or the connection dropped: exit so pm2
 // restarts the collector, which reconnects with the saved session.
@@ -305,6 +308,7 @@ async function beat() {
     }
     const body = { source: 'whatsapp', group: GROUP, last_msg: lastMsgMs() ? new Date(lastMsgMs()).toISOString() : '', version: 'collector-5', state: st, note, log: logText() }
     if (!ready && phase === 'QR' && lastQr && Date.now() - lastQrAt < 60000) body.qr = lastQr
+    if (!ready && phase === 'QR' && lastCode && Date.now() - lastCodeAt < 170000) body.code = lastCode
     const r = await post('heartbeat', body).catch((e) => { console.error('heartbeat failed:', e.message || e); return null })
     lastBeat = Date.now()
     if (r && r.want_qr) wantUntil = Date.now() + 180000
@@ -323,7 +327,14 @@ function tick() {
 }
 // Commands an admin sends from Admin → Progress. Fixed words only: nothing typed in Admin is ever run here.
 async function command(cmd) {
-  console.log(new Date().toISOString(), 'Admin command:', cmd)
+  console.log(new Date().toISOString(), 'Admin command:', cmd.replace(/\d{9,15}$/, '***'))   // the phone number is never logged
+  const pair = /^pair:(\d{9,15})$/.exec(cmd)
+  if (pair) {
+    if (phase !== 'QR' || ready) { note = 'pairing code: not waiting for a link now'; return }
+    try { lastCode = ''; const c = await client.requestPairingCode(pair[1], true); if (c) { lastCode = String(c); lastCodeAt = Date.now(); note = 'pairing code ready' } }
+    catch (e) { note = 'pairing code failed: ' + String((e && e.message) || e).slice(0, 80); console.error(note) }
+    return beat()
+  }
   if (cmd === 'restart') return quit(0, 'Restart asked from Admin')
   if (cmd === 'catchup') { await catchUp('Admin'); return }
   if (cmd === 'relink') return quit(0, 'Relink asked from Admin: the saved login is cleared, a new QR follows', true)

@@ -237,10 +237,11 @@ function WaLink({ lang }) {
   const [sent, setSent] = useState('')
   const load = () => adminPost('wa_link').then((x) => { setR(x); setErr('') }).catch((e) => setErr(/unknown action/i.test(e.message) ? t(lang, 'wa_old_gs') : e.message))
   useEffect(() => { load(); const id = setInterval(() => { if (document.visibilityState === 'visible') load() }, 4000); return () => clearInterval(id) }, [])
-  async function cmd(c) {
+  const [phone, setPhone] = useState('')
+  async function cmd(c, extra) {
     if (c === 'relink' && !window.confirm(t(lang, 'wa_relink_confirm'))) return
     setErr('')
-    try { await adminPost('wa_cmd', { cmd: c }); setSent(c); load() } catch (e) { setErr(/unknown action/i.test(e.message) ? t(lang, 'wa_old_gs') : e.message) }
+    try { await adminPost('wa_cmd', { cmd: c, ...(extra || {}) }); setSent(c); load() } catch (e) { setErr(/unknown action/i.test(e.message) ? t(lang, 'wa_old_gs') : e.message) }
   }
   const hb = r && r.hb, now = r ? Date.parse(r.now) : Date.now()
   const silent = !hb || now - Date.parse(hb.ts) > 4 * 60000
@@ -257,6 +258,17 @@ function WaLink({ lang }) {
         {hb && hb.log && <details className="text-xs"><summary className="cursor-pointer text-ink-600">{t(lang, 'wa_log')}</summary><pre className="mt-1 p-2 bg-muted rounded max-h-56 overflow-auto whitespace-pre-wrap [overflow-wrap:anywhere]">{hb.log}</pre></details>}
         {fresh && <div className="space-y-2"><QrPicture text={r.qr.qr} /><p className="text-ink-600">{t(lang, 'wa_scan')}</p></div>}
         {!fresh && !silent && hb && hb.state !== 'CONNECTED' && <p className="text-ink-600">{t(lang, 'wa_wait_qr')}</p>}
+        {hb && hb.state === 'QR' && !silent && (
+          <div className="rounded-lg border border-line p-3 space-y-2">
+            <div className="font-medium">{t(lang, 'wa_code_title')}</div>
+            <p className="text-ink-600">{t(lang, 'wa_code_help')}</p>
+            <div className="flex flex-wrap gap-2 items-center">
+              <input className="input w-auto min-w-48" inputMode="numeric" autoComplete="off" value={phone} onChange={(e) => setPhone(e.target.value.replace(/[^\d]/g, '').slice(0, 15))} placeholder="60123456789" aria-label={t(lang, 'wa_code_phone')} />
+              <button type="button" className="btn" disabled={phone.length < 9} onClick={() => cmd('pair', { phone })}>{t(lang, 'wa_code_btn')}</button>
+            </div>
+            {r.code && now - Date.parse(r.code.ts) < 175000 && <div className="text-3xl font-mono tracking-widest select-all" aria-live="polite">{r.code.code.length === 8 ? r.code.code.slice(0, 4) + '-' + r.code.code.slice(4) : r.code.code}</div>}
+          </div>
+        )}
         {silent && <p className="text-ink-600">{t(lang, 'wa_silent_help')} <code className="text-xs [overflow-wrap:anywhere]">cd ~/halal-executive && git pull && cd collectors/whatsapp && npm install --omit=dev && pm2 restart he-whatsapp</code></p>}
         {(sent || r.pending) && <p className="text-xs text-ink-600">{t(lang, 'wa_sent').replace('{c}', sent || r.pending.cmd)}</p>}
         <div className="flex flex-wrap gap-2">
