@@ -748,3 +748,10 @@
     **Terminal code, no QR** (Wan, 16 Nov 2026: "the QR changes so fast I cannot link"): `HE_PAIR_PHONE=<number with country code> node collect.js
     --backfill --listen` asks WhatsApp for a pairing code as soon as it wants a link and prints it on the terminal only (not through the
     log that goes to Admin). It does not depend on Code.gs. The number is read from the environment and never logged.
+    **Same LOGOUT with a code** (16 Nov 2026, 09:10 UTC): the terminal pairing code printed (CVLE-2F3Q) and WhatsApp ended the link
+    straight after, again with no `authenticated` and no state change in between. So the QR is not the problem: WhatsApp refuses or
+    drops the new companion link by either route. Five link attempts in one day (05:52, ~06:xx, 07:51, 09:10) may have triggered a
+    limit on new links; not proved. While linking, the collector now logs the page's own socket state and page path
+    (`watchLink`: "Socket state: ...", "Page: ..."), so the next attempt shows where the handshake ends. Fallbacks that do not need the
+    link: Telegram (live) and a chat export imported in Admin (`manual_upload` of the .txt); a spare number in the group would keep
+    the main number out of an unofficial client's reach.

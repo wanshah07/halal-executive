@@ -147,7 +147,24 @@ async function quit(code, why, wipe) {
 client.on('authenticated', () => { setPhase('LINKED', 'linked, loading chats'); lastQr = ''; console.log('Linked. Loading chats (a small server can take a few minutes)…') })
 client.on('loading_screen', (pct, msg) => console.log(`Loading ${pct}% ${msg || ''}`))
 client.on('change_state', (st) => console.log('State:', st))
+// While a link is being made, record what WhatsApp Web itself does (its socket state and page changes), so the next
+// "LOGOUT right after linking" shows where in the handshake it happened. Only state words and the page path are logged.
+let watchingLink = false
+function watchLink() {
+  if (watchingLink || !client.pupPage) return
+  watchingLink = true
+  try { client.pupPage.on('framenavigated', (f) => { try { if (f === client.pupPage.mainFrame()) console.log('Page:', f.url().replace(/^https?:\/\/[^/]+/, '').slice(0, 60)) } catch (e) { /* closed */ } }) } catch (e) { /* closed */ }
+  let last = ''
+  const iv = setInterval(async () => {
+    if (ready || quitting) return clearInterval(iv)
+    try {
+      const st = await client.pupPage.evaluate(() => { try { return String(window.require('WAWebSocketModel').Socket.state) } catch (e) { return 'no-socket' } })
+      if (typeof st === 'string' && st !== last) { last = st; console.log('Socket state:', st) }
+    } catch (e) { /* page closed or reloading */ }
+  }, 2000)
+}
 client.on('qr', (qr) => {
+  watchLink()
   setPhase('QR', Date.now() - lastCodeAt < 170000 ? 'pairing code ready' : 'waiting for the QR to be scanned'); lastQr = qr; lastQrAt = Date.now()
   console.log('Scan with WhatsApp → Settings → Linked devices → Link a device (or in Admin → Progress → Link WhatsApp)'); qrcode.generate(qr, { small: true })
   if (SERVICE && Date.now() < wantUntil) beat()     // an admin has the link panel open: send each new code at once
