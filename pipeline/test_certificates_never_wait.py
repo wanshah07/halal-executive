@@ -67,6 +67,65 @@ class OrganiserTest(unittest.TestCase):
         self.assertIn("title-only", certs[0]["notes"])
 
 
+class DuplicateCardsTest(unittest.TestCase):
+    """440 empty cards for two certificate pictures (Wan, 20 Nov 2026: "why sijil berulang")."""
+
+    def docs(self):
+        return [cert_doc(id="DOC-0037", content_hash="H1", drive_file_id="ok1", notes="expiry 2029"),
+                cert_doc(id="DOC-0069", content_hash="H1", drive_file_id="dead1", notes="file missing in Drive")]
+
+    def certs(self):
+        keeper = {"id": "CERT-0021", "company": "Basso Fedele", "cert_no": "1394", "doc_id": "DOC-0037", "status": "current", "notes": "MIRELD full-read", "created_at": "2026-10-29"}
+        junk = [{"id": f"CERT-{i:04d}", "company": "", "cert_no": "", "doc_id": "DOC-0037" if i % 2 else "DOC-0069", "status": "current", "notes": "file found again", "created_at": f"2026-11-1{i % 9}"} for i in range(34, 40)]
+        return [keeper] + junk
+
+    def run_clean(self, certs, docs):
+        deleted = []
+        def read(tab):
+            return {"Certificates": certs, "Documents": docs}[tab]
+        with patch.object(organiser.he_api, "read", side_effect=read), patch.object(organiser.he_api, "delete", side_effect=lambda tab, ids: deleted.append((tab, list(ids)))):
+            n = organiser.clean_duplicate_certificates()
+        return n, deleted
+
+    def test_empty_copies_go_and_the_described_certificate_stays(self):
+        n, deleted = self.run_clean(self.certs(), self.docs())
+        gone = {i for tab, ids in deleted if tab == "Certificates" for i in ids}
+        self.assertEqual(n, 6)
+        self.assertNotIn("CERT-0021", gone)
+        self.assertEqual(len(gone), 6)
+
+    def test_the_copy_documents_with_a_missing_file_go_too(self):
+        n, deleted = self.run_clean(self.certs(), self.docs())
+        self.assertIn(("Documents", ["DOC-0069"]), deleted)
+
+    def test_a_row_an_admin_showed_is_never_removed(self):
+        certs = self.certs()
+        certs[2]["notes"] = "shown by admin"
+        n, deleted = self.run_clean(certs, self.docs())
+        gone = {i for tab, ids in deleted if tab == "Certificates" for i in ids}
+        self.assertNotIn(certs[2]["id"], gone)
+
+    def test_two_different_certificates_are_not_merged(self):
+        certs = [{"id": "CERT-0001", "company": "A", "cert_no": "1", "doc_id": "DOC-1", "created_at": "1"},
+                 {"id": "CERT-0002", "company": "B", "cert_no": "2", "doc_id": "DOC-2", "created_at": "2"}]
+        docs = [cert_doc(id="DOC-1", content_hash="X"), cert_doc(id="DOC-2", content_hash="Y")]
+        n, deleted = self.run_clean(certs, docs)
+        self.assertEqual((n, deleted), (0, []))
+
+    def test_a_copy_whose_file_is_missing_makes_no_card(self):
+        docs = [cert_doc(id="DOC-0037", content_hash="H1", drive_file_id="ok1"), cert_doc(id="DOC-0070", content_hash="H1", drive_file_id="dead", status="inbox")]
+        written = []
+        keeper = {"id": "CERT-0021", "company": "Basso Fedele", "cert_no": "1394", "issuer": "Halal Italia", "doc_id": "DOC-0037", "status": "current", "notes": "MIRELD full-read"}
+        def read(tab):
+            return {"Documents": docs, "Certificates": [keeper]}.get(tab, [])
+        with patch.object(organiser.he_api, "read", side_effect=read), patch.object(organiser.he_api, "upsert", side_effect=lambda t, r: written.append((t, r))), \
+             patch.object(organiser.he_api, "run_log"), patch.object(organiser, "vision_ready", return_value=False), \
+             patch.object(organiser.he_api, "drive_get", side_effect=he_api.ApiError("No item with the given ID could be found")):
+            organiser.run()
+        self.assertFalse([r for t, rows in written if t == "Certificates" for r in rows], "a copy of a filed certificate must not get a card")
+        self.assertTrue(any(t == "Documents" and r["status"] == "duplicate" for t, rows in written for r in rows))
+
+
 class NoFileTest(unittest.TestCase):
     def test_certificates_without_a_file_leave_the_site_and_come_back_with_it(self):
         certs = [

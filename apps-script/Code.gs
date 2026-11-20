@@ -913,20 +913,25 @@ function certHeal() {
       var ids = certFileIds(c); if (!ids.length) return;
       var st = ids.map(driveFileState);
       if (st.indexOf('ok') >= 0 || st.indexOf('unsure') >= 0) return;
-      var patch = null, ti = st.indexOf('trash');
+      var patch = null, ti = st.indexOf('trash'), relinkFrom = '', relinkTo = '';
       if (ti >= 0) { DriveApp.getFileById(ids[ti]).setTrashed(false); patch = {}; back++; }
       else {
         var mine = docs.filter(function (d) { return String(d.id) === String(c.doc_id); })[0], h = mine && String(mine.content_hash || '');
         if (!h) return;
         var twin = docs.filter(function (d) { return String(d.id) !== String(mine.id) && String(d.content_hash || '') === h && d.drive_file_id && driveFileState(d.drive_file_id) === 'ok'; })[0];
         if (!twin) return;
-        patch = { doc_id: twin.id, drive_url: twin.drive_url || ('https://drive.google.com/file/d/' + twin.drive_file_id + '/view') }; relinked++;
+        patch = { doc_id: twin.id, drive_url: twin.drive_url || ('https://drive.google.com/file/d/' + twin.drive_file_id + '/view') }; relinked++; relinkFrom = String(mine.id); relinkTo = String(twin.id);
       }
       if (!c.drive_url && !patch.drive_url) { var dd = docs.filter(function (d) { return String(d.id) === String(patch.doc_id || c.doc_id); })[0]; if (dd && dd.drive_url) patch.drive_url = dd.drive_url; }
       if (/the file is not in Drive/i.test(String(c.notes || ''))) patch.notes = 'file found again';
       if (c.status === 'nofile') patch.status = 'current';
       patch.updated_at = new Date().toISOString();
       updateByIds('Certificates', [c.id], patch);
+      // The document row left behind is a copy of the one the certificate now uses. Left as it was, the organiser saw a
+      // certificate document with no card and made a new empty card for it every 30 minutes (440 by 20 Nov 2026).
+      if (relinkFrom && !certs.some(function (x) { return String(x.id) !== String(c.id) && String(x.doc_id) === relinkFrom; })) {
+        updateByIds('Documents', [relinkFrom], { status: 'duplicate', notes: 'same bytes as ' + relinkTo, updated_at: new Date().toISOString() });
+      }
     } catch (e) { console.error('cert heal ' + c.id + ': ' + e); }
   });
   return { restored: back, relinked: relinked };

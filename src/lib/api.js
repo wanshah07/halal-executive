@@ -256,9 +256,23 @@ export function markText(text, key) {
     .replace(/\s+([.,;:!?])/g, '$1').replace(/\s{2,}/g, ' ').trim()
   return asks.length ? (clean + ' ' + asks.join(' ')).trim() : clean
 }
+// One card per certificate file (Wan, 20 Nov 2026: "why sijil berulang"). Rows that name the same document are one
+// certificate: the one with details stays, empty copies go. The pipeline also removes them from the Sheet; this keeps the
+// page right in the meantime and for an older Sheet.
+const hasDetails = (c) => !!(String(c.company || '').trim() || String(c.cert_no || '').trim() || String(c.products || '').trim() || String(c.issuer || '').trim())
+export function dedupeCerts(list) {
+  const best = new Map()
+  for (const c of list) {
+    const k = c.doc_id ? 'd:' + c.doc_id : 'i:' + c.id
+    const b = best.get(k)
+    if (!b || (hasDetails(c) && !hasDetails(b))) best.set(k, c)
+  }
+  const keep = new Set([...best.values()])
+  return list.filter((c) => keep.has(c))
+}
 export function stripMarks(data) {
   // A certificate whose Drive file is gone is off the site (Wan, 31 Oct 2026); Admin still lists it. An older Code.gs still sends it, so the page drops it too.
-  if (Array.isArray(data.certificates)) data.certificates = data.certificates.filter((c) => c.status !== 'nofile')
+  if (Array.isArray(data.certificates)) data.certificates = dedupeCerts(data.certificates.filter((c) => c.status !== 'nofile'))
   for (const k of ['faq', 'guidelines', 'events', 'documents', 'certificates', 'news']) {
     if (!Array.isArray(data[k])) continue
     data[k] = data[k].map(cleanRow)

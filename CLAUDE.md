@@ -755,3 +755,16 @@
     (`watchLink`: "Socket state: ...", "Page: ..."), so the next attempt shows where the handshake ends. Fallbacks that do not need the
     link: Telegram (live) and a chat export imported in Admin (`manual_upload` of the .txt); a spare number in the group would keep
     the main number out of an unofficial client's reach.
+61. **One card per certificate file** (Wan, 20 Nov 2026: "why sijil berulang upload, please fix all bugs"). The Halal Certificates page
+    showed hundreds of cards "details still being read" for two pictures: 440 rows by 20 Nov, two more every 30 minutes since 16 Nov.
+    Cause, three faults in a chain. (1) The catch-up after the 16 Nov relink re-sent old group pictures; `certificate_docs` in
+    `process_raw.py` (the "certificate text found" loop) checked only the Drive file id, not the bytes (`sha256`), so each re-send
+    became another Documents row with the same `content_hash`. (2) Those copies' files were not found, so `drive_organiser.gone_file`
+    made a title-only `nofile` card for each. (3) `certHeal` (rule 57) saw a card with a dead file and a twin document with the same
+    hash, pointed the card at the twin and showed it, which left the copy document with no card, so the organiser made a new empty
+    card for it on the next run, for ever. Fixes: the hash is checked in every Documents-creating loop; the organiser marks a
+    certificate document that has the same bytes as a filed one `duplicate` before it reads the file and in `gone_file`, and makes
+    no card for it; `certHeal` marks the document it leaves behind `duplicate`; `clean_duplicate_certificates` (organiser, every
+    run, 400 rows at most, deletes in chunks of 40) keeps the described card of each file and removes empty or exact copies, never a
+    `shown by admin` or `CERT-M` row, plus the copy documents whose file is missing; the page also shows one card per `doc_id`
+    (`dedupeCerts` in api.js). Tests in `pipeline/test_certificates_never_wait.py` (`DuplicateCardsTest`).

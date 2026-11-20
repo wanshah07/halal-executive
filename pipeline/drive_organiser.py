@@ -153,11 +153,81 @@ def holder_of(d):
     return parts[1] if len(parts) > 1 and parts[1] and CERT_TITLE.search(parts[0]) else ""
 
 
+def _words(x):
+    return re.sub(r"\s+", " ", str(x or "")).strip().lower()
+
+
+def _empty_cert(c):
+    """A certificate row with nothing read from it: no holder, number, issuer, products or scope."""
+    return not any(str(c.get(k) or "").strip() for k in ("company", "cert_no", "products", "issuer", "scope"))
+
+
+def clean_duplicate_certificates(limit=400):
+    """One card per certificate file (Wan, 20 Nov 2026: "why sijil berulang"). On 16 Nov the group's pictures were sent
+    again (a catch-up after a relink); each copy became a Documents row with the SAME bytes, its Drive file was not found, and
+    every 30 minutes a card without details was made for it, 440 in four days. Rows that share one file (the same content hash,
+    or the same document) are one certificate: the one with details stays, empty copies and exact copies go. A row an admin made
+    or showed ("shown by admin", CERT-M...) is never removed. The duplicate Documents rows that only had a missing file go too.
+    At most `limit` rows a run, so a big pile is cleared over a few runs."""
+    certs = he_api.read("Certificates")
+    docs = he_api.read("Documents")
+    by_id = {str(d["id"]): d for d in docs}
+
+    def key(c):
+        d = by_id.get(str(c.get("doc_id")))
+        h = str(d.get("content_hash") or "") if d else ""
+        return ("h:" + h) if h else ("d:" + str(c.get("doc_id") or c["id"]))
+
+    groups = {}
+    for c in certs:
+        groups.setdefault(key(c), []).append(c)
+    drop = []
+    for rows in groups.values():
+        if len(rows) < 2:
+            continue
+        rows.sort(key=lambda c: (_empty_cert(c), str(c.get("created_at") or "9"), str(c["id"])))
+        keep = rows[0]
+        for c in rows[1:]:
+            if "shown by admin" in str(c.get("notes") or "") or str(c["id"]).startswith("CERT-M"):
+                continue
+            same = _words(c.get("company")) == _words(keep.get("company")) and _words(c.get("cert_no")) == _words(keep.get("cert_no"))
+            if _empty_cert(c) or same:
+                drop.append(str(c["id"]))
+    drop = drop[:limit]
+    removed = 0
+    for i in range(0, len(drop), 40):
+        try:
+            he_api.delete("Certificates", drop[i:i + 40]); removed += len(drop[i:i + 40])
+        except he_api.ApiError as e:
+            print("duplicate certificates: delete failed:", str(e)[:120]); break
+    gone = set(drop[:removed])
+    kept_docs = {str(c.get("doc_id")) for c in certs if str(c["id"]) not in gone}
+    alive_hash = {str(d.get("content_hash")) for d in docs if d.get("content_hash") and "file missing" not in str(d.get("notes") or "") and d.get("status") in ("current", "draft")}
+    orphan = [str(d["id"]) for d in docs if d.get("kind") == "certificate" and "file missing" in str(d.get("notes") or "")
+              and str(d.get("content_hash") or "") in alive_hash and str(d["id"]) not in kept_docs]
+    if orphan and removed:
+        try:
+            he_api.delete("Documents", orphan[:40])
+        except he_api.ApiError as e:
+            print("duplicate documents: delete failed:", str(e)[:120])
+    if removed:
+        print(f"{removed} duplicate certificate cards removed; {len(orphan[:40]) if removed else 0} duplicate documents removed")
+    return removed
+
+
 def gone_file(d, certs, new_id):
     """The file is not in Drive any more. A certificate with no file is not shown on the site (Wan, 31 Oct 2026:
     "if no file automatically remove to visible"): its row stays in the Sheet with status `nofile`, so Admin can
     still edit it, type the details or delete it, and it comes back by itself when a file is found. Any other
     document is hidden. Never an error: nothing here can be retried."""
+    if d.get("content_hash"):
+        # The same bytes are already filed and their file is there: this row is a copy, not a lost certificate.
+        twin = next((x for x in he_api.read("Documents") if str(x["id"]) != str(d["id"]) and x.get("content_hash") == d["content_hash"]
+                     and x.get("status") in ("current", "draft") and "file missing" not in str(x.get("notes") or "")), None)
+        if twin:
+            he_api.upsert("Documents", [{**d, "status": "duplicate", "notes": f"same bytes as {twin['id']}"}])
+            print(d["id"], "duplicate of", twin["id"], "(its own file is missing): no card made")
+            return 1
     if d.get("kind") == "certificate":
         prev = next((c for c in certs if str(c.get("doc_id")) == str(d["id"])), None)
         if not prev:
@@ -289,8 +359,14 @@ def run():
         return f"CERT-{_ci[0]:04d}"
     provider, model, n, errs = "", "", 0, []
 
+    alive_by_hash = {d["content_hash"]: d for d in docs if d.get("content_hash") and d.get("status") in ("current", "draft") and "file missing" not in str(d.get("notes") or "")}
     for d in inbox:
         try:
+            h0 = d.get("content_hash")
+            if h0 and h0 in alive_by_hash and alive_by_hash[h0]["id"] != d["id"]:
+                # Same bytes as a certificate or document that is already filed: a copy, whatever its own file is doing.
+                he_api.upsert("Documents", [{**d, "status": "duplicate", "notes": f"same bytes as {alive_by_hash[h0]['id']}"}])
+                print(d["id"], "duplicate of", alive_by_hash[h0]["id"]); n += 1; continue
             try:
                 f = he_api.drive_get(d["drive_file_id"], text=True)
             except he_api.ApiError as e:
@@ -450,6 +526,10 @@ def run():
         except (he_api.ApiError, llm_router.LLMError, KeyError) as e:
             errs.append(f"{d['id']}: {e}"); print("skip", d["id"], e, file=sys.stderr)
 
+    try:
+        n += clean_duplicate_certificates()
+    except Exception as e:  # never stops the run
+        print("duplicate certificates not cleaned:", str(e)[:160])
     try:
         n += hide_certificates_without_file()
     except Exception as e:  # never stops the run

@@ -400,9 +400,12 @@ def run(sources, max_batches, dry, minutes=20, attachments=None):
                 if not (CERT_TEXT.search(att.get("content") or "") or (m.get("text") or "").startswith(ADMIN_CERT)):
                     continue
                 a = att_index.get((m["id"], att.get("name")))
-                if not a or a["drive_file_id"] in seen_files:
+                # The same certificate picture re-sent (a catch-up after a relink, a forward) is the same bytes under a new
+                # file id: this loop checked only the file id, so every re-send made another Documents row and, from it,
+                # another card (440 cards on 20 Nov 2026). Same bytes = already filed.
+                if not a or a["drive_file_id"] in seen_files or (a.get("sha256") and a["sha256"] in seen_hashes):
                     continue
-                seen_files.add(a["drive_file_id"])
+                seen_files.add(a["drive_file_id"]); seen_hashes.add(a.get("sha256") or a["drive_file_id"])
                 out.append({"id": ids["DOC"](), "title": "Halal certificate", "kind": "certificate", "category": "halal",
                             "drive_file_id": a["drive_file_id"], "drive_url": a.get("drive_url", ""), "content_hash": a.get("sha256", ""), "version": "",
                             "supersedes_id": "", "source_msg_id": m["id"], "received_at": m.get("ts") or ts,
