@@ -126,7 +126,7 @@ export default function Fhcb({ lang, data, focusId, focusKey }) {
         columns={[
           { key: 'logo', label: '', render: (r) => logo(r, 'w-24 h-16') },
           { key: 'no', label: '#' },
-          { key: 'country', label: t(lang, 'country'), render: (r) => <span className="inline-flex items-center gap-1.5"><Flag country={r.country} />{r.country}{isNewRow(r) && <span className="chip bg-gold-500 text-white ml-1 text-[10px]">NEW</span>}</span> },
+          { key: 'country', label: t(lang, 'country'), render: (r) => <span className="inline-flex items-center gap-1.5"><Flag country={r.country} />{r.country}{isNewRow(r) && <span className="chip bg-gold-500 text-ink-900 ml-1 text-[10px]">NEW</span>}</span> },
           { key: 'name', label: t(lang, 'name'), render: (r) => <span className="font-medium">{r.name}</span> },
           { key: 'kind', label: t(lang, 'fhcb_kind'), render: kindChip },
           { key: 'contact', label: t(lang, 'contact'), render: contacts },
@@ -137,7 +137,7 @@ export default function Fhcb({ lang, data, focusId, focusKey }) {
             <div className="flex items-start gap-3">
               {logo(r, 'w-28 h-20 shrink-0')}
               <div className="min-w-0">
-                <div className="flex items-center gap-1.5 text-xs text-ink-400">#{r.no} · <Flag country={r.country} />{r.country}{isNewRow(r) && <span className="chip bg-gold-500 text-white ml-1 text-[10px]">NEW</span>}{pdfOf(r.country) && <> · <a className="text-brand-700 hover:underline" href={pdfOf(r.country)} target="_blank" rel="noreferrer">PDF</a></>}</div>
+                <div className="flex items-center gap-1.5 text-xs text-ink-400">#{r.no} · <Flag country={r.country} />{r.country}{isNewRow(r) && <span className="chip bg-gold-500 text-ink-900 ml-1 text-[10px]">NEW</span>}{pdfOf(r.country) && <> · <a className="text-brand-700 hover:underline" href={pdfOf(r.country)} target="_blank" rel="noreferrer">PDF</a></>}</div>
                 <div className="font-semibold leading-snug break-words">{r.name}</div>
                 <div className="mt-1">{kindChip(r)}</div>
               </div>
@@ -161,7 +161,7 @@ function NewFhcb({ lang, all, onPick }) {
   return (
     <section className="card p-5 mb-4 border-gold-500/60 bg-gradient-to-br from-amber-50 to-white">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="font-semibold flex items-center gap-2"><Sparkles {...ICON} size={17} className="text-gold-500" />{t(lang, 'fhcb_new_title')} <span className="chip bg-gold-500 text-white">{bodies.length}</span></h3>
+        <h3 className="font-semibold flex items-center gap-2"><Sparkles {...ICON} size={17} className="text-gold-500" />{t(lang, 'fhcb_new_title')} <span className="chip bg-gold-500 text-ink-900">{bodies.length}</span></h3>
         <span className="text-xs text-ink-400">{t(lang, 'fhcb_new_src')} · {fmtDate(lists.fetched, lang)}</span>
       </div>
       <p className="text-sm text-ink-600 mt-1">{t(lang, 'fhcb_new_sub')}</p>
@@ -170,7 +170,7 @@ function NewFhcb({ lang, all, onPick }) {
           const rows = bodies.filter((r) => r.country === c.country)
           return (
             <div key={c.country} className="rounded-xl border border-line bg-white p-3 flex flex-col gap-1">
-              <div className="flex items-center justify-between gap-2"><button type="button" className="font-semibold hover:underline text-left" onClick={() => onPick(c.country)}><Flag country={c.country} className="mr-2 align-[-2px]" />{c.country}</button><span className="chip bg-gold-500 text-white text-[10px]">NEW</span></div>
+              <div className="flex items-center justify-between gap-2"><button type="button" className="font-semibold hover:underline text-left" onClick={() => onPick(c.country)}><Flag country={c.country} className="mr-2 align-[-2px]" />{c.country}</button><span className="chip bg-gold-500 text-ink-900 text-[10px]">NEW</span></div>
               <ul className="text-sm text-ink-900 list-disc pl-5">{rows.map((r) => <li key={r.id}>{r.name}</li>)}</ul>
               <a className="btn self-start mt-1 px-2.5 py-1 text-xs" href={c.file} target="_blank" rel="noreferrer"><FileText {...ICON} size={14} /> {t(lang, 'fhcb_view_pdf')}</a>
             </div>

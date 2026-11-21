@@ -77,13 +77,13 @@ export default function NewsCarousel({ lang, news, setTab }) {
             <div aria-hidden className="pointer-events-none absolute -left-16 -bottom-24 h-64 w-64 rounded-full bg-gold-500/25 blur-3xl" />
             <div className="relative flex flex-wrap items-center gap-2 text-xs">
               <span className="rounded-full bg-white/15 px-2.5 py-1 font-semibold uppercase tracking-wide">{catName(lang, lead.category)}</span>
-              {ageH(lead) < 12 && <span className="rounded-full bg-gold-500 px-2.5 py-1 font-bold uppercase tracking-wide text-white">{t(lang, 'nw_new')}</span>}
+              {ageH(lead) < 12 && <span className="rounded-full bg-gold-500 px-2.5 py-1 font-bold uppercase tracking-wide text-ink-900">{t(lang, 'nw_new')}</span>}
               <span className="ml-auto text-white/70">{t(lang, 'nw_left').replace('{n}', hoursLeft(lead.expires_at))}</span>
             </div>
             <a href={safeUrl(lead.url) || undefined} target="_blank" rel="noreferrer" className="relative mt-4 block text-2xl sm:text-3xl font-bold leading-tight decoration-2 underline-offset-4 hover:underline line-clamp-4">{lead.title}</a>
             <p className="relative mt-3 text-sm sm:text-base text-white/80 line-clamp-3">{text(lead)}</p>
             <div className="relative mt-auto pt-5 flex flex-wrap items-center gap-3">
-              {safeUrl(lead.url) && <a href={safeUrl(lead.url)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-full bg-white px-5 py-2.5 text-sm font-bold text-brand-700 shadow-lg transition motion-safe:hover:scale-105 hover:bg-gold-500 hover:text-white">{t(lang, 'nw_read')} <ArrowUpRight {...ICON} size={16} /></a>}
+              {safeUrl(lead.url) && <a href={safeUrl(lead.url)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-full bg-white px-5 py-2.5 text-sm font-bold text-brand-700 shadow-lg transition motion-safe:hover:scale-105 hover:bg-gold-500 hover:text-ink-900">{t(lang, 'nw_read')} <ArrowUpRight {...ICON} size={16} /></a>}
               <span className="text-xs text-white/70">{lead.source} · {agoText(lang, ageH(lead))}</span>
             </div>
             {n > 1 && (
@@ -108,7 +108,7 @@ export default function NewsCarousel({ lang, news, setTab }) {
                     <span className="min-w-0 flex-1">
                       <span className="block text-sm font-semibold leading-snug line-clamp-2 group-hover:text-brand-700">{it.title}</span>
                       <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-400">
-                        {ageH(it) < 12 && <span className="rounded bg-gold-500 px-1.5 py-0.5 text-[10px] font-bold uppercase text-white">{t(lang, 'nw_new')}</span>}
+                        {ageH(it) < 12 && <span className="rounded bg-gold-500 px-1.5 py-0.5 text-[10px] font-bold uppercase text-ink-900">{t(lang, 'nw_new')}</span>}
                         <span>{it.source}</span><span>· {agoText(lang, ageH(it))}</span>
                       </span>
                     </span>

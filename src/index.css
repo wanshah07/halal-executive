@@ -31,7 +31,8 @@
   --color-brand-900: #04301a;
   --color-ink-900:   #0f172a;
   --color-ink-600:   #475569;
-  --color-ink-400:   #94a3b8;
+  /* Muted text. Was #94a3b8, 2.6:1 on white; this is 4.8:1 on white and 4.5:1 on paper (WCAG AA). */
+  --color-ink-400:   #64748b;
   --color-line:      #e2e8f0;
   --color-paper:     #f8fafc;
   --color-gold-500:  #c9a227;

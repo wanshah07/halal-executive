@@ -1,5 +1,5 @@
 export default function StatCard({ label, value, hint, tone = 'ink' }) {
-  const color = { ink: 'text-ink-900', blue: 'text-blue-600', amber: 'text-amber-500', green: 'text-brand-600', grey: 'text-ink-400', red: 'text-red-600' }[tone]
+  const color = { ink: 'text-ink-900', blue: 'text-blue-600', amber: 'text-amber-700', green: 'text-brand-600', grey: 'text-ink-400', red: 'text-red-600' }[tone]
   return (
     <div className="card p-4">
       <div className="text-sm text-ink-600">{label}</div>

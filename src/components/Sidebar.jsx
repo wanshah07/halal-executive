@@ -29,6 +29,13 @@ const current = (k, sub) => (k === 'directory' ? (sub === 'sertu' || sub === 'la
 
 export default function Sidebar({ lang, tab, sub, setTab, counts, mobileOpen, setMobileOpen }) {
   useEffect(() => { setMobileOpen(false) }, [tab, sub, setMobileOpen])
+  // The drawer closes on Escape, like the picture viewer (it had no key at all).
+  useEffect(() => {
+    if (!mobileOpen) return undefined
+    const k = (e) => { if (e.key === 'Escape') setMobileOpen(false) }
+    addEventListener('keydown', k)
+    return () => removeEventListener('keydown', k)
+  }, [mobileOpen, setMobileOpen])
   // Which sub-menus are open. With a mouse every one opens while the cursor is on it and
   // folds when the cursor leaves (Wan, 31 Oct 2026: "all auto hide unhide when cursor
   // there"), the page you are on included. A touch screen has no cursor: there the page you
@@ -77,7 +84,7 @@ export default function Sidebar({ lang, tab, sub, setTab, counts, mobileOpen, se
       </aside>
       {mobileOpen && (
         <div className="xl:hidden fixed inset-0 z-40 bg-black/40" onClick={() => setMobileOpen(false)}>
-          <nav className="absolute left-0 top-0 bottom-0 w-64 bg-white p-3 flex flex-col gap-1 shadow-xl overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+          <nav aria-label={t(lang, 'menu')} className="absolute left-0 top-0 bottom-0 w-64 bg-white p-3 flex flex-col gap-1 shadow-xl overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="font-bold px-2 py-2">{t(lang, 'menu')}</div>{items}
           </nav>
         </div>
@@ -90,7 +97,7 @@ function SubLink({ lang, href, on, onGo, label, soon }) {
   return (
     <a href={href} onClick={(e) => { e.preventDefault(); onGo() }} tabIndex={0}
       className={`flex items-center gap-2 rounded-md px-2 py-1.5 text-[13px] transition ${on ? 'bg-brand-50 text-brand-700 font-semibold' : 'text-ink-600 hover:bg-paper hover:text-ink-900'}`}>
-      <span className="truncate">{label}</span>{soon && <span className="shrink-0 rounded bg-gold-500 px-1.5 text-[9px] font-semibold uppercase text-white">{t(lang, 'soon')}</span>}
+      <span className="truncate">{label}</span>{soon && <span className="shrink-0 rounded bg-gold-500 px-1.5 text-[9px] font-semibold uppercase text-ink-900">{t(lang, 'soon')}</span>}
     </a>
   )
 }

@@ -39,6 +39,7 @@ jobs:
       WEB_SEEDS: ${{ vars.WEB_SEEDS }}
       WEB_ALLOW: ${{ vars.WEB_ALLOW }}
       MIRELD_TIMEOUT: '45'
+      PYTHONUNBUFFERED: '1'  # a phase stopped at its limit keeps what it printed (the organiser's lines were lost)
       STATE_DIR: ${{ github.workspace }}/.state
     steps:
       - uses: actions/checkout@v4
@@ -67,7 +68,7 @@ jobs:
         run: |
           JOB="${{ steps.pick.outputs.job }}"; RC=0; rm -f "$STATE_DIR/more_waiting"
           phase() {  # phase <minutes> <name> <command...>
-            local min=$1 name=$2; shift 2
+            local min=$1 name=$2 t0=$SECONDS; shift 2
             python phase.py "$JOB" running "$name: started" || true
             if timeout --signal=INT --kill-after=60 "${min}m" "$@"; then
               python phase.py "$JOB" done "$name: finished" || true
@@ -75,7 +76,11 @@ jobs:
               local c=$?
               # Stopping at the time limit is the plan, not a failure: the next
               # run carries on. Only a real error turns the run red.
-              if [ $c -eq 124 ] || [ $c -eq 130 ]; then python phase.py "$JOB" done "$name: stopped at its ${min}-minute limit; the next run carries on" || true
+              # The exit code at the limit is not always 124: on 21 Nov 2026 the
+              # organiser phase of every uploads run ended with 137 at exactly its
+              # 10th minute and turned the run red. So a phase that used up its
+              # minutes counts as stopped, whatever the code.
+              if [ $c -eq 124 ] || [ $c -eq 130 ] || [ $((SECONDS - t0)) -ge $((min * 60)) ]; then python phase.py "$JOB" done "$name: stopped at its ${min}-minute limit; the next run carries on" || true
               else RC=1; python phase.py "$JOB" failed "$name: failed (exit $c); see the GitHub log" || true; fi
             fi
           }

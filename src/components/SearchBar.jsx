@@ -20,13 +20,13 @@ export default function SearchBar({ lang, data, onOpen, onAsk }) {
   return (
     <div className="relative">
       <div className="flex gap-2">
-        <input className="input" type="search" aria-label={t(lang, 'search_ph')} value={q} onFocus={want} onChange={(e) => { setQ(e.target.value); want() }} placeholder={t(lang, 'search_ph')} onKeyDown={(e) => { if (e.key === 'Enter' && q.trim()) onAsk(q) }} />
+        <input className="input text-ellipsis" type="search" aria-label={t(lang, 'search_ph')} value={q} onFocus={want} onChange={(e) => { setQ(e.target.value); want() }} placeholder={t(lang, 'search_ph')} onKeyDown={(e) => { if (e.key === 'Enter' && q.trim()) onAsk(q) }} />
         <button className="btn-brand shrink-0" onClick={() => q.trim() && onAsk(q)}>{t(lang, 'ask')} <ArrowUpRight {...ICON} size={16} /></button>
       </div>
       {q && (
         <div className="absolute z-20 mt-1 w-full card shadow-lg max-h-96 overflow-auto">
           {pending && <div className="px-3 py-2 text-xs text-ink-400 border-b border-line" role="status">{t(lang, 'search_answers_loading')}</div>}
-          {!hits.length && !pending && <div className="p-3 text-sm text-ink-400">{t(lang, 'no_data')}</div>}
+          {!hits.length && !pending && <div className="p-3 text-sm text-ink-400" role="status">{t(lang, 'search_none')}</div>}
           {hits.map((h) => (
             <button key={h.type + h.id} className="w-full text-left px-3 py-2 hover:bg-paper border-b border-line last:border-0" onClick={() => { onOpen(h.type, h.id); setQ('') }}>
               <span className="chip bg-brand-50 text-brand-700 mr-2">{label[h.type]}</span>
