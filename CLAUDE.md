@@ -774,3 +774,8 @@
     anywhere I could find. Only one link has ever held (16 Nov 05:52, 90 minutes, library-default user agent); the three made with the
     matching-browser user agent all failed, so `HE_USER_AGENT` is empty (library default) again; `HE_USER_AGENT=auto` restores the
     matching one. Three attempts against one success is a lead, not proof. Also unproved: a 1 GB server loading 99% (swap) as a cause.
+    **Machine is an e2-micro (1 GB RAM)** (Wan, 21 Nov 2026). Memory is the leading, unproved theory for the CONNECTED, 99%, OPENING, LOGOUT run: the first
+    load of every chat is the heaviest moment. Two cheap changes: a 2 GB swapfile on the VM (`sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile &&
+    sudo mkswap /swapfile && sudo swapon /swapfile && echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab`, inside the 30 GB free-tier disk) and
+    lighter Chromium flags in `collect.js` (`--renderer-process-limit=1`, `--js-flags=--max-old-space-size=384`, no extensions or background networking).
+    Evidence still wanted: `free -m` and `sudo dmesg | grep -i -E "out of memory|killed process"` right after a failed link.

@@ -130,7 +130,7 @@ const client = new Client({
   authStrategy: new LocalAuth(),
   ...(UA ? { userAgent: UA } : {}),
   authTimeoutMs: 180000,
-  puppeteer: { headless: true, executablePath: exe, protocolTimeout: 300000, args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu'] },
+  puppeteer: { headless: true, executablePath: exe, protocolTimeout: 300000, args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu', '--disable-software-rasterizer', '--disable-extensions', '--disable-background-networking', '--disable-default-apps', '--no-first-run', '--mute-audio', '--renderer-process-limit=1', '--js-flags=--max-old-space-size=384'] },
 })
 // Progress after the QR is scanned, so a stall or a logout shows where it happened.
 let phase = 'STARTING', phaseAt = Date.now(), note = '', ready = false, lastQr = '', lastQrAt = 0, wantUntil = 0, lastCode = '', lastCodeAt = 0
