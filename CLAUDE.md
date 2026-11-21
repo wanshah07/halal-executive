@@ -798,3 +798,17 @@
     (a code every 3 minutes for hours would look like abuse). The watchdog mail says "a code appears in Admin". Needs the newest Code.gs only for that mail wording; the
     panel and collector work with the Code.gs already deployed. Admin panel render was NOT checked in a browser this round (build passes; the mocked page stayed on
     "Loading…" because the mock lacked the feed shape).
+62. **The system looks for official sources for open points by itself, and proposes; it never publishes** (Wan, 21 Nov 2026: "find the source yourself and connect with
+    a Facebook group", then chose web search + Facebook "both"). `pipeline/find_sources.py` (phase "Find official sources for open points" after `resolve_sahkan` in the
+    `sahkan`, `references` and `process_facebook` jobs, and its own `sources` job in Actions -> Run workflow) takes every point in `FAQ.verify_notes`, gathers candidate
+    pages on OFFICIAL hosts only (`*.gov.my`, plus exact hosts in the `WEB_ALLOW` variable): seed pages (JAKIM halal portal, LOM, NPRA, plus `WEB_SEEDS`), the PDFs they link to,
+    official links found in Raw rows from Facebook, WhatsApp and Telegram (the group is a LEAD, never a source), and a web search for the point filtered to official hosts. It reads
+    HTML and PDF page by page, ranks passages with the References tab's BM25, and asks the router for ONE sentence plus passage number and exact quote; code checks the quote
+    word for word in that passage, that it is about the point, that no number is new, no Indonesian wording. A pass REPLACES THE NOTE with that sentence and `(Source: host, title,
+    p. N, link)`; answers, status and `approved_at` are untouched, so nothing reaches the public page until the admin presses Add to FAQ (rule 56). A point with no official source
+    is left as it was and tried again after 3 days (`.state/find_sources.json`); pages are cached 7 days (`.state/web_cache.json`). `BRAVE_API_KEY` (a GitHub secret) makes the search
+    reliable; without it a plain Bing page request is tried, which in the build session returned unrelated pages, so the run log says "search unusable for N" and only the seed
+    pages and group links count. Known limits: scanned PDFs with no text layer (several JAKIM pekeliling) are skipped (no OCR here); the seed pages do not hold the Food Regulations
+    1985 or MPPHM, so those points need the search; Facebook posts reach the Raw tab only when the Facebook collector (`collectors/facebook`, needs `FB_GROUP_URL` and a one-time
+    login on a PC, not the 1 GB VM) has run. Tested: helpers and the accept checks offline (`pipeline/test_find_sources.py`), seed pages and PDFs read live from the build session,
+    the whole run with a fake Sheet and a fake model; NOT tested: a real model reply, the search on GitHub's runners, the Facebook collector.

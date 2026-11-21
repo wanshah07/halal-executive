@@ -15,7 +15,7 @@ on:
   workflow_dispatch:
     inputs:
       job:
-        description: process_whatsapp | uploads | bench | process_facebook | news | organise | references | sahkan | event_qr
+        description: process_whatsapp | uploads | bench | process_facebook | news | organise | references | sahkan | sources | event_qr
         default: process_whatsapp
 permissions: { contents: read, actions: write }  # actions: start the uploads lane
 # Uploads and filing have their own lane, so a certificate uploaded in Admin
@@ -35,6 +35,9 @@ jobs:
       MIRELD_MODEL: ${{ vars.MIRELD_MODEL }}
       AFIQ_MODEL: ${{ vars.AFIQ_MODEL }}
       NEWS_FEEDS: ${{ vars.NEWS_FEEDS }}
+      BRAVE_API_KEY: ${{ secrets.BRAVE_API_KEY }}
+      WEB_SEEDS: ${{ vars.WEB_SEEDS }}
+      WEB_ALLOW: ${{ vars.WEB_ALLOW }}
       MIRELD_TIMEOUT: '45'
       STATE_DIR: ${{ github.workspace }}/.state
     steps:
@@ -93,7 +96,8 @@ jobs:
               phase 6  "Fill SAHKAN from references" python resolve_sahkan.py ;;
             process_facebook)
               phase 24 "Read Facebook posts" python process_raw.py --source facebook --minutes 20
-              phase 6  "Fill SAHKAN from references" python resolve_sahkan.py ;;
+              phase 6  "Fill SAHKAN from references" python resolve_sahkan.py
+              phase 10 "Find official sources for open points" python find_sources.py --minutes 8 ;;
             uploads)
               phase 10 "Read Admin uploads and group files" python process_raw.py --source manual,whatsapp,telegram --attachments only --minutes 8
               phase 10 "File documents and certificates" python drive_organiser.py ;;
@@ -101,11 +105,14 @@ jobs:
             organise)   phase 30 "Drive organiser" python drive_organiser.py ;;
             references)
               phase 40 "Review references" python index_references.py --audit
-              phase 10 "Fill SAHKAN from references" python resolve_sahkan.py ;;
+              phase 10 "Fill SAHKAN from references" python resolve_sahkan.py
+              phase 10 "Find official sources for open points" python find_sources.py --minutes 8 ;;
             bench)      phase 10 "Time MIRELD and AFIQ" python llm_router.py --bench ;;
             sahkan)
               phase 4  "FHCB list from JAKIM MyIHAB" python seed_fhcb.py
-              phase 28 "Fill SAHKAN from references" python resolve_sahkan.py --limit 400 --minutes 25 ;;
+              phase 28 "Fill SAHKAN from references" python resolve_sahkan.py --limit 400 --minutes 25
+              phase 12 "Find official sources for open points" python find_sources.py --limit 30 --minutes 10 ;;
+            sources)    phase 14 "Find official sources for open points" python find_sources.py --limit 40 --minutes 12 ;;
             event_qr)   phase 20 "Read QR codes on event posters" python event_qr.py ;;
             *) echo "unknown job"; exit 1 ;;
           esac
