@@ -2,3 +2,4 @@ node_modules/
 .baileys_auth/
 state.json
 .last-exit.json
+.pair_phone

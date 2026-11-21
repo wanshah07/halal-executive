@@ -39,7 +39,15 @@ const save = () => { try { fs.writeFileSync(STATE, JSON.stringify(state)) } catc
 const hash = (s) => crypto.createHash('sha256').update(SALT + String(s)).digest('hex').slice(0, 16)
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 const norm = (s) => String(s || '').normalize('NFKC').replace(/\s+/g, ' ').trim().toLowerCase()
-const PAIR_PHONE = String(process.env.HE_PAIR_PHONE || '').replace(/\D/g, '')
+// The WhatsApp number is typed ONCE (Admin -> Progress, or HE_PAIR_PHONE) and kept in .pair_phone on this server (owner-only file, never
+// logged, never sent back). From then on a lost link needs only a CODE typed on the phone: this collector asks WhatsApp for it by itself.
+const PHONE_FILE = path.join(HERE, '.pair_phone')
+const digits = (x) => String(x || '').replace(/\D/g, '')
+const savedPhone = () => { try { const v = digits(fs.readFileSync(PHONE_FILE, 'utf8')); return /^\d{9,15}$/.test(v) ? v : '' } catch (e) { return '' } }
+const savePhone = (v) => { try { fs.writeFileSync(PHONE_FILE, v, { mode: 0o600 }) } catch (e) { console.error('Could not keep the number:', e.message) } }
+const phoneNow = () => (/^\d{9,15}$/.test(digits(process.env.HE_PAIR_PHONE)) ? digits(process.env.HE_PAIR_PHONE) : savedPhone())
+if (/^\d{9,15}$/.test(digits(process.env.HE_PAIR_PHONE)) && !savedPhone()) savePhone(digits(process.env.HE_PAIR_PHONE))   // typed once in a terminal: kept for later
+const mask = (v) => (v ? v.slice(0, 2) + '•••' + v.slice(-3) : '')
 let groupId = (process.env.HE_GROUP_ID || '').trim()
 
 // The last log lines travel with every check-in (Admin shows them). The phone number and the message text are never logged.
@@ -58,7 +66,7 @@ let lastExit = null
 try { lastExit = JSON.parse(fs.readFileSync(EXIT_FILE, 'utf8')) } catch (e) { /* first start */ }
 
 let phase = 'STARTING', phaseAt = Date.now(), note = '', sock = null, open = false, quitting = false
-let qrSent = false, lastQr = '', lastQrAt = 0, lastCode = '', lastCodeAt = 0, wantUntil = 0, lastBeat = 0, beating = false, pairAsked = false, fast = 0
+let loggedFor = null, needSince = 0, qrSent = false, lastQr = '', lastQrAt = 0, lastCode = '', lastCodeAt = 0, wantUntil = 0, lastBeat = 0, beating = false, pairAsked = false, fast = 0
 if (lastExit) { note = `previous run ended ${String(lastExit.at).slice(0, 16)}Z after ${lastExit.ran_s}s: ${lastExit.why}`.slice(0, 140); console.log('Previous run:', JSON.stringify(lastExit)) }
 const setPhase = (p, n = '') => { if (phase !== p) phaseAt = Date.now(); phase = p; note = n }
 const lastMsgMs = () => state.lastSeen || 0
@@ -176,14 +184,19 @@ async function connect() {
     if (s !== sock) return
     if (u.qr) {
       lastQr = u.qr; lastQrAt = Date.now(); open = false
-      setPhase('QR', Date.now() - lastCodeAt < 170000 ? 'pairing code ready' : 'waiting for the QR to be scanned')
-      console.log('Scan with WhatsApp → Settings → Linked devices → Link a device (or in Admin → Progress → Link WhatsApp)')
-      if (Date.now() < wantUntil || !qrSent) { qrSent = true; beat() }   // the first code goes to Admin at once
-      if (/^\d{9,15}$/.test(PAIR_PHONE) && !pairAsked && !s.authState.creds.registered) { pairAsked = true; await askCode(PAIR_PHONE) }
+      if (!needSince) needSince = Date.now()
+      const ph = phoneNow()
+      setPhase('QR', Date.now() - lastCodeAt < 170000 ? 'code ready: type it on the phone' : ph ? `logged out: a code is made for ${mask(ph)}` : 'logged out: type the WhatsApp number once in Admin to get a code')
+      if (loggedFor !== s) { loggedFor = s; console.log(ph ? 'Logged out. A pairing code is asked for the saved number (Admin shows it).' : 'Logged out and no number saved: set it in Admin -> Progress -> Link WhatsApp, or HE_PAIR_PHONE.') }
+      // Codes are asked for in the first 15 minutes after the link is lost and whenever an admin has the link panel open, never all night:
+      // a code every 3 minutes for hours would look like abuse to WhatsApp. A new socket needs a new code; the same one is renewed after 150 s.
+      const wanted = Date.now() < wantUntil || Date.now() - needSince < 15 * 60000
+      if (ph && wanted && !s.authState.creds.registered && (!pairAsked || Date.now() - lastCodeAt > 150000)) { pairAsked = true; await askCode(ph) }
+      else if (Date.now() < wantUntil || !qrSent) { qrSent = true; beat() }
     }
     if (u.connection === 'connecting') console.log('Connecting…')
     if (u.connection === 'open') {
-      open = true; lastQr = ''; fast = 0; setPhase('CONNECTED'); console.log('Connected to WhatsApp')
+      open = true; if (!note || /code|logged out|number/i.test(note)) note = phoneNow() ? `number saved (${mask(phoneNow())}): a lost link needs only a code` : 'no number saved: type it once in Admin so a lost link needs only a code'; lastQr = ''; lastCode = ''; needSince = 0; fast = 0; setPhase('CONNECTED'); console.log('Connected to WhatsApp')
       if (await resolveGroup()) console.log(`Group: ${GROUP} (${groupId})`)
       beat()
     }
@@ -196,7 +209,7 @@ async function connect() {
       if (code === DisconnectReason.loggedOut) return quit(0, 'WhatsApp ended this linked session (loggedOut). The login is cleared, a new QR follows', true)
       // 515 "restart required" is normal right after a scan: open the connection again with the saved login.
       setPhase('STARTING', 'reconnecting after: ' + why.slice(0, 80))
-      if (++fast > 8) return quit(1, 'Closed 8 times in a row, last: ' + why)
+      if (code !== DisconnectReason.timedOut && ++fast > 8) return quit(1, 'Closed 8 times in a row, last: ' + why)
       await sleep(code === DisconnectReason.restartRequired ? 500 : Math.min(30000, 2000 * fast))
       if (!quitting) connect().catch((e) => quit(1, 'Reconnect failed: ' + ((e && e.message) || e)))
     }
@@ -228,7 +241,7 @@ async function beat() {
   beating = true
   try {
     const body = { source: 'whatsapp', group: GROUP, last_msg: lastMsgMs() ? new Date(lastMsgMs()).toISOString() : '', version: VERSION, state: open ? 'CONNECTED' : phase, note, log: logText() }
-    if (!open && phase === 'QR' && lastQr && Date.now() - lastQrAt < 60000) body.qr = lastQr
+    if (!open && phase === 'QR' && lastQr && Date.now() - lastQrAt < 60000 && !phoneNow()) body.qr = lastQr   // a QR is only the fallback for a server with no number saved
     if (!open && phase === 'QR' && lastCode && Date.now() - lastCodeAt < 170000) body.code = lastCode
     const r = await post('heartbeat', body).catch((e) => { console.error('heartbeat failed:', e.message || e); return null })
     lastBeat = Date.now()
@@ -241,7 +254,6 @@ function tick() {
   const now = Date.now()
   if (open) { if (now - lastBeat >= 5 * 60000 - 5000) beat(); return }
   if (phase !== 'QR' && now - phaseAt > 20 * 60000) return quit(1, `Stuck in ${phase} for 20 minutes; restarting`)
-  if (phase === 'QR' && now - phaseAt > 30 * 60000 && now > wantUntil) return quit(1, 'The QR was not scanned for 30 minutes; restarting for a fresh one')
   if (now - lastBeat >= (phase === 'QR' ? 30000 : 60000)) beat()
 }
 // Fixed words only: nothing typed in Admin is ever run here.
@@ -249,8 +261,10 @@ async function command(cmd) {
   console.log(new Date().toISOString(), 'Admin command:', cmd.replace(/\d{9,15}$/, '***'))   // the phone number is never logged
   const pair = /^pair:(\d{9,15})$/.exec(cmd)
   if (pair) {
-    if (open || phase !== 'QR') { note = 'pairing code: not waiting for a link now'; return }
-    await askCode(pair[1]); return
+    savePhone(pair[1])                       // kept, so the next lost link needs only a code
+    if (open) { note = `number saved (${mask(pair[1])}); it is used if the link is ever lost`; return beat() }
+    if (phase !== 'QR' || !sock || sock.authState.creds.registered) { note = `number saved (${mask(pair[1])}); the code follows when WhatsApp asks for a link`; return beat() }
+    pairAsked = true; needSince = Date.now(); await askCode(pair[1]); return
   }
   if (cmd === 'restart') return quit(0, 'Restart asked from Admin')
   if (cmd === 'relink') return quit(0, 'Relink asked from Admin: the saved login is cleared, a new QR follows', true)

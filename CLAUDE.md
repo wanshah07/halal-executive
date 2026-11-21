@@ -790,3 +790,11 @@
     (bundled or latest version, `syncFullHistory` on or off); `Browsers.ubuntu('Chrome')` and the library default both get a QR. `collect.js` now uses
     `Browsers.ubuntu('Chrome')` and `syncFullHistory: false`, and the QR reaches the check-in at once (checked against a fake Apps Script). Still not proved: a
     scan, a pairing code, and the group history, which need Wan's phone.
+    **A lost link needs only a code, no QR** (Wan, 21 Nov 2026: "only code is needed to connect when the connection is lost"). `baileys-1` keeps the WhatsApp number in
+    `collectors/whatsapp-baileys/.pair_phone` (owner-only file, gitignored; typed once in Admin -> Progress -> Link WhatsApp or as `HE_PAIR_PHONE`; never logged, only a
+    masked form like `60•••401` appears in the note). When WhatsApp logs the device out (the login is cleared, pm2 restarts it) or a start finds no login, it asks WhatsApp
+    for a pairing code BY ITSELF and sends it with the check-in; Admin shows the code large with no QR (a QR is only sent while no number is saved, and sits under "Scan a QR
+    instead"). Codes are asked for only in the first 15 minutes after the link is lost and while an admin has the link panel open, renewed every 150 s, never all night
+    (a code every 3 minutes for hours would look like abuse). The watchdog mail says "a code appears in Admin". Needs the newest Code.gs only for that mail wording; the
+    panel and collector work with the Code.gs already deployed. Admin panel render was NOT checked in a browser this round (build passes; the mocked page stayed on
+    "Loading…" because the mock lacked the feed shape).

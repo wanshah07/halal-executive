@@ -256,20 +256,23 @@ function WaLink({ lang }) {
         <div className={silent || (hb && hb.state !== 'CONNECTED') ? 'text-amber-800' : 'text-brand-700'}>{stateText}{hb && !silent && hb.version ? ` · ${hb.version}` : ''}</div>
         {hb && hb.note && !silent && <div className="text-xs text-ink-600 [overflow-wrap:anywhere]">{hb.note}</div>}
         {hb && hb.log && <details className="text-xs"><summary className="cursor-pointer text-ink-600">{t(lang, 'wa_log')}</summary><pre className="mt-1 p-2 bg-muted rounded max-h-56 overflow-auto whitespace-pre-wrap [overflow-wrap:anywhere]">{hb.log}</pre></details>}
-        {fresh && <div className="space-y-2"><QrPicture text={r.qr.qr} /><p className="text-ink-600">{t(lang, 'wa_scan')}</p></div>}
-        {!fresh && !silent && hb && hb.state !== 'CONNECTED' && <p className="text-ink-600">{t(lang, 'wa_wait_qr')}</p>}
         {hb && hb.state === 'QR' && !silent && (
           <div className="rounded-lg border border-line p-3 space-y-2">
             <div className="font-medium">{t(lang, 'wa_code_title')}</div>
+            {r.code && now - Date.parse(r.code.ts) < 175000
+              ? <div className="text-3xl font-mono tracking-widest select-all" aria-live="polite">{r.code.code.length === 8 ? r.code.code.slice(0, 4) + '-' + r.code.code.slice(4) : r.code.code}</div>
+              : <p className="text-ink-600">{t(lang, 'wa_code_wait')}</p>}
             <p className="text-ink-600">{t(lang, 'wa_code_help')}</p>
             <div className="flex flex-wrap gap-2 items-center">
               <input className="input w-auto min-w-48" inputMode="numeric" autoComplete="off" value={phone} onChange={(e) => setPhone(e.target.value.replace(/[^\d]/g, '').slice(0, 15))} placeholder="60123456789" aria-label={t(lang, 'wa_code_phone')} />
               <button type="button" className="btn" disabled={phone.length < 9} onClick={() => cmd('pair', { phone })}>{t(lang, 'wa_code_btn')}</button>
             </div>
-            {r.code && now - Date.parse(r.code.ts) < 175000 && <div className="text-3xl font-mono tracking-widest select-all" aria-live="polite">{r.code.code.length === 8 ? r.code.code.slice(0, 4) + '-' + r.code.code.slice(4) : r.code.code}</div>}
+            <p className="text-xs text-ink-600">{t(lang, 'wa_code_phone')}</p>
+            {fresh && <details className="text-xs"><summary className="cursor-pointer text-ink-600">{t(lang, 'wa_qr_instead')}</summary><div className="space-y-2 mt-2"><QrPicture text={r.qr.qr} /><p className="text-ink-600">{t(lang, 'wa_scan')}</p></div></details>}
           </div>
         )}
-        {silent && <p className="text-ink-600">{t(lang, 'wa_silent_help')} <code className="text-xs [overflow-wrap:anywhere]">cd ~/halal-executive && git pull && cd collectors/whatsapp && npm install --omit=dev && pm2 restart he-whatsapp</code></p>}
+        {!silent && hb && hb.state !== 'CONNECTED' && hb.state !== 'QR' && <p className="text-ink-600">{t(lang, 'wa_wait_qr')}</p>}
+        {silent && <p className="text-ink-600">{t(lang, 'wa_silent_help')} <code className="text-xs [overflow-wrap:anywhere]">cd ~/halal-executive && git pull && cd collectors/whatsapp-baileys && npm install --omit=dev && pm2 restart he-whatsapp-b</code></p>}
         {(sent || r.pending) && <p className="text-xs text-ink-600">{t(lang, 'wa_sent').replace('{c}', sent || r.pending.cmd)}</p>}
         <div className="flex flex-wrap gap-2">
           <button type="button" className="btn" onClick={() => cmd('restart')}>{t(lang, 'wa_restart')}</button>

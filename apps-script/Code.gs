@@ -703,7 +703,7 @@ function tickWatch() {
     var age = Math.round((now - Date.parse(hb.ts)) / 60000);
     var stuck = hb.state_since ? Math.round((now - Date.parse(hb.state_since)) / 60000) : WATCH_MIN + 1;
     if (age > WATCH_MIN) problems.whatsapp = 'No WhatsApp check-in for ' + age + ' minutes: the server or the collector on it is down. Open the server (Google Cloud, VM he-whatsapp, SSH) and run: pm2 restart he-whatsapp.';
-    else if (hb.state === 'QR') problems.whatsapp = 'WhatsApp ended the linked session and waits for a new QR scan. Open Admin, Progress, Link WhatsApp, and scan the code with the phone (WhatsApp, Linked devices, Link a device).';
+    else if (hb.state === 'QR') problems.whatsapp = 'WhatsApp ended the linked session. Open Admin, Progress, Link WhatsApp: a code appears there. On the phone: WhatsApp, Linked devices, Link a device, Link with phone number instead, and type the code (no QR needed once the number is saved).';
     // Starting or loading is not a problem by itself: the collector restarts itself when stuck. Only 15 minutes of it is.
     else if (hb.state && hb.state !== 'CONNECTED' && stuck > WATCH_MIN) problems.whatsapp = 'WhatsApp has reported ' + hb.state + ' (not CONNECTED) for ' + stuck + ' minutes. Admin, Progress, WhatsApp: press Restart, and Link WhatsApp if it asks for a QR.';
   }
