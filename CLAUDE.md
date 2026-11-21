@@ -785,3 +785,8 @@
     both** (both check in as source `whatsapp`): `pm2 stop he-whatsapp` then `pm2 start collect.js --name he-whatsapp-b` from its folder. NOT proved against real WhatsApp
     (the build session's network blocks WhatsApp's socket; only the reconnect loop, check-in and message unwrapping were run): the first real link is the test. Needs Node 20+.
     If it also ends in loggedOut straight after a link, the cause is WhatsApp's side for this number or server, not the browser; then try another number or machine.
+    **First real run of `baileys-1` (21 Nov 2026, 16:05 UTC): `Connection Terminated (428)` 8 times, before any QR or code.** Reproduced in the build session (it
+    reaches WhatsApp: "connected to WA", client payload sent, then the server closes) and narrowed by trying variants: `Browsers.macOS('Desktop')` is closed at once
+    (bundled or latest version, `syncFullHistory` on or off); `Browsers.ubuntu('Chrome')` and the library default both get a QR. `collect.js` now uses
+    `Browsers.ubuntu('Chrome')` and `syncFullHistory: false`, and the QR reaches the check-in at once (checked against a fake Apps Script). Still not proved: a
+    scan, a pairing code, and the group history, which need Wan's phone.

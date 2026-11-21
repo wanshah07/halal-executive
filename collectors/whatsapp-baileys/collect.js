@@ -58,7 +58,7 @@ let lastExit = null
 try { lastExit = JSON.parse(fs.readFileSync(EXIT_FILE, 'utf8')) } catch (e) { /* first start */ }
 
 let phase = 'STARTING', phaseAt = Date.now(), note = '', sock = null, open = false, quitting = false
-let lastQr = '', lastQrAt = 0, lastCode = '', lastCodeAt = 0, wantUntil = 0, lastBeat = 0, beating = false, pairAsked = false, fast = 0
+let qrSent = false, lastQr = '', lastQrAt = 0, lastCode = '', lastCodeAt = 0, wantUntil = 0, lastBeat = 0, beating = false, pairAsked = false, fast = 0
 if (lastExit) { note = `previous run ended ${String(lastExit.at).slice(0, 16)}Z after ${lastExit.ran_s}s: ${lastExit.why}`.slice(0, 140); console.log('Previous run:', JSON.stringify(lastExit)) }
 const setPhase = (p, n = '') => { if (phase !== p) phaseAt = Date.now(); phase = p; note = n }
 const lastMsgMs = () => state.lastSeen || 0
@@ -163,10 +163,12 @@ async function connect() {
   let version
   try { version = (await fetchLatestBaileysVersion()).version } catch (e) { /* the library's bundled version is used */ }
   pairAsked = false
-  // A desktop-type link makes WhatsApp send the group's recent history once, which is the catch-up after a silence.
+  // Browser identity: Browsers.macOS('Desktop') (the "full history" identity) made WhatsApp end the connection right after the
+  // handshake, every time, before any QR or code (21 Nov 2026: "Connection Terminated (428)" on the VM and in the build session, 8 of 8).
+  // A Chrome-on-Ubuntu identity gets the QR at once. A web-type link still receives the group's recent history once after the scan.
   const s = makeWASocket({
-    auth: auth, ...(version ? { version } : {}), logger: pino({ level: 'silent' }), browser: Browsers.macOS('Desktop'),
-    syncFullHistory: true, markOnlineOnConnect: false, printQRInTerminal: false, generateHighQualityLinkPreview: false,
+    auth: auth, ...(version ? { version } : {}), logger: pino({ level: 'silent' }), browser: Browsers.ubuntu('Chrome'),
+    syncFullHistory: false, markOnlineOnConnect: false, printQRInTerminal: false, generateHighQualityLinkPreview: false,
   })
   sock = s
   s.ev.on('creds.update', saveCreds)
@@ -176,7 +178,7 @@ async function connect() {
       lastQr = u.qr; lastQrAt = Date.now(); open = false
       setPhase('QR', Date.now() - lastCodeAt < 170000 ? 'pairing code ready' : 'waiting for the QR to be scanned')
       console.log('Scan with WhatsApp → Settings → Linked devices → Link a device (or in Admin → Progress → Link WhatsApp)')
-      if (Date.now() < wantUntil) beat()
+      if (Date.now() < wantUntil || !qrSent) { qrSent = true; beat() }   // the first code goes to Admin at once
       if (/^\d{9,15}$/.test(PAIR_PHONE) && !pairAsked && !s.authState.creds.registered) { pairAsked = true; await askCode(PAIR_PHONE) }
     }
     if (u.connection === 'connecting') console.log('Connecting…')
