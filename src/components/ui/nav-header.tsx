@@ -51,6 +51,11 @@ function NavHeader({ items, value, onChange, className }: { items: Item[]; value
   );
 }
 
+// Eleven tabs must fit the header column in both languages from 1024 px up
+// (984 px at 1024, 1008 px at 1280 beside the sidebar, 1240 px from 1536): with
+// wider padding the bar was 9 to 75 px too long (Bahasa Malaysia at 1024,
+// 1280 and 1536 px, English at 1536) and its last tab (Acara / Events) was
+// cut off (21 Nov 2026). Below 1024 px the bar scrolls sideways.
 const Tab = ({ item, active, setPosition, onChange, liRef }: {
   item: Item; active: boolean; setPosition: (p: Pos) => void; onChange?: (v: string) => void; liRef: (el: HTMLLIElement | null) => void;
 }) => {
@@ -69,7 +74,7 @@ const Tab = ({ item, active, setPosition, onChange, liRef }: {
         href={item.href || `#${item.value}`}
         aria-current={active ? "page" : undefined}
         onClick={(e) => { if (onChange) { e.preventDefault(); onChange(item.value); } }}
-        className="block cursor-pointer whitespace-nowrap px-[7px] py-1.5 text-[11.5px] font-medium uppercase tracking-normal lg:px-2.5 lg:text-[12px] 2xl:px-4 2xl:py-2 2xl:text-sm 2xl:tracking-wide"
+        className="block cursor-pointer whitespace-nowrap px-[7px] py-1.5 text-[11.5px] font-medium uppercase tracking-normal lg:text-[12px] 2xl:px-2.5 2xl:py-2 2xl:text-sm 2xl:tracking-wide"
       >
         {item.label}
       </a>

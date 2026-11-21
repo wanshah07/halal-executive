@@ -81,7 +81,7 @@ export default function Header({ lang, setLang, tab, sub, setTab, onRefresh, onE
               return (
                 <a key={d.sub} href={`#directory/${d.sub}`} onClick={(e) => { e.preventDefault(); setTab(`directory/${d.sub}`) }} aria-current={on ? 'page' : undefined}
                   className={`shrink-0 inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm whitespace-nowrap ${on ? 'bg-ink-900 text-white border-ink-900' : 'border-line text-ink-600 hover:bg-paper'}`}>
-                  {d[lang] || d.en}{d.soon && <span className="rounded bg-gold-500 px-1.5 text-[10px] font-semibold uppercase text-white">{t(lang, 'soon')}</span>}
+                  {d[lang] || d.en}{d.soon && <span className="rounded bg-gold-500 px-1.5 text-[10px] font-semibold uppercase text-ink-900">{t(lang, 'soon')}</span>}
                 </a>
               )
             })}

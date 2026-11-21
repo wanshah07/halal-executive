@@ -76,7 +76,7 @@ export default function Directory({ lang, data, sub: subKey, setTab }) {
         <h2 className="text-xl font-bold">{t(lang, 'directory')}</h2>
         <p className="text-sm text-ink-600 mt-1">{t(lang, 'directory_intro')}</p>
         <div className="mt-3 flex flex-wrap gap-2" role="tablist">
-          {DIRECTORY_SECTIONS.map((d) => <button key={d.sub} role="tab" aria-selected={cur.sub === d.sub} className={`px-3 py-1.5 rounded-lg border text-sm inline-flex items-center gap-1.5 ${cur.sub === d.sub ? 'bg-ink-900 text-white border-ink-900' : 'border-line text-ink-600 hover:bg-paper'}`} onClick={() => { setPlace('all'); setCat('all'); setTab(`directory/${d.sub}`) }}>{d[lang] || d.en} <span className={cur.sub === d.sub ? 'text-white/70' : 'text-ink-400'}>({all.filter((r) => sectionOf(r.subtype) === d.sub).length})</span>{d.soon && <span className="rounded bg-gold-500 px-1.5 text-[10px] font-semibold uppercase text-white">{t(lang, 'soon')}</span>}</button>)}
+          {DIRECTORY_SECTIONS.map((d) => <button key={d.sub} role="tab" aria-selected={cur.sub === d.sub} className={`px-3 py-1.5 rounded-lg border text-sm inline-flex items-center gap-1.5 ${cur.sub === d.sub ? 'bg-ink-900 text-white border-ink-900' : 'border-line text-ink-600 hover:bg-paper'}`} onClick={() => { setPlace('all'); setCat('all'); setTab(`directory/${d.sub}`) }}>{d[lang] || d.en} <span className={cur.sub === d.sub ? 'text-white/70' : 'text-ink-400'}>({all.filter((r) => sectionOf(r.subtype) === d.sub).length})</span>{d.soon && <span className="rounded bg-gold-500 px-1.5 text-[10px] font-semibold uppercase text-ink-900">{t(lang, 'soon')}</span>}</button>)}
         </div>
         {cur.sub === 'training' && (
           <div className="mt-2 flex flex-wrap gap-1.5">
@@ -87,7 +87,7 @@ export default function Directory({ lang, data, sub: subKey, setTab }) {
         {cur.sub === 'training' && (cat === 'all' || cat === 'jakim_plh') && <p className="text-xs text-ink-400 mt-2">{t(lang, 'dir_plh_source')}</p>}
       </section>
 
-      {soon && <div className="card p-8 mb-4 text-center bg-gradient-to-br from-brand-600 to-brand-900 text-white"><div className="inline-block rounded-full bg-gold-500 px-3 py-1 text-xs font-bold uppercase tracking-wide mb-3">{t(lang, 'soon')}</div><div className="text-xl font-bold">{t(lang, 'lab_soon_title')}</div><p className="text-sm text-white/85 mt-2 max-w-xl mx-auto">{t(lang, 'lab_soon_body')}</p></div>}
+      {soon && <div className="card p-8 mb-4 text-center bg-gradient-to-br from-brand-600 to-brand-900 text-white"><div className="inline-block rounded-full bg-gold-500 text-ink-900 px-3 py-1 text-xs font-bold uppercase tracking-wide mb-3">{t(lang, 'soon')}</div><div className="text-xl font-bold">{t(lang, 'lab_soon_title')}</div><p className="text-sm text-white/85 mt-2 max-w-xl mx-auto">{t(lang, 'lab_soon_body')}</p></div>}
 
       {(!soon || subRows.length > 0) && <section className="card p-5 mb-4">
         <h3 className="font-semibold mb-1">{t(lang, 'dir_map')}</h3>
