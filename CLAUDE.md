@@ -768,3 +768,9 @@
     run, 400 rows at most, deletes in chunks of 40) keeps the described card of each file and removes empty or exact copies, never a
     `shown by admin` or `CERT-M` row, plus the copy documents whose file is missing; the page also shows one card per `doc_id`
     (`dedupeCerts` in api.js). Tests in `pipeline/test_certificates_never_wait.py` (`DuplicateCardsTest`).
+    **A link that reached CONNECTED, then LOGOUT** (21 Nov 2026, 02:28 UTC, `watchLink` log): Socket state UNPAIRED, pairing code typed,
+    OPENING, CONNECTED, "Loading" 0% to 99%, then `Disconnected: LOGOUT` with the page `/?post_logout=1&logout_reason=2`, before `ready`. So the
+    pairing code works and WhatsApp accepted the device; it was ended during the first load. What `logout_reason=2` means is not documented
+    anywhere I could find. Only one link has ever held (16 Nov 05:52, 90 minutes, library-default user agent); the three made with the
+    matching-browser user agent all failed, so `HE_USER_AGENT` is empty (library default) again; `HE_USER_AGENT=auto` restores the
+    matching one. Three attempts against one success is a lead, not proof. Also unproved: a 1 GB server loading 99% (swap) as a cause.

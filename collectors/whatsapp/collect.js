@@ -119,7 +119,12 @@ function browserUA() {
     return `Mozilla/5.0 (${os}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${m[1]}.0.0.0 Safari/537.36`
   } catch (e) { return undefined }
 }
-const UA = browserUA()
+// Which user agent (HE_USER_AGENT): empty = the library's default (Chrome 101 on a Mac), "auto" = the installed browser's own
+// version (`browserUA`), anything else = that exact string. 21 Nov 2026: the only link that ever held (16 Nov 05:52 to 07:21) was made
+// with the library default; every link made with the matching-browser user agent (07:51, 09:10, 21 Nov 02:28) ended in LOGOUT, so the
+// default is the library's again until the two are compared. Not proved: three attempts, one success.
+const UA_MODE = String(process.env.HE_USER_AGENT || '').trim()
+const UA = UA_MODE === 'auto' ? browserUA() : UA_MODE || undefined
 console.log('User agent:', UA || 'library default')
 const client = new Client({
   authStrategy: new LocalAuth(),
