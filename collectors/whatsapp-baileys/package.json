@@ -1,0 +1,14 @@
+{
+  "name": "he-collector-whatsapp-baileys",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "start": "node collect.js",
+    "groups": "node collect.js --list-groups"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "7.0.0-rc14",
+    "pino": "^9.5.0"
+  }
+}

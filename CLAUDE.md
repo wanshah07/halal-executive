@@ -779,3 +779,9 @@
     sudo mkswap /swapfile && sudo swapon /swapfile && echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab`, inside the 30 GB free-tier disk) and
     lighter Chromium flags in `collect.js` (`--renderer-process-limit=1`, `--js-flags=--max-old-space-size=384`, no extensions or background networking).
     Evidence still wanted: `free -m` and `sudo dmesg | grep -i -E "out of memory|killed process"` right after a failed link.
+    **Browser-free collector, built 21 Nov 2026** (Wan, after the 6th link ended in LOGOUT): `collectors/whatsapp-baileys/` (Baileys 7.0.0-rc14, `baileys-1`), same
+    Sheet protocol as `whatsapp/collect.js` (check-in, QR and pairing code for Admin, `restart` / `relink` / `update` / `pair:`; `catchup` only re-asks by restart),
+    same message id shape so a message both collectors saw is one row, history from the link read from 10 minutes before the last message the Sheet got. **Never run
+    both** (both check in as source `whatsapp`): `pm2 stop he-whatsapp` then `pm2 start collect.js --name he-whatsapp-b` from its folder. NOT proved against real WhatsApp
+    (the build session's network blocks WhatsApp's socket; only the reconnect loop, check-in and message unwrapping were run): the first real link is the test. Needs Node 20+.
+    If it also ends in loggedOut straight after a link, the cause is WhatsApp's side for this number or server, not the browser; then try another number or machine.
