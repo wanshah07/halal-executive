@@ -51,11 +51,15 @@ const TOKEN = process.env.TELEGRAM_BOT_TOKEN
 const GROUP = process.env.HE_GROUP_NAME || 'Halal Executive'
 const CHAT_ID = String(process.env.TELEGRAM_CHAT_ID || '').trim()
 const ALLOWED = String(process.env.TELEGRAM_ALLOWED_USERS || '').split(/[,\s]+/).filter(Boolean)
-const SALT = process.env.HE_SALT || 'halal-executive'
+// Sender pseudonym: a strong random per-deployment salt, never the old default,
+// and the FULL sha256 digest (a 64-bit truncated hash with a known salt is
+// brute-forceable back to names/phone numbers).
+const SALT = String(process.env.HE_SALT || '').trim()
+if (!SALT || SALT === 'halal-executive') { console.error('HE_SALT is missing or still the default. Set a strong random per-deployment HE_SALT in collectors/.env.'); process.exit(1) }
 const MAX_FILE = 10 * 1024 * 1024 // same ceiling as Admin uploads; a bigger file is noted, not sent
 const MAX_OUTBOX = 300
 const STATE = new URL(BOT ? `./state-${BOT}.json` : './state.json', import.meta.url)
-const hash = (s) => crypto.createHash('sha256').update(SALT + String(s)).digest('hex').slice(0, 16)
+const hash = (s) => crypto.createHash('sha256').update(SALT + String(s)).digest('hex')
 const botOpts = (polling) => ({ polling, ...(process.env.TELEGRAM_API_BASE ? { baseApiUrl: process.env.TELEGRAM_API_BASE } : {}) })
 const isOurs = (c) => !!c && ['group', 'supergroup'].includes(c.type) && (CHAT_ID ? String(c.id) === CHAT_ID : String(c.title || '').trim().toLowerCase() === GROUP.trim().toLowerCase())
 

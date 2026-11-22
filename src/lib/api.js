@@ -340,12 +340,17 @@ export async function certThumb(id) {
 
 // Chat. The page never holds an LLM key: Apps Script calls MIRELD / AFIQ with
 // keys from Script Properties and the same alternation as the pipeline.
+// `anon` is a random per-browser id the server keys its per-caller rate limit
+// on (Apps Script cannot see the caller's IP); it identifies nothing but this
+// browser's chat/ask traffic.
+let ANON_ID = null
+const anonId = () => { try { if (!ANON_ID) ANON_ID = localStorage.getItem('he:anon') || crypto.randomUUID(); localStorage.setItem('he:anon', ANON_ID) } catch { ANON_ID = ANON_ID || '' } return ANON_ID }
 export async function askAssistant(question, lang, context) {
   if (!API_URL) return { answer: null, offline: true }
   const r = await fetch(API_URL, {
     method: 'POST', redirect: 'follow',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({ action: 'chat', question, lang, context }),
+    body: JSON.stringify({ action: 'chat', question, lang, context, anon: anonId() }),
   })
   return r.json()
 }
@@ -356,7 +361,7 @@ const asked = new Map()
 export async function askRefs(question, lang) {
   const k = lang + '|' + question.trim().toLowerCase()
   if (asked.has(k)) return { ...asked.get(k), cached: true, ms: 0 }
-  const r = await post('ask', { question, lang })
+  const r = await post('ask', { question, lang, anon: anonId() })
   asked.set(k, r); if (asked.size > 20) asked.delete(asked.keys().next().value)
   return r
 }

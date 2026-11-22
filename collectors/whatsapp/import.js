@@ -17,14 +17,18 @@ import AdmZip from 'adm-zip'
 import { ingest } from '../lib.js'
 
 const GROUP = (process.env.HE_GROUP_NAME || 'Halal Executive').trim()
-const SALT = process.env.HE_SALT || 'halal-executive'
+// Sender pseudonym: a strong random per-deployment salt, never the old default,
+// and the FULL sha256 digest (a 64-bit truncated hash with a known salt is
+// brute-forceable back to names/phone numbers).
+const SALT = String(process.env.HE_SALT || '').trim()
+if (!SALT || SALT === 'halal-executive') { console.error('HE_SALT is missing or still the default. Set a strong random per-deployment HE_SALT in collectors/.env.'); process.exit(1) }
 const MAX_MB = Number(process.env.HE_MAX_MB || 15)
 const SINCE = process.env.HE_IMPORT_SINCE ? new Date(process.env.HE_IMPORT_SINCE) : null
 // --files-only: send only messages that carry a picture or document from the
 // export. Their text is usually on file already (an earlier .txt import); the
 // Sheet adds each file to its existing row and the AI reads it again.
 const FILES_ONLY = process.argv.includes('--files-only')
-const hash = (s) => crypto.createHash('sha256').update(SALT + String(s)).digest('hex').slice(0, 16)
+const hash = (s) => crypto.createHash('sha256').update(SALT + String(s)).digest('hex')
 
 const MIME = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif', pdf: 'application/pdf', doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', xls: 'application/vnd.ms-excel', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', ppt: 'application/vnd.ms-powerpoint', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation', txt: 'text/plain', csv: 'text/csv', mp4: 'video/mp4', opus: 'audio/ogg', mp3: 'audio/mpeg', vcf: 'text/vcard' }
 const SKIP_MEDIA = /\.(opus|mp3|m4a|aac|mp4|3gp|mov|webm|vcf)$/i // voice notes, video, contacts: no text to read

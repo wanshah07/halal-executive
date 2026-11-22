@@ -14,10 +14,14 @@ import { ingest } from '../lib.js'
 
 const URL = process.env.FB_GROUP_URL
 const GROUP = process.env.HE_GROUP_NAME || 'Halal Executive'
-const SALT = process.env.HE_SALT || 'halal-executive'
+// Sender pseudonym: a strong random per-deployment salt, never the old default,
+// and the FULL sha256 digest (a 64-bit truncated hash with a known salt is
+// brute-forceable back to names/phone numbers).
+const SALT = String(process.env.HE_SALT || '').trim()
+if (!SALT || SALT === 'halal-executive') { console.error('HE_SALT is missing or still the default. Set a strong random per-deployment HE_SALT in collectors/.env.'); process.exit(1) }
 const PROFILE = new URL('./.fb-session', import.meta.url).pathname
 const MAX_MIN = Number(process.env.FB_MAX_MINUTES || 60)
-const hash = (s) => crypto.createHash('sha256').update(SALT + String(s)).digest('hex').slice(0, 16)
+const hash = (s) => crypto.createHash('sha256').update(SALT + String(s)).digest('hex')
 
 const imp = process.argv.indexOf('--import')
 if (imp > 0) {

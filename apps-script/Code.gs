@@ -84,6 +84,10 @@ function setup() {
   var P = props();
   if (!P.getProperty('ADMIN_TOKEN')) P.setProperty('ADMIN_TOKEN', newToken());
   if (!P.getProperty('INGEST_TOKEN')) P.setProperty('INGEST_TOKEN', newToken());
+  // Collector-scoped credential: authorises ONLY `ingest` and `heartbeat`, so a
+  // compromised collector VM cannot reach delete/upsert/drive/ref_chunks/llm.
+  // Deployment: rotate the collectors' .env HE_INGEST_TOKEN to this value.
+  if (!P.getProperty('COLLECTOR_INGEST_TOKEN')) P.setProperty('COLLECTOR_INGEST_TOKEN', newToken());
   if (!P.getProperty('DRIVE_ROOT_ID')) {
     var it = DriveApp.getFoldersByName('Halal Executive');
     var f = it.hasNext() ? it.next() : DriveApp.createFolder('Halal Executive');
@@ -141,6 +145,7 @@ function showSecrets() {
   var P = props(), f = DriveApp.getFolderById(P.getProperty('DRIVE_ROOT_ID'));
   Logger.log('ADMIN_TOKEN   = ' + P.getProperty('ADMIN_TOKEN'));
   Logger.log('INGEST_TOKEN  = ' + P.getProperty('INGEST_TOKEN'));
+  Logger.log('COLLECTOR_INGEST_TOKEN = ' + P.getProperty('COLLECTOR_INGEST_TOKEN'));
   Logger.log('DRIVE_ROOT_ID = ' + f.getId() + '   (' + f.getUrl() + ')');
   Logger.log('ADMIN_EMAILS  = ' + P.getProperty('ADMIN_EMAILS'));
   Logger.log('MIRELD key ' + (P.getProperty('MIRELD_API_KEY') ? 'set' : 'MISSING') + ', model ' + (P.getProperty('MIRELD_MODEL') || 'auto'));
@@ -148,7 +153,7 @@ function showSecrets() {
 }
 
 // Rotate a token: run, then update the GitHub secret / Admin panel.
-function rotateTokens() { props().setProperty('ADMIN_TOKEN', newToken()); props().setProperty('INGEST_TOKEN', newToken()); showSecrets(); }
+function rotateTokens() { props().setProperty('ADMIN_TOKEN', newToken()); props().setProperty('INGEST_TOKEN', newToken()); props().setProperty('COLLECTOR_INGEST_TOKEN', newToken()); showSecrets(); }
 
 function sheet(name) { var sh = ss().getSheetByName(name); if (!sh) { if (!TABS[name]) throw new Error('Missing tab ' + name); sh = ss().insertSheet(name); sh.appendRow(TABS[name]); sh.setFrozenRows(1); } return sh; }
 
@@ -327,8 +332,8 @@ function doPost(e) {
   try {
     // Public actions, each rate-limited so the page cannot be used to run up
     // the model bill or flood an inbox.
-    if (a === 'chat') { if (!rate('chat', 30, 60)) return json({ ok: false, error: 'Busy, try again in a minute.' }); return json(chat(body)); }
-    if (a === 'ask') { if (!rate('ask', 40, 60)) return json({ ok: false, error: 'Busy, try again in a minute.' }); return json(askReferences(body)); }
+    if (a === 'chat') { if (!anonLlmAllow('chat', 30, 60, body)) return json({ ok: false, error: 'Busy, try again in a minute.' }); return json(chat(body)); }
+    if (a === 'ask') { if (!anonLlmAllow('ask', 40, 60, body)) return json({ ok: false, error: 'Busy, try again in a minute.' }); return json(askReferences(body)); }
     if (a === 'login_request') return json(loginRequest(body.email));
     if (a === 'login_verify') return json(loginVerify(body.email, body.code));
     if (a === 'logout') { if (body.session) props().deleteProperty(sessKey(body.session)); return json({ ok: true }); }
@@ -337,9 +342,16 @@ function doPost(e) {
     if (a === 'whoami') return json(sessEmail ? { ok: true, email: sessEmail } : { ok: false, error: 'unauthorised' });
     // Admin = a signed-in registered email, or ADMIN_TOKEN for scripts.
     var isAdmin = !!sessEmail || (!!body.token && body.token === P.getProperty('ADMIN_TOKEN'));
+    // Ingest = admin, or the pipeline's INGEST_TOKEN (broad: writes, Drive, llm).
     var isIngest = isAdmin || (!!body.token && body.token === P.getProperty('INGEST_TOKEN'));
-    if (!isIngest) return json({ ok: false, error: 'unauthorised' });
+    // Collector = the scope-limited COLLECTOR_INGEST_TOKEN. It authorises ONLY
+    // `ingest` and `heartbeat`; every other action below is needAdmin() or
+    // needIngest(), so a compromised collector VM can add/check-in rows and
+    // nothing more (no delete/upsert/drive/ref_chunks/llm/raw_update).
+    var isCollector = !isAdmin && !!body.token && body.token === P.getProperty('COLLECTOR_INGEST_TOKEN');
+    if (!isIngest && !isCollector) return json({ ok: false, error: 'unauthorised' });
     var needAdmin = function () { if (!isAdmin) throw new Error('Sign in with a registered email first.'); };
+    var needIngest = function () { if (!isIngest) throw new Error('This action needs the pipeline ingest token.'); };
 
     // Reads and slow work: no lock, so they never hold up a write.
     if (a === 'admins_get')   { needAdmin(); return json({ ok: true, emails: adminEmails(), owner: Session.getEffectiveUser().getEmail().toLowerCase() }); }
@@ -347,25 +359,25 @@ function doPost(e) {
     if (a === 'ref_list')     { needAdmin(); return json({ ok: true, rows: readTab('References') }); }
     if (a === 'event_list')   { needAdmin(); return json({ ok: true, rows: readTab('Events') }); }
     if (a === 'vacancy_list') { needAdmin(); return json({ ok: true, rows: readTab('Vacancies') }); }
-    if (a === 'raw_list')     return json({ ok: true, rows: rawList(body.status, body.source, Math.min(body.limit || 50, 500), body.attachments) });
-    if (a === 'read')         { if (WRITABLE.indexOf(body.tab) < 0 && body.tab !== 'Raw') throw new Error('tab not readable'); return json({ ok: true, rows: readTab(body.tab) }); }
-    if (a === 'drive_get')    return json(driveGet(body));
-    if (a === 'drive_list')   return json(driveList(body));                         // files in the app's own folders, for the certificate sweep (ingest token)
-    if (a === 'cert_state')   return json(certFilesCheck(!!body.fresh));                   // which certificates still have their file in Drive (ingest token)
-    if (a === 'llm_next')     return json({ ok: true, provider: nextProvider() });
-    if (a === 'llm_config')   return json(llmConfigGet());                         // the pipeline reads the same choice
+    if (a === 'raw_list')     { needIngest(); return json({ ok: true, rows: rawList(body.status, body.source, Math.min(body.limit || 50, 500), body.attachments) }); }
+    if (a === 'read')         { needIngest(); if (WRITABLE.indexOf(body.tab) < 0 && body.tab !== 'Raw') throw new Error('tab not readable'); return json({ ok: true, rows: readTab(body.tab) }); }
+    if (a === 'drive_get')    { needIngest(); return json(driveGet(body)); }
+    if (a === 'drive_list')   { needIngest(); return json(driveList(body)); }                         // files in the app's own folders, for the certificate sweep (ingest token)
+    if (a === 'cert_state')   { needIngest(); return json(certFilesCheck(!!body.fresh)); }                   // which certificates still have their file in Drive (ingest token)
+    if (a === 'llm_next')     { needIngest(); return json({ ok: true, provider: nextProvider() }); }
+    if (a === 'llm_config')   { needIngest(); return json(llmConfigGet()); }                         // the pipeline reads the same choice
     if (a === 'llm_models')   { needAdmin(); return json(llmModels(!!body.fresh)); }
     if (a === 'llm_test')     { needAdmin(); return json(llmTest(body)); }          // one real call, no Sheet write
     if (a === 'llm_config_save') { needAdmin(); return json(llmConfigSave(body)); } // validates first, locks only for the write
-    if (a === 'llm')          return json(llmProxy(body));
-    if (a === 'vision_read')  return json(visionRead(body));                       // the pipeline reads a picture OCR could not (ingest token)
+    if (a === 'llm')          { needIngest(); return json(llmProxy(body)); }
+    if (a === 'vision_read')  { needIngest(); return json(visionRead(body)); }                       // the pipeline reads a picture OCR could not (ingest token)
     if (a === 'img_config')   { needAdmin(); return json(kiosConfig(!!body.fresh)); }
     if (a === 'img_config_save') { needAdmin(); return json(kiosConfigSave(body)); }
     if (a === 'img_test')     { needAdmin(); return json(kiosTest(body)); }
     if (a === 'heartbeat')    return json(heartbeat(body));
-    if (a === 'progress')     return json(saveProgress(body));
-    if (a === 'poster_from_drive') return json(posterFromDrive(body.id));
-    if (a === 'raw_stats')    { var rs0 = rawStats(); rs0.ok = true; return json(rs0); }
+    if (a === 'progress')     { needIngest(); return json(saveProgress(body)); }
+    if (a === 'poster_from_drive') { needIngest(); return json(posterFromDrive(body.id)); }
+    if (a === 'raw_stats')    { needIngest(); var rs0 = rawStats(); rs0.ok = true; return json(rs0); }
     if (a === 'pipeline_status') { needAdmin(); return json(pipelineStatus()); }
     if (a === 'wa_link')      { needAdmin(); return json(waLink()); }                // the QR and state of the WhatsApp collector
     if (a === 'wa_cmd')       { needAdmin(); return json(waCmd(String(body.cmd || ''), body.phone)); }
@@ -402,14 +414,14 @@ function doPost(e) {
       if (a === 'row_save')      { needAdmin(); return json(rowSave(String(body.tab || ''), body.row || {})); }
       if (a === 'seed_rows')     { needAdmin(); return json(seedRows(String(body.tab || ''), body.rows || [])); }
       if (a === 'fhcb_doc_upload') { needAdmin(); return json(fhcbDocUpload(body, sessEmail || 'token')); }
-      if (a === 'ingest')        return json(ingest(body.rows || []));
-      if (a === 'raw_update')    return json(updateByIds('Raw', body.ids || [], body.patch || {}));
-      if (a === 'upsert')        { if (WRITABLE.indexOf(body.tab) < 0) throw new Error('tab not writable'); return json(upsert(body.tab, body.rows || [])); }
-      if (a === 'delete')        { if (WRITABLE.indexOf(body.tab) < 0) throw new Error('tab not writable'); return json(deleteByIds(body.tab, body.ids || [])); }
-      if (a === 'ref_chunks')    return json(refChunks(body));
-      if (a === 'run_log')       { sheet('Runs').appendRow([new Date().toISOString(), String(body.job || '').slice(0, 80), body.provider || '', body.model || '', body.processed || 0, !!body.ok, String(body.error || '').slice(0, 500)]); return json({ ok: true }); }
-      if (a === 'drive_upload')  return json(driveUpload(body));
-      if (a === 'drive_file')    return json(driveFile(body));
+      if (a === 'ingest')        return json(ingest(body.rows || []));   // the ONLY write a collector token may do
+      if (a === 'raw_update')    { needIngest(); return json(updateByIds('Raw', body.ids || [], body.patch || {})); }
+      if (a === 'upsert')        { needIngest(); if (WRITABLE.indexOf(body.tab) < 0) throw new Error('tab not writable'); return json(upsert(body.tab, body.rows || [])); }
+      if (a === 'delete')        { needIngest(); if (WRITABLE.indexOf(body.tab) < 0) throw new Error('tab not writable'); return json(deleteByIds(body.tab, body.ids || [])); }
+      if (a === 'ref_chunks')    { needIngest(); return json(refChunks(body)); }
+      if (a === 'run_log')       { needIngest(); sheet('Runs').appendRow(safeRow([new Date().toISOString(), String(body.job || '').slice(0, 80), body.provider || '', body.model || '', body.processed || 0, !!body.ok, String(body.error || '').slice(0, 500)])); return json({ ok: true }); }
+      if (a === 'drive_upload')  { needIngest(); return json(driveUpload(body)); }
+      if (a === 'drive_file')    { needIngest(); return json(driveFile(body)); }
       return json({ ok: false, error: 'unknown action ' + a });
     } finally { lock.releaseLock(); }
   } catch (err) { return json({ ok: false, error: String(err && err.message || err) }); }
@@ -421,6 +433,29 @@ function rate(key, max, windowSec) {
   var n = parseInt(c.get(k) || '0', 10) + 1;
   c.put(k, String(n), windowSec + 5);
   return n <= max;
+}
+
+// Gate for the two anonymous, paid-LLM actions (chat/ask). They keep the shared
+// per-minute rate(), plus two extra guards:
+//  1. a hard DAILY cost ceiling (CacheService counter) so a botnet cannot run up
+//     the owner's model bill however widely it spreads its requests;
+//  2. a per-caller dimension on the per-minute window. Apps Script never exposes
+//     the caller's IP, so the caller is keyed by the client's own random
+//     anonymous id (body.anon) when one is sent; callers that send none share a
+//     single bucket and still hit the daily ceiling. Keep LLM_ANON_DAILY_CAP
+//     conservative: it is a backstop, not a quota.
+var LLM_ANON_DAILY_CAP = 4000;
+function anonLlmAllow(action, max, windowSec, b) {
+  if (!rate(action, max, windowSec)) return false;
+  var c = CacheService.getScriptCache();
+  var day = Math.floor(new Date(new Date().toDateString()).getTime() / 1000); // local midnight
+  var dayKey = 'llmday_' + action + '_' + day;
+  var used = parseInt(c.get(dayKey) || '0', 10) + 1;
+  c.put(dayKey, String(used), 24 * 3600 + 3600);
+  if (used > LLM_ANON_DAILY_CAP) return false;
+  var anon = String(b.anon || '').slice(0, 40);
+  if (!anon) return true; // no client id: the daily ceiling and shared rate still bound it
+  return rate('anon_' + action + '_' + sha256(Utilities.newBlob(anon).getBytes()).slice(0, 24), Math.max(1, Math.floor(max / 2)), windowSec);
 }
 
 // ---------- Admin sign-in: one-time code to a registered email ----------
@@ -2247,7 +2282,17 @@ function kiosGenerate(b) {
   if (r.getResponseCode() >= 300) throw new Error('KIOS HTTP ' + r.getResponseCode() + ': ' + r.getContentText().slice(0, 200));
   var d = (JSON.parse(r.getContentText()).data || [])[0] || {}, bytes = null, mime = 'image/png';
   if (d.b64_json) bytes = Utilities.base64Decode(d.b64_json);
-  else if (d.url && /^https:\/\//.test(d.url)) { var g = UrlFetchApp.fetch(d.url, { muteHttpExceptions: true }); if (g.getResponseCode() === 200) { bytes = g.getContent(); mime = g.getHeaders()['Content-Type'] || mime; } }
+  else if (d.url && /^https:\/\//.test(d.url)) {
+    // The gateway is allowed to return a hosted image URL, but never an
+    // arbitrary host: a compromised/poisoned gateway could otherwise make Apps
+    // Script fetch an internal address. Only kiosapi.com (and the gateway base
+    // host, if ever reconfigured) is fetched.
+    var kiosHost = d.url.replace(/^https:\/\//, '').split('/')[0].toLowerCase();
+    var baseHost = (IMAGE_AI.KIOS.base || '').replace(/^https:\/\//, '').split('/')[0].toLowerCase();
+    if (kiosHost === baseHost || kiosHost === 'kiosapi.com' || kiosHost.slice(-'.kiosapi.com'.length) === '.kiosapi.com') {
+      var g = UrlFetchApp.fetch(d.url, { muteHttpExceptions: true }); if (g.getResponseCode() === 200) { bytes = g.getContent(); mime = g.getHeaders()['Content-Type'] || mime; }
+    } else { throw new Error('KIOS returned an image URL on an unlisted host'); }
+  }
   if (!bytes || !bytes.length) throw new Error('KIOS empty completion');
   if (bytes[0] === 0xFF && bytes[1] === 0xD8 || bytes[0] === -1 && bytes[1] === -40) mime = 'image/jpeg';
   markProvider('KIOS', model);

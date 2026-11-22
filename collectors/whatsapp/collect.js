@@ -29,7 +29,11 @@ import { ingest, post, browserPath } from '../lib.js'
 const { Client, LocalAuth, Chat } = pkg
 const GROUP = (process.env.HE_GROUP_NAME || 'Halal Executive').trim()
 const GROUP_ID = (process.env.HE_GROUP_ID || '').trim()
-const SALT = process.env.HE_SALT || 'halal-executive'
+// Sender pseudonym: a strong random per-deployment salt, never the old default,
+// and the FULL sha256 digest (a 64-bit truncated hash with a known salt is
+// brute-forceable back to names/phone numbers).
+const SALT = String(process.env.HE_SALT || '').trim()
+if (!SALT || SALT === 'halal-executive') { console.error('HE_SALT is missing or still the default. Set a strong random per-deployment HE_SALT in collectors/.env.'); process.exit(1) }
 const MAX_MB = Number(process.env.HE_MAX_MB || 15)
 const BACKFILL_LIMIT = Number(process.env.HE_BACKFILL_LIMIT || 5000)
 const BACKFILL = process.argv.includes('--backfill')
@@ -41,7 +45,7 @@ const LIST = process.argv.includes('--list-groups')
 const STATE = new URL('./state.json', import.meta.url)
 const state = fs.existsSync(STATE) ? JSON.parse(fs.readFileSync(STATE, 'utf8')) : { lastTs: 0 }
 const save = () => fs.writeFileSync(STATE, JSON.stringify(state))
-const hash = (s) => crypto.createHash('sha256').update(SALT + String(s)).digest('hex').slice(0, 16)
+const hash = (s) => crypto.createHash('sha256').update(SALT + String(s)).digest('hex')
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 // Message and chat ids come back either as plain strings or as id objects,
 // depending on the WhatsApp Web build. These always give a usable string.
